@@ -71,6 +71,10 @@ class RefractiveIndex:
         dn2_dz = (self.n2(x, z + dz) - self.n2(x, z - dz)) / (2.0 * dz)
         return dn2_dx, dn2_dz
 
+    def n_batch(self, pts: np.ndarray) -> np.ndarray:
+        """Vectorized n for pts of shape (M, 2) -> (M,). Single interpolator call."""
+        return np.sqrt(np.maximum(self._n2_interp(pts), 1e-6))
+
 
 # ── Haselgrove equations (2-D Cartesian, isotropic) ──────────────────────────
 

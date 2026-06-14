@@ -54,8 +54,8 @@ conda run -n pytorch_cpu python viz/plot_ne_background.py
 | Part | Module | Status |
 |------|--------|--------|
 | 1 | `models/ionosphere_model.py` | **Done** |
-| 2 | `models/ray_tracer.py` | Stub |
-| 3 | `models/point_to_point.py` | Stub |
+| 2 | `models/ray_tracer.py` | **Done** |
+| 3 | `models/point_to_point.py` | **Done** |
 | 4 | `models/es_model.py` | Stub |
 | 5 | `models/pe_propagator.py` | Stub |
 | 6 | `models/hybrid_model.py` | Stub |
