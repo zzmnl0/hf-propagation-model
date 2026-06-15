@@ -58,4 +58,4 @@ conda run -n pytorch_cpu python viz/plot_ne_background.py
 | 3 | `models/point_to_point.py` | **Done** |
 | 4 | `models/es_model.py` | **Done** |
 | 5 | `models/pe_propagator.py` | **Done** |
-| 6 | `models/hybrid_model.py` | Stub |
+| 6 | `models/hybrid_model.py` | **Done** |
