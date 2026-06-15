@@ -14,7 +14,7 @@ Per-step SSF:
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 from scipy.signal import find_peaks
-from config import C_MS, C_KMS, FREQ_MHZ, PE
+from config import C_MS, C_KMS, FREQ_MHZ, PE, RE_KM
 from utils import freq_to_k0
 
 
@@ -82,6 +82,11 @@ class PEPropagator:
         XX, ZZ = np.meshgrid(x_pe, z_pe, indexing='ij')
         pts    = np.column_stack([XX.ravel(), ZZ.ravel()])
         n_pe   = interp(pts).reshape(len(x_pe), len(z_pe))
+
+        if self.params.get('earth_flat', True):
+            # Earth-flattening: n_eff(x,z) = n(x,z)*(1 + z/R_E)
+            # Accounts for coordinate curvature in Cartesian PE frame (Part 7, Ch.8 A2).
+            n_pe = np.maximum(n_pe * (1.0 + ZZ / RE_KM), 1e-6)
 
         return n_pe, x_pe, z_pe
 

@@ -192,7 +192,17 @@ print("  n range   : [{:.4f}, {:.4f}]  (expect (0, 1])".format(
 assert n_pe.shape[0] == len(x_pe), "Shape mismatch x"
 assert n_pe.shape[1] == len(z_pe), "Shape mismatch z"
 assert float(n_pe.min()) > 0.0, "n must be positive"
-assert float(n_pe.max()) <= 1.0 + 1e-9, "n must be <= 1 in ionosphere"
+# With earth_flat=True, n_eff = n*(1+z/R_E) can exceed 1.0 in vacuum regions.
+# Upper bound: n<=1 vacuum at z_max => n_eff <= 1*(1+z_max/R_E).
+import config as _cfg
+_earth_flat = pe.params.get('earth_flat', True)
+if _earth_flat:
+    _n_max_bound = 1.0 * (1.0 + z_range[1] / _cfg.RE_KM) + 1e-6
+    assert float(n_pe.max()) <= _n_max_bound, \
+        "n_eff exceeds Earth-flat bound: {:.4f} > {:.4f}".format(
+            float(n_pe.max()), _n_max_bound)
+else:
+    assert float(n_pe.max()) <= 1.0 + 1e-9, "n must be <= 1 in ionosphere"
 print("  x_pe: {:.1f}..{:.1f} km  ({} points)".format(
     x_pe[0], x_pe[-1], len(x_pe)))
 print("  z_pe: {:.4f}..{:.4f} km  ({} points)".format(

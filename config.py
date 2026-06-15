@@ -103,9 +103,11 @@ P2P = {
     'alpha_km':    0.5,   # Gradient-descent step size  [km/iter]
     'k_spring':    0.1,   # Smoothness spring coefficient
     'max_iter':    500,   # Maximum iterations
-    'tol_km':      0.05,  # Convergence criterion: ‖∂S/∂r‖_⊥  [km]
+    'tol_km':      0.05,  # Convergence criterion: ||dS/dr||_perp  [km]
     'clust_h_km':  10.0,  # Deduplication height tolerance   [km]
     'clust_tau_ms':0.05,  # Deduplication delay  tolerance   [ms]
+    'n_workers':   1,     # Parallel workers: 0=auto-detect, 1=sequential
+                          # Set >1 only in scripts guarded by if __name__=='__main__'
 }
 
 # ── PE / SSF  (Part 5, Carrano 2020) ─────────────────────────────────────────
@@ -118,11 +120,12 @@ PE = {
     'dz_m':           _LAM_M / 4,  # Vertical sampling      [m]  = 7.5 m @10 MHz
     'n_pml':          60,           # PML layer thickness    [grid points]
     'sigma_pml':      0.4,          # PML max attenuation coefficient
-    'w0_km':          20.0,         # RT→PE Gaussian beam waist [km]
+    'w0_km':          20.0,         # RT->PE Gaussian beam waist [km]
     'z_pe_min_km':    200.0,        # PE domain lower bound  [km]
     'z_pe_max_km':    500.0,        # PE domain upper bound  [km]
     'store_history':  False,        # Store all x-slices (debug; uses ~GB RAM)
     'min_power_frac': 0.01,         # Mode extraction: min power / peak power
+    'earth_flat':     True,         # Apply n_eff = n*(1+z/R_E) Earth-flattening correction
 }
 
 # ── Mode classification  (Part 6) ────────────────────────────────────────────

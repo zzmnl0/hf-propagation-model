@@ -210,6 +210,38 @@ def _deduplicate(candidates: list,
     return unique
 
 
+def _ray_worker(args: tuple) -> dict | None:
+    """
+    Module-level worker for multiprocessing.Pool.
+    Must stay at module level (not nested) so it is picklable on Windows.
+    """
+    tx, rx, n_model, beta, is_high, p2p_params = args
+    pts, gp = variational_find_ray(tx, rx, n_model,
+                                    float(beta),
+                                    is_high_ray=is_high,
+                                    p2p_params=p2p_params)
+    tau_ms = gp / C_KMS * 1e3
+    h_max  = float(np.max(pts[:, 1]))
+
+    if h_max > RT['z_stop_km'] or tau_ms < 0.1:
+        return None
+
+    return {
+        'beta_deg'      : float(beta),
+        'points'        : pts,
+        'trajectory'    : [np.array([p[0], p[1], 0.0, 0.0]) for p in pts],
+        'group_path_km' : gp,
+        'tau_ms'        : tau_ms,
+        'h_reflect_km'  : h_max,
+        'beta_recv_deg' : 0.0,
+        'at_Es'         : None,
+        'at_bubble'     : None,
+        'L_bg_dB'       : 0.0,
+        'is_high'       : is_high,
+        'label'         : '',
+    }
+
+
 def find_all_rays_p2p(tx: tuple,
                        rx: tuple,
                        n_model: RefractiveIndex,
@@ -217,45 +249,33 @@ def find_all_rays_p2p(tx: tuple,
                        p2p_params: dict = P2P
                        ) -> list[dict]:
     """
-    Systematic search: scan n_init elevations, run variational solver for
-    both high and low variants, deduplicate, classify, sort by tau.
-    Returns list of ray dicts.
+    Systematic search: scan n_init elevations × {high, low} ray variants,
+    deduplicate, classify, and sort by tau.
+
+    Parallelism: controlled by p2p_params['n_workers'].
+      1          -> sequential (safe in any calling context)
+      0          -> auto-detect CPU count (requires if __name__=='__main__' guard)
+      N > 1      -> use exactly N worker processes
     """
     n_init    = p2p_params['n_init']
     clust_h   = p2p_params['clust_h_km']
     clust_tau = p2p_params['clust_tau_ms']
-    z_stop    = RT['z_stop_km']
+    n_workers = int(p2p_params.get('n_workers', 1))
 
-    betas      = np.linspace(5.0, 80.0, n_init)
-    candidates = []
+    betas = np.linspace(5.0, 80.0, n_init)
+    tasks = [(tx, rx, n_model, float(b), is_high, p2p_params)
+             for b in betas
+             for is_high in (True, False)]
 
-    for beta in betas:
-        for is_high in (True, False):
-            pts, gp = variational_find_ray(tx, rx, n_model,
-                                            float(beta),
-                                            is_high_ray=is_high,
-                                            p2p_params=p2p_params)
-            tau_ms = gp / C_KMS * 1e3
-            h_max  = float(np.max(pts[:, 1]))
+    if n_workers == 1:
+        raw = [_ray_worker(t) for t in tasks]
+    else:
+        from multiprocessing import Pool, cpu_count
+        n_proc = n_workers if n_workers > 0 else min(cpu_count(), len(tasks))
+        with Pool(processes=n_proc) as pool:
+            raw = pool.map(_ray_worker, tasks)
 
-            if h_max > z_stop or tau_ms < 0.1:
-                continue
-
-            candidates.append({
-                'beta_deg'      : float(beta),
-                'points'        : pts,
-                'trajectory'    : [np.array([p[0], p[1], 0.0, 0.0]) for p in pts],
-                'group_path_km' : gp,
-                'tau_ms'        : tau_ms,
-                'h_reflect_km'  : h_max,
-                'beta_recv_deg' : 0.0,
-                'at_Es'         : None,
-                'at_bubble'     : None,
-                'L_bg_dB'       : 0.0,
-                'is_high'       : is_high,
-                'label'         : '',
-            })
-
+    candidates = [r for r in raw if r is not None]
     unique = _deduplicate(candidates, clust_h, clust_tau)
     for r in unique:
         r['label'] = classify_mode(r)
