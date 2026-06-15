@@ -271,6 +271,7 @@ class HybridPropagationModel:
                 'group_path_km' : gp,
                 'beta_deg'      : float(ray.get('beta_deg', 0.0)),
                 'phi_deg'       : 0.0,
+                'points'        : pts,
             })
 
         # ── Steps 4-5: P-D spectrum + main mode ───────────────────────────────
