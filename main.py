@@ -24,7 +24,8 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
 import config as cfg
-from viz.plot_utils import print_mode_table, plot_ray_fan, plot_pd_spectrum
+from viz.plot_utils import (print_mode_table, plot_ray_fan, plot_pd_spectrum,
+                             save_modes_csv, build_ray_info_text)
 
 _OUT = os.path.join(os.path.dirname(__file__), 'output')
 os.makedirs(_OUT, exist_ok=True)
@@ -54,6 +55,37 @@ def _make_radar_params():
             'Gt': cfg.GT, 'Gr': cfg.GR}
 
 
+def _make_link_info():
+    """Build link_info dict for ray-fan annotation (see build_ray_info_text)."""
+    return {
+        'TX_LAT':   cfg.TX_LAT,
+        'TX_LON':   cfg.TX_LON,
+        'freq_MHz': cfg.FREQ_MHZ,
+        'Pt_W':     cfg.PT_W,
+        'RX_km':    cfg.RX_RANGE,
+        'IRI_DT':   cfg.IRI_DT,
+        'IRI_LAT':  cfg.IRI_LAT,
+        'IRI_LON':  cfg.IRI_LON,
+    }
+
+
+def _make_pert_info(enable_tid=False, enable_es=False, enable_bubble=False):
+    """Build pert_info dict listing only the active perturbations."""
+    p = {}
+    if enable_tid:
+        p['TID'] = {'amplitude':   cfg.TID['amplitude'],
+                    'lambda_h_km': cfg.TID['lambda_h_km'],
+                    'T_s':         cfg.TID['T_s']}
+    if enable_es:
+        p['Es'] = {'foEs_MHz': cfg.ES['foEs_MHz'],
+                   'h_Es_km':  cfg.ES['h_Es_km']}
+    if enable_bubble:
+        p['Bubble'] = {'z0_km':     cfg.BUBBLE['z0_km'],
+                       'Lx_km':     cfg.BUBBLE['Lx_km'],
+                       'delta_max': cfg.BUBBLE['delta_max']}
+    return p
+
+
 def _print_main(main):
     if main:
         pr_str = ("{:.1f} dBW".format(main['Pr_dBW'])
@@ -79,14 +111,18 @@ def _add_free_space_power(modes):
         m['delta_tau_ms']  = 0.0
 
 
-def _plot_mode_paths(modes, Ne_2d, x_km, z_km, title='P2P Mode Paths'):
+def _plot_mode_paths(modes, Ne_2d, x_km, z_km, title='P2P Mode Paths',
+                     link_info=None, pert_info=None):
     """
     Plot converged P2P variational paths (one per mode) over the Ne field.
     Used in run_full() where the full fan is replaced by the P2P solutions.
+    Includes Ne colorbar and parameter annotation box (same style as plot_ray_fan).
     """
     fig, ax = plt.subplots(figsize=(12, 6))
-    ax.pcolormesh(x_km, z_km, Ne_2d.T / 1e10,
-                  cmap='Blues', shading='auto', alpha=0.35)
+    pcm = ax.pcolormesh(x_km, z_km, Ne_2d.T / 1e10,
+                        cmap='Blues', shading='auto', alpha=0.6)
+    plt.colorbar(pcm, ax=ax, label='Ne  [x10^10 m^-3]',
+                 fraction=0.046, pad=0.04)
     colors = cm.tab10(np.linspace(0, 1, max(len(modes), 1)))
     for m, c in zip(modes, colors):
         pts = m['points']          # (n_ctrl+2, 2) control-point array
@@ -97,9 +133,20 @@ def _plot_mode_paths(modes, Ne_2d, x_km, z_km, title='P2P Mode Paths'):
     ax.set_xlabel('Distance (km)')
     ax.set_ylabel('Height (km)')
     ax.set_ylim([0, 500])
-    ax.legend(fontsize=7, ncol=2, loc='upper right')
+    ax.legend(fontsize=7, ncol=2, loc='upper left')
     ax.set_title(title)
     ax.grid(True, alpha=0.2)
+
+    if link_info is not None:
+        info_text = build_ray_info_text(link_info, Ne_2d, z_km, pert_info)
+        ax.text(0.99, 0.97, info_text,
+                transform=ax.transAxes,
+                fontsize=6.5, va='top', ha='right',
+                family='monospace',
+                bbox=dict(boxstyle='round,pad=0.4',
+                          facecolor='white', alpha=0.88,
+                          edgecolor='gray', lw=0.8))
+
     plt.tight_layout()
     return fig, ax
 
@@ -151,7 +198,9 @@ def run_baseline():
     rays = shoot_rays_fan(cfg.TX_POS, n_model)
     print("  Ray fan : {} rays".format(len(rays)))
     fig, _ = plot_ray_fan(rays, Ne_2d, cfg.BG_X, cfg.BG_Z,
-                          title='Ray Fan - IRI baseline')
+                          title='Ray Fan - IRI baseline',
+                          link_info=_make_link_info(),
+                          pert_info=_make_pert_info())
     _save(fig, 'ray_fan_baseline.png')
 
     # P2P modes + free-space power
@@ -164,6 +213,8 @@ def run_baseline():
     tau_ax, pd = build_pd_spectrum(modes)
     main, _ = identify_main_mode(tau_ax, pd, modes)
     _print_main(main)
+    csv_path = save_modes_csv('baseline', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
+    print("  Saved: output/{}".format(os.path.basename(csv_path)))
     fig2, _ = plot_pd_spectrum(tau_ax, pd, modes, title='P-D - IRI baseline')
     _save(fig2, 'pd_baseline.png')
 
@@ -189,7 +240,9 @@ def run_with_tid():
     rays = shoot_rays_fan(cfg.TX_POS, n_model)
     print("  Ray fan : {} rays".format(len(rays)))
     fig, _ = plot_ray_fan(rays, Ne_2d, cfg.BG_X, cfg.BG_Z,
-                          title='Ray Fan - IRI + TID')
+                          title='Ray Fan - IRI + TID',
+                          link_info=_make_link_info(),
+                          pert_info=_make_pert_info(enable_tid=True))
     _save(fig, 'ray_fan_tid.png')
 
     # P2P modes + free-space power
@@ -202,6 +255,8 @@ def run_with_tid():
     tau_ax, pd = build_pd_spectrum(modes)
     main, _ = identify_main_mode(tau_ax, pd, modes)
     _print_main(main)
+    csv_path = save_modes_csv('tid', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
+    print("  Saved: output/{}".format(os.path.basename(csv_path)))
     fig2, _ = plot_pd_spectrum(tau_ax, pd, modes, title='P-D - IRI + TID')
     _save(fig2, 'pd_tid.png')
 
@@ -232,7 +287,9 @@ def run_with_es():
     rays = shoot_rays_fan(cfg.TX_POS, n_model)
     print("  Ray fan : {} rays".format(len(rays)))
     fig, _ = plot_ray_fan(rays, Ne_2d, cfg.BG_X, cfg.BG_Z,
-                          title='Ray Fan - IRI + Es')
+                          title='Ray Fan - IRI + Es',
+                          link_info=_make_link_info(),
+                          pert_info=_make_pert_info(enable_es=True))
     _save(fig, 'ray_fan_es.png')
 
     # Full power pipeline via HybridPropagationModel (Decision 1: Option A)
@@ -242,6 +299,8 @@ def run_with_es():
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
     _print_main(main)
+    csv_path = save_modes_csv('es', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
+    print("  Saved: output/{}".format(os.path.basename(csv_path)))
 
     fig2, _ = plot_pd_spectrum(tau_ax, pd, modes, title='P-D - IRI + Es')
     _save(fig2, 'pd_es.png')
@@ -273,7 +332,9 @@ def run_with_bubble():
     rays = shoot_rays_fan(cfg.TX_POS, n_model)
     print("  Ray fan : {} rays".format(len(rays)))
     fig, _ = plot_ray_fan(rays, Ne_2d, cfg.BG_X, cfg.BG_Z,
-                          title='Ray Fan - IRI + Plasma Bubble')
+                          title='Ray Fan - IRI + Plasma Bubble',
+                          link_info=_make_link_info(),
+                          pert_info=_make_pert_info(enable_bubble=True))
     _save(fig, 'ray_fan_bubble.png')
 
     # Full power pipeline via HybridPropagationModel (PE/SSF for bubble)
@@ -283,6 +344,8 @@ def run_with_bubble():
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
     _print_main(main)
+    csv_path = save_modes_csv('bubble', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
+    print("  Saved: output/{}".format(os.path.basename(csv_path)))
 
     fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
                                title='P-D - IRI + Plasma Bubble')
@@ -310,12 +373,17 @@ def run_full():
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
     _print_main(main)
+    csv_path = save_modes_csv('full', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
+    print("  Saved: output/{}".format(os.path.basename(csv_path)))
 
     # Mode-path overlay: rebuild Ne from the model's iono (all effects active)
     Ne_2d, _ = model.iono.build_Ne_field(model.x_array, model.z_array)
     fig, _ = _plot_mode_paths(
         modes, Ne_2d, model.x_array, model.z_array,
-        title='P2P Mode Paths - Full model (TID + Es + Bubble)')
+        title='P2P Mode Paths - Full model (TID + Es + Bubble)',
+        link_info=_make_link_info(),
+        pert_info=_make_pert_info(enable_tid=True, enable_es=True,
+                                   enable_bubble=True))
     _save(fig, 'ray_fan_full.png')
 
     fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
