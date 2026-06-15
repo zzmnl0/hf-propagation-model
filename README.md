@@ -405,6 +405,10 @@ mode_results, tau_axis, pd_W, main_mode = model.compute(tx_km, rx_km, t, p2p_par
 | `group_path_km` | km | 群路径长度 |
 | `beta_deg` | deg | 出发仰角 |
 | `phi_deg` | deg | 到达方位角（当前为 0，2-D 模型未实现） |
+| `points` | km | 变分控制点数组 `(n_ctrl+2, 2)`，用于路径可视化 |
+
+> **注意**：`find_all_rays_p2p()` 直接返回的 dict 不含 `Pr_W`/`Pr_dBW`/`delta_tau_ms`。
+> 不经过 `HybridPropagationModel.compute()` 时，须调用 `main._add_free_space_power(modes)` 补充自由空间功率。
 
 ### compute() 返回值
 
