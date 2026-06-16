@@ -15,14 +15,15 @@ mode_results element keys:
 import numpy as np
 from scipy.signal import find_peaks
 from config import (FREQ_MHZ, PT_W, GT, GR, ES, BUBBLE,
-                    BG_X, BG_Z, PE, P2P, MODE, TX_POS, RX_POS, C_MS, EPS0)
+                    BG_X, BG_Z, PE, P2P, MODE, TX_POS, RX_POS, C_MS, EPS0,
+                    RADAR, LINK_BEARING_DEG, GEOMAG)
 from .ionosphere_model import IonosphereModel
 from .ray_tracer import RefractiveIndex
 from .point_to_point import (find_all_rays_p2p, classify_mode,
                               extract_es_params, extract_bubble_entry)
 from .es_model import EsLayerModel
 from .pe_propagator import PEPropagator, construct_incident_field
-from utils import free_space_loss_dB, to_dBW, freq_to_k0
+from utils import free_space_loss_dB, to_dBW, freq_to_k0, radar_equation_W
 
 
 # ── Field-amplitude helper ────────────────────────────────────────────────────
@@ -125,14 +126,18 @@ class HybridPropagationModel:
     """
 
     def __init__(self,
-                 iono_params:  dict,
-                 radar_params: dict,
+                 iono_params:   dict,
+                 radar_params:  dict,
                  x_array: np.ndarray = BG_X,
-                 z_array: np.ndarray = BG_Z):
+                 z_array: np.ndarray = BG_Z,
+                 radar_mode:    bool = False,
+                 geomag_params: dict | None = None):
         self.iono_params  = iono_params
         self.radar_params = radar_params
         self.x_array      = x_array
         self.z_array      = z_array
+        self.radar_mode   = radar_mode
+        self.geomag       = geomag_params    # None -> isotropic; dict -> AH O/X
         self.freq         = float(radar_params.get('freq_MHz', FREQ_MHZ))
         self.k0           = freq_to_k0(self.freq)
 
@@ -193,8 +198,11 @@ class HybridPropagationModel:
         n_model   = RefractiveIndex(Ne_2d, self.x_array, self.z_array, self.freq)
 
         # ── Step 2: P2P variational ray paths ─────────────────────────────────
+        wm = ('both' if (self.geomag is not None and
+                          self.geomag.get('enable_OX', False)) else None)
         rays = find_all_rays_p2p(tx_km, rx_km, n_model,
-                                  self.freq, p2p_params=p2p_params)
+                                  self.freq, p2p_params=p2p_params,
+                                  wave_mode=wm, geomag=self.geomag)
 
         mode_results = []
         for ray in rays:
@@ -205,9 +213,14 @@ class HybridPropagationModel:
             pts          = ray['points']
             delta_tau_ms = 0.0
 
-            # Free-space path loss
-            L_free_dB = free_space_loss_dB(gp, self.freq)
-            Pr_W      = Pt * Gt * Gr * 10.0 ** (-L_free_dB / 10.0)
+            # Power: radar equation (monostatic) or Friis (communication)
+            if self.radar_mode:
+                sigma = float(self.radar_params.get('sigma_rcs_m2',
+                                                     RADAR['sigma_rcs_m2']))
+                Pr_W = radar_equation_W(Pt, Gt, Gr, self.freq, gp, sigma)
+            else:
+                L_free_dB = free_space_loss_dB(gp, self.freq)
+                Pr_W = Pt * Gt * Gr * 10.0 ** (-L_free_dB / 10.0)
 
             # ── Step 3a: Es model ─────────────────────────────────────────────
             if self.es is not None:
@@ -264,13 +277,16 @@ class HybridPropagationModel:
             mode_results.append({
                 'label'         : label,
                 'tau_ms'        : tau_ms,
+                'tau_2way_ms'   : 2.0 * tau_ms if self.radar_mode else None,
                 'delta_tau_ms'  : delta_tau_ms,
                 'Pr_W'          : Pr_W,
                 'Pr_dBW'        : to_dBW(Pr_W),
                 'h_reflect_km'  : h_r,
                 'group_path_km' : gp,
                 'beta_deg'      : float(ray.get('beta_deg', 0.0)),
-                'phi_deg'       : 0.0,
+                'phi_deg'       : float(self.radar_params.get('bearing_deg',
+                                                               LINK_BEARING_DEG)),
+                'wave_mode'     : ray.get('wave_mode', 'iso'),
                 'points'        : pts,
             })
 

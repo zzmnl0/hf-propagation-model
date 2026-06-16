@@ -5,12 +5,14 @@ Usage:
     conda run -n pytorch_cpu python main.py
 
 Scenarios (each saves ray_fan_*.png and pd_*.png to output/):
-    run_baseline()    IRI only          -> ray_fan_baseline, pd_baseline
-    run_with_tid()    IRI + TID         -> ray_fan_tid,      pd_tid
-    run_with_es()     IRI + Es          -> ray_fan_es,       pd_es
-    run_with_bubble() IRI + bubble      -> ray_fan_bubble,   pd_bubble
-    run_full()        TID + Es + bubble -> ray_fan_full,     pd_full
-                      (full uses P2P mode-path overlay instead of fan)
+    run_baseline()       IRI only               -> ray_fan_baseline, pd_baseline
+    run_with_tid()       IRI + TID              -> ray_fan_tid,      pd_tid
+    run_with_es()        IRI + Es               -> ray_fan_es,       pd_es
+    run_with_bubble()    IRI + bubble           -> ray_fan_bubble,   pd_bubble
+    run_full()           TID + Es + bubble      -> ray_fan_full,     pd_full
+                         (full uses P2P mode-path overlay instead of fan)
+    run_radar_baseline() OTH radar monostatic   -> ray_fan_radar,    pd_radar
+    run_with_OX()        IRI + TID + O/X modes -> ray_fan_OX,        pd_OX
 
 Test link: TX @ 30N 120E,  RX @ 1169 km,  f = 10 MHz.
 """
@@ -391,6 +393,96 @@ def run_full():
     _save(fig2, 'pd_full.png')
 
 
+# ── Scenario OX: O/X wave splitting ──────────────────────────────────────────
+
+def run_with_OX():
+    """
+    IRI + TID with Appleton-Hartree O/X magnetoionic splitting.
+    Each isotropic mode splits into *_O and *_X variants with different tau.
+    Saves ray_fan_OX.png, pd_OX.png, modes_OX.csv.
+    """
+    from models.hybrid_model import HybridPropagationModel
+
+    print("=" * 55)
+    print("  Scenario OX: IRI + TID + O/X mode splitting")
+    print("=" * 55)
+    print("  fH = {} MHz   dip = {} deg   decl = {} deg".format(
+        cfg.GEOMAG['fH_MHz'], cfg.GEOMAG['dip_deg'], cfg.GEOMAG['decl_deg']))
+
+    model = HybridPropagationModel(
+        _make_iono_params(enable_tid=True),
+        _make_radar_params(),
+        geomag_params={**cfg.GEOMAG, 'enable_OX': True})
+    modes, tau_ax, pd, main = model.compute(cfg.TX_POS, cfg.RX_POS)
+    print("  P2P modes: {} (expect ~2x isotropic count)".format(len(modes)))
+    print_mode_table(modes)
+    _print_main(main)
+    csv_path = save_modes_csv('OX', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
+    print("  Saved: output/{}".format(os.path.basename(csv_path)))
+
+    # Mode-path overlay (shows O and X paths side by side)
+    Ne_2d, _ = model.iono.build_Ne_field(model.x_array, model.z_array)
+    fig, _ = _plot_mode_paths(
+        modes, Ne_2d, model.x_array, model.z_array,
+        title='P2P Mode Paths - O/X splitting (IRI + TID)',
+        link_info=_make_link_info(),
+        pert_info=_make_pert_info(enable_tid=True))
+    _save(fig, 'ray_fan_OX.png')
+
+    fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
+                               title='P-D - O/X mode splitting (IRI + TID)')
+    _save(fig2, 'pd_OX.png')
+
+
+# ── Scenario R: OTH radar baseline ───────────────────────────────────────────
+
+def run_radar_baseline():
+    """
+    OTH radar mode: monostatic, IRI background only, target at 1169 km.
+    Power via radar equation (Pr ~ sigma/R^4) instead of Friis.
+    Saves ray_fan_radar.png, pd_radar.png, modes_radar.csv.
+    """
+    from models.ionosphere_model import IonosphereModel
+    from models.ray_tracer import RefractiveIndex, shoot_rays_fan
+    from models.hybrid_model import HybridPropagationModel
+
+    print("=" * 55)
+    print("  Scenario R: OTH Radar baseline (monostatic)")
+    print("=" * 55)
+    print("  sigma_rcs = {} m^2   bearing = {} deg".format(
+        cfg.RADAR['sigma_rcs_m2'], cfg.LINK_BEARING_DEG))
+
+    radar_rp = {**_make_radar_params(),
+                'sigma_rcs_m2': cfg.RADAR['sigma_rcs_m2'],
+                'bearing_deg':  cfg.LINK_BEARING_DEG}
+
+    # Ray fan (geometry visualisation — same ionosphere as baseline)
+    iono = IonosphereModel()
+    Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
+    n_model = RefractiveIndex(Ne_2d, cfg.BG_X, cfg.BG_Z, cfg.FREQ_MHZ)
+    rays = shoot_rays_fan(cfg.TX_POS, n_model)
+    print("  Ray fan : {} rays".format(len(rays)))
+    fig, _ = plot_ray_fan(rays, Ne_2d, cfg.BG_X, cfg.BG_Z,
+                          title='Ray Fan - OTH Radar (monostatic, IRI baseline)',
+                          link_info=_make_link_info(),
+                          pert_info=_make_pert_info())
+    _save(fig, 'ray_fan_radar.png')
+
+    # Radar model: radar equation replaces Friis
+    model = HybridPropagationModel(
+        _make_iono_params(), radar_rp, radar_mode=True)
+    modes, tau_ax, pd, main = model.compute(cfg.TX_POS, cfg.RX_POS)
+    print("  P2P modes: {}".format(len(modes)))
+    print_mode_table(modes)
+    _print_main(main)
+    csv_path = save_modes_csv('radar', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
+    print("  Saved: output/{}".format(os.path.basename(csv_path)))
+
+    fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
+                               title='P-D - OTH Radar baseline (monostatic)')
+    _save(fig2, 'pd_radar.png')
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
@@ -402,3 +494,5 @@ if __name__ == '__main__':
     run_with_es()
     run_with_bubble()
     run_full()
+    run_with_OX()
+    run_radar_baseline()

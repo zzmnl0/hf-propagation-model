@@ -18,7 +18,7 @@ Each ray dict returned by trace_single_ray / shoot_rays_fan:
 """
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
-from config import C_KMS, FREQ_MHZ, RT, IRI_DT, IRI_LAT
+from config import C_KMS, FREQ_MHZ, RT, IRI_DT, IRI_LAT, K_FP
 from utils import freq_to_k0, group_delay_ms, free_space_loss_dB
 
 
@@ -42,6 +42,9 @@ class RefractiveIndex:
                  z_array: np.ndarray,
                  freq_MHz: float = FREQ_MHZ):
         self.freq_MHz = freq_MHz
+        self.Ne_2d    = Ne_2d    # (Nx, Nz) — kept for RefractiveIndexAH construction
+        self.x_km     = x_array
+        self.z_km     = z_array
         freq_Hz = freq_MHz * 1e6
         fp2_field = (8.98 ** 2) * Ne_2d          # plasma freq^2 [Hz^2]
         n2_field  = np.maximum(1.0 - fp2_field / freq_Hz**2, 1e-6)
@@ -297,3 +300,63 @@ def shoot_rays_fan(tx_pos:         tuple,
                          rt_params, h_Es_km, h_bubble_bot_km)
         for b in betas
     ]
+
+
+# ── Appleton-Hartree refractive index (Phase 2) ───────────────────────────────
+
+class RefractiveIndexAH(RefractiveIndex):
+    """
+    Anisotropic refractive index via the Appleton-Hartree (Budden 1961) equation.
+    Used by the P2P variational solver to compute O-mode and X-mode paths.
+    Only n_batch() is overridden; grad_n2 / n2 / n use the isotropic base.
+
+    n^2_{O,X} = 1 - X / (1 - half -/+ disc)
+        half = Y_T^2 / [2(1-X)]
+        disc = sqrt(Y_T^4 / [4(1-X)^2] + Y_L^2)
+        O-mode: minus sign;  X-mode: plus sign    (Budden 1961, Eq. 4.13)
+
+    Simplified angle approximation (initial implementation):
+        alpha = pi/2 - dip_deg  (ray nearly vertical at F-layer, angle to B)
+
+    Parameters
+    ----------
+    wave_mode : 'O' | 'X'
+    geomag    : dict with keys fH_MHz, dip_deg  (from config.GEOMAG)
+    """
+
+    def __init__(self, Ne_2d: np.ndarray, x_km: np.ndarray, z_km: np.ndarray,
+                 freq_MHz: float, wave_mode: str = 'O', geomag: dict | None = None):
+        super().__init__(Ne_2d, x_km, z_km, freq_MHz)
+        self.wave_mode = wave_mode
+        g = geomag or {}
+        self.fH_MHz = float(g.get('fH_MHz', 1.197))
+        self.dip    = float(np.radians(g.get('dip_deg', 48.7)))
+
+    def n_batch(self, pts: np.ndarray) -> np.ndarray:
+        """Vectorized AH refractive index for (M,2) pts -> (M,) array."""
+        Ne_arr = self._Ne_interp(pts)                         # (M,) [m^-3]
+        X  = (K_FP ** 2) * np.maximum(Ne_arr, 0.0) / (self.freq_MHz * 1e6) ** 2
+
+        alpha = np.full_like(X, np.pi / 2.0 - self.dip)     # fixed-angle approx
+        Y  = self.fH_MHz / self.freq_MHz
+        YL = Y * np.cos(alpha)
+        YT = Y * np.sin(alpha)
+
+        denom_base = 1.0 - X
+        # Guard: keep denom_base away from zero (critical-layer singularity)
+        safe_db = np.where(np.abs(denom_base) < 1e-10,
+                           np.sign(denom_base + 1e-30) * 1e-10,
+                           denom_base)
+        half = YT ** 2 / (2.0 * safe_db)
+        disc = np.sqrt(np.maximum(YT ** 4 / (4.0 * safe_db ** 2) + YL ** 2, 0.0))
+
+        if self.wave_mode == 'O':
+            denom = 1.0 - half - disc      # Budden: O-mode uses minus sign
+        else:
+            denom = 1.0 - half + disc      # Budden: X-mode uses plus sign
+
+        safe_den = np.where(np.abs(denom) < 1e-10,
+                            np.sign(denom + 1e-30) * 1e-10,
+                            denom)
+        n2 = np.maximum(1.0 - X / safe_den, 0.0)
+        return np.sqrt(np.maximum(n2, 1e-6))

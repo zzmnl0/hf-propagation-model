@@ -38,9 +38,53 @@ def free_space_loss_dB(D_km: float, freq_MHz: float) -> float:
     lam_m = wavelength_m(freq_MHz)
     return 20.0 * np.log10(4.0 * np.pi * D_km * 1e3 / lam_m)
 
+def radar_equation_W(Pt_W: float, Gt: float, Gr: float,
+                     freq_MHz: float, group_path_km: float,
+                     sigma_m2: float) -> float:
+    """
+    Monostatic radar received power (one-way group path length).
+
+    Pr = (Pt * Gt * Gr * lambda^2 * sigma) / ((4*pi)^3 * R^4)
+
+    group_path_km : one-way group path [km] (ray-traced, not slant range)
+    sigma_m2      : target radar cross-section [m^2]
+    """
+    lam_m = C_MS / (freq_MHz * 1e6)
+    R_m   = group_path_km * 1e3
+    return (Pt_W * Gt * Gr * lam_m**2 * sigma_m2
+            / ((4.0 * np.pi)**3 * R_m**4))
+
 def group_delay_ms(group_path_km: float) -> float:
     """Group path [km] -> group delay [ms]."""
     return group_path_km / C_KMS * 1e3
+
+
+# ── Geomagnetic helper ────────────────────────────────────────────────────────
+
+def get_geomag(lat: float, lon: float,
+               alt_km: float = 300.0,
+               dt=None) -> dict:
+    """
+    Compute IGRF geomagnetic parameters at a given location via ppigrf.
+
+    Returns dict with fH_MHz, dip_deg, decl_deg.
+    Falls back to hard-coded mid-latitude defaults if ppigrf is unavailable.
+    """
+    try:
+        import ppigrf
+        from datetime import datetime as _dt
+        dt = dt or _dt(2020, 1, 1)
+        Be, Bn, Bu = ppigrf.igrf(lon, lat, alt_km, dt)
+        Be = float(np.ravel(Be)[0])
+        Bn = float(np.ravel(Bn)[0])
+        Bu = float(np.ravel(Bu)[0])
+        F  = np.sqrt(Be**2 + Bn**2 + Bu**2)
+        I  = float(np.degrees(np.arctan2(-Bu, np.sqrt(Be**2 + Bn**2))))
+        D  = float(np.degrees(np.arctan2(Be, Bn)))
+        fH = 2.7994e-5 * F      # fH [MHz] = 2.7994e10 [Hz/T] * F[nT]*1e-9 / 1e6
+        return {'fH_MHz': round(fH, 3), 'dip_deg': round(I, 1), 'decl_deg': round(D, 1)}
+    except Exception:
+        return {'fH_MHz': 1.197, 'dip_deg': 48.7, 'decl_deg': -5.5}
 
 
 # ── Power unit conversions ────────────────────────────────────────────────────

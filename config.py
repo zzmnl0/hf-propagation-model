@@ -130,7 +130,28 @@ PE = {
 
 # ── Mode classification  (Part 6) ────────────────────────────────────────────
 MODE = {
-    'h_Es_km':  140.0,  # h_r < 140 km  → Es mode
-    'h_E_km':   200.0,  # 140 ≤ h_r < 200 km → E-layer mode
-    # h_r ≥ 200 km → F-layer mode (further split by delay into 1F-low / 1F-high / 2F)
+    'h_Es_km':  140.0,  # h_r < 140 km  -> Es mode
+    'h_E_km':   200.0,  # 140 <= h_r < 200 km -> E-layer mode
+    # h_r >= 200 km -> F-layer mode (further split by delay into 1F-low / 1F-high / 2F)
+}
+
+# ── OTH Radar parameters (Phase 1) ───────────────────────────────────────────
+RADAR = {
+    'mode':             'monostatic',  # 'monostatic' | 'bistatic'
+    'target_range_km':  1169.0,        # TX -> target one-way distance [km]
+    'sigma_rcs_m2':     5.0,           # Target RCS [m^2] (aircraft resonance region @10 MHz)
+    'two_way':          True,          # Output two-way delay tau_2way_ms
+}
+
+# TX -> target bearing (arbitrary 0 deg for testing; update for real scenario)
+LINK_BEARING_DEG = 0.0   # [deg], clockwise from North
+
+# ── Geomagnetic parameters (Phase 2) ─────────────────────────────────────────
+# Computed via ppigrf (IGRF-14) at IRI mid-path point (32.5N, 120E, 300 km, 2020-01-01).
+# Re-run utils.get_geomag(IRI_LAT, IRI_LON, dt=IRI_DT) to update for a new path.
+GEOMAG = {
+    'fH_MHz':    1.197,   # Gyrofrequency [MHz]  (B=42766 nT, ppigrf IGRF-14)
+    'dip_deg':   48.7,    # Magnetic dip angle [deg]  (inclination, positive down)
+    'decl_deg':  -5.5,    # Magnetic declination [deg] (negative = westward)
+    'enable_OX': False,   # Master switch: True -> O/X mode splitting via AH equation
 }

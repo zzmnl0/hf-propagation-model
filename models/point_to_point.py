@@ -11,7 +11,7 @@ Each returned ray dict has the same schema as ray_tracer.py, plus:
 """
 import numpy as np
 from config import C_KMS, P2P, RT, MODE
-from .ray_tracer import RefractiveIndex, trace_single_ray
+from .ray_tracer import RefractiveIndex, RefractiveIndexAH, trace_single_ray
 
 
 # ── Newton shooting ───────────────────────────────────────────────────────────
@@ -242,20 +242,14 @@ def _ray_worker(args: tuple) -> dict | None:
     }
 
 
-def find_all_rays_p2p(tx: tuple,
-                       rx: tuple,
+def _find_rays_single(tx: tuple, rx: tuple,
                        n_model: RefractiveIndex,
                        freq_MHz: float,
-                       p2p_params: dict = P2P
-                       ) -> list[dict]:
+                       p2p_params: dict) -> list[dict]:
     """
-    Systematic search: scan n_init elevations × {high, low} ray variants,
-    deduplicate, classify, and sort by tau.
-
-    Parallelism: controlled by p2p_params['n_workers'].
-      1          -> sequential (safe in any calling context)
-      0          -> auto-detect CPU count (requires if __name__=='__main__' guard)
-      N > 1      -> use exactly N worker processes
+    Run the variational P2P search for one refractive-index model.
+    Deduplicates and classifies results; does NOT set wave_mode.
+    Called by find_all_rays_p2p for each polarisation.
     """
     n_init    = p2p_params['n_init']
     clust_h   = p2p_params['clust_h_km']
@@ -277,19 +271,56 @@ def find_all_rays_p2p(tx: tuple,
 
     candidates = [r for r in raw if r is not None]
     unique = _deduplicate(candidates, clust_h, clust_tau)
-    for r in unique:
-        r['label'] = classify_mode(r)
     unique.sort(key=lambda r: r['tau_ms'])
     return unique
 
 
+def find_all_rays_p2p(tx: tuple,
+                       rx: tuple,
+                       n_model: RefractiveIndex,
+                       freq_MHz: float,
+                       p2p_params: dict = P2P,
+                       wave_mode: str | None = None,
+                       geomag: dict | None = None
+                       ) -> list[dict]:
+    """
+    Systematic search: scan n_init elevations x {high, low} ray variants,
+    deduplicate, classify, and sort by tau.
+
+    wave_mode : None  -> isotropic (default, backward compatible)
+                'O'   -> O-mode only (Appleton-Hartree)
+                'X'   -> X-mode only
+                'both'-> O and X modes combined
+    geomag    : dict with fH_MHz, dip_deg (required for O/X splitting)
+
+    Parallelism: controlled by p2p_params['n_workers'].
+    """
+    if wave_mode in ('O', 'X', 'both') and geomag is not None:
+        modes_to_run = ['O', 'X'] if wave_mode == 'both' else [wave_mode]
+        all_rays = []
+        for wm in modes_to_run:
+            n_ah = RefractiveIndexAH(
+                n_model.Ne_2d, n_model.x_km, n_model.z_km,
+                freq_MHz, wave_mode=wm, geomag=geomag)
+            rays = _find_rays_single(tx, rx, n_ah, freq_MHz, p2p_params)
+            for r in rays:
+                r['wave_mode'] = wm
+                r['label'] = classify_mode(r)
+            all_rays.extend(rays)
+        all_rays.sort(key=lambda r: r['tau_ms'])
+        return all_rays
+    else:
+        rays = _find_rays_single(tx, rx, n_model, freq_MHz, p2p_params)
+        for r in rays:
+            r['wave_mode'] = 'iso'
+            r['label'] = classify_mode(r)
+        return rays
+
+
 # ── Mode classification ───────────────────────────────────────────────────────
 
-def classify_mode(ray_dict: dict) -> str:
-    """
-    Assign a propagation mode label from reflection height and group delay.
-    Thresholds follow config.MODE plus the 300 km boundary for 2F.
-    """
+def _classify_base(ray_dict: dict) -> str:
+    """Base mode label from reflection height and group delay (no wave_mode suffix)."""
     h    = ray_dict['h_reflect_km']
     tau  = ray_dict['tau_ms']
     h_Es = MODE['h_Es_km']
@@ -303,6 +334,18 @@ def classify_mode(ray_dict: dict) -> str:
         return '1F_low' if tau < 5.0 else '1F_high'
     else:
         return '2F'
+
+
+def classify_mode(ray_dict: dict) -> str:
+    """
+    Mode label with optional O/X suffix for magnetoionic modes.
+    Examples: '2F', '1F_low_O', 'E_X', 'Es'
+    """
+    base = _classify_base(ray_dict)
+    wm   = ray_dict.get('wave_mode', 'iso')
+    if wm in ('O', 'X'):
+        return '{}_{}'.format(base, wm)
+    return base
 
 
 # ── Es / bubble crossing extraction ──────────────────────────────────────────

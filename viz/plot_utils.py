@@ -100,7 +100,7 @@ def save_modes_csv(scenario: str,
     os.makedirs(out_dir, exist_ok=True)
     fields = [
         'scenario', 'label', 'freq_MHz',
-        'tau_ms', 'delta_tau_ms',
+        'tau_ms', 'tau_2way_ms', 'delta_tau_ms',
         'Pr_W', 'Pr_dBW', 'pd_power_W',
         'h_reflect_km', 'group_path_km',
         'beta_deg', 'phi_deg',
@@ -111,12 +111,14 @@ def save_modes_csv(scenario: str,
         writer.writeheader()
         for m in mode_results:
             row = {k: m.get(k, '') for k in fields}
-            row['scenario']   = scenario
-            row['freq_MHz']   = freq_MHz
-            row['phi_deg']    = float(m.get('phi_deg', 0.0))
-            row['Pr_dBW']     = m.get('Pr_dBW',
-                                       to_dBW(m.get('Pr_W', 1e-30)))
-            row['pd_power_W'] = float(np.interp(m['tau_ms'], tau_axis, pd_W))
+            row['scenario']    = scenario
+            row['freq_MHz']    = freq_MHz
+            row['phi_deg']     = float(m.get('phi_deg', 0.0))
+            row['Pr_dBW']      = m.get('Pr_dBW',
+                                        to_dBW(m.get('Pr_W', 1e-30)))
+            row['pd_power_W']  = float(np.interp(m['tau_ms'], tau_axis, pd_W))
+            tau2 = m.get('tau_2way_ms')
+            row['tau_2way_ms'] = '' if tau2 is None else float(tau2)
             writer.writerow(row)
     return path
 
