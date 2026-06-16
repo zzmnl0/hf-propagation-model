@@ -13,6 +13,7 @@ Scenarios (each saves ray_fan_*.png and pd_*.png to output/):
                          (full uses P2P mode-path overlay instead of fan)
     run_radar_baseline() OTH radar monostatic   -> ray_fan_radar,    pd_radar
     run_with_OX()        IRI + TID + O/X modes -> ray_fan_OX,        pd_OX
+    run_with_spreadf()   IRI + TID + spread-F  -> ray_fan_spreadf,  pd_spreadf
 
 Test link: TX @ 30N 120E,  RX @ 1169 km,  f = 10 MHz.
 """
@@ -42,13 +43,15 @@ def _save(fig, name):
     print("  Saved: output/{}".format(name))
 
 
-def _make_iono_params(enable_tid=False, enable_es=False, enable_bubble=False):
+def _make_iono_params(enable_tid=False, enable_es=False,
+                       enable_bubble=False, enable_spread_f=False):
     """Assemble iono_params dict from config defaults with selected flags."""
     return {
-        'iri_params':    {'dt': cfg.IRI_DT, 'lat': cfg.IRI_LAT, 'lon': cfg.IRI_LON},
-        'tid_params':    {**cfg.TID,    'enable': enable_tid},
-        'es_params':     {**cfg.ES,     'enable': enable_es},
-        'bubble_params': {**cfg.BUBBLE, 'enable': enable_bubble},
+        'iri_params':      {'dt': cfg.IRI_DT, 'lat': cfg.IRI_LAT, 'lon': cfg.IRI_LON},
+        'tid_params':      {**cfg.TID,      'enable': enable_tid},
+        'es_params':       {**cfg.ES,       'enable': enable_es},
+        'bubble_params':   {**cfg.BUBBLE,   'enable': enable_bubble},
+        'spread_f_params': {**cfg.SPREAD_F, 'enable': enable_spread_f},
     }
 
 
@@ -483,6 +486,45 @@ def run_radar_baseline():
     _save(fig2, 'pd_radar.png')
 
 
+# ── Scenario SF: Spread-F ────────────────────────────────────────────────────
+
+def run_with_spreadf():
+    """
+    IRI + TID + spread-F Rino (1979) phase screen.
+    Saves ray_fan_spreadf.png, pd_spreadf.png, modes_spreadf.csv.
+    """
+    from models.hybrid_model import HybridPropagationModel
+
+    print("=" * 55)
+    print("  Scenario SF: IRI + TID + Spread-F")
+    print("=" * 55)
+    sf = cfg.SPREAD_F
+    print("  Cs={} p={} h_screen={} km L0={} km".format(
+        sf['Cs'], sf['p'], sf['h_screen_km'], sf['L0_km']))
+
+    model = HybridPropagationModel(
+        _make_iono_params(enable_tid=True, enable_spread_f=True),
+        _make_radar_params())
+    modes, tau_ax, pd, main = model.compute(cfg.TX_POS, cfg.RX_POS)
+    print("  P2P modes: {}".format(len(modes)))
+    print_mode_table(modes)
+    _print_main(main)
+    csv_path = save_modes_csv('spreadf', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
+    print("  Saved: output/{}".format(os.path.basename(csv_path)))
+
+    Ne_2d, _ = model.iono.build_Ne_field(model.x_array, model.z_array)
+    fig, _ = _plot_mode_paths(
+        modes, Ne_2d, model.x_array, model.z_array,
+        title='P2P Mode Paths - IRI + TID + Spread-F (Rino 1979)',
+        link_info=_make_link_info(),
+        pert_info=_make_pert_info(enable_tid=True))
+    _save(fig, 'ray_fan_spreadf.png')
+
+    fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
+                               title='P-D - IRI + TID + Spread-F')
+    _save(fig2, 'pd_spreadf.png')
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
@@ -496,3 +538,4 @@ if __name__ == '__main__':
     run_full()
     run_with_OX()
     run_radar_baseline()
+    run_with_spreadf()

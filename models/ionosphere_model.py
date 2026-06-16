@@ -10,7 +10,7 @@ Output: Ne_2d [m^-3] on the 2-D (x, z) Cartesian grid.
 import numpy as np
 import iri2016
 from config import (K_FP, IRI_DT, IRI_LAT, IRI_LON,
-                    TID, ES, BUBBLE, FREQ_MHZ)
+                    TID, ES, BUBBLE, SPREAD_F, FREQ_MHZ)
 from utils import ne_to_n2, n2_to_n
 
 
@@ -29,16 +29,18 @@ class IonosphereModel:
     """
 
     def __init__(self,
-                 iri_params:    dict | None = None,
-                 tid_params:    dict | None = None,
-                 es_params:     dict | None = None,
-                 bubble_params: dict | None = None,
-                 freq_MHz:      float = FREQ_MHZ):
-        self.iri    = iri_params    or {'dt': IRI_DT, 'lat': IRI_LAT, 'lon': IRI_LON}
-        self.tid    = tid_params    or TID
-        self.es     = es_params     or ES
-        self.bubble = bubble_params or BUBBLE
-        self.freq   = freq_MHz
+                 iri_params:      dict | None = None,
+                 tid_params:      dict | None = None,
+                 es_params:       dict | None = None,
+                 bubble_params:   dict | None = None,
+                 spread_f_params: dict | None = None,
+                 freq_MHz:        float = FREQ_MHZ):
+        self.iri      = iri_params      or {'dt': IRI_DT, 'lat': IRI_LAT, 'lon': IRI_LON}
+        self.tid      = tid_params      or TID
+        self.es       = es_params       or ES
+        self.bubble   = bubble_params   or BUBBLE
+        self.spread_f = spread_f_params or SPREAD_F
+        self.freq     = freq_MHz
 
     # ── Public interface ──────────────────────────────────────────────────────
 
@@ -76,9 +78,13 @@ class IonosphereModel:
             Ne_1d_es = self._add_es_layer(Ne_1d.copy(), z_array)
             Ne_2d   += (Ne_1d_es - Ne_1d)[np.newaxis, :]
 
-        # 5. Plasma bubble (Gaussian depletion, applied last)
+        # 5. Plasma bubble (Gaussian depletion)
         if self.bubble.get('enable', False):
             Ne_2d = self._add_plasma_bubble(Ne_2d, x_array, z_array)
+
+        # 6. Spread-F phase screen (applied last)
+        if self.spread_f.get('enable', False):
+            Ne_2d = self._add_spread_f(Ne_2d, x_array, z_array)
 
         Ne_2d = np.maximum(Ne_2d, 0.0)
         n2_2d = ne_to_n2(Ne_2d, self.freq)
@@ -211,3 +217,22 @@ class IonosphereModel:
 
         depletion = delta_max * np.exp(-(dx / Lx) ** 2 - (dz / Lz) ** 2)
         return np.maximum(Ne_2d * (1.0 - depletion), 0.0)
+
+    def _add_spread_f(self,
+                      Ne_2d:   np.ndarray,
+                      x_array: np.ndarray,
+                      z_array: np.ndarray) -> np.ndarray:
+        """
+        Add spread-F Ne irregularities via Rino (1979) power-law phase screen.
+        Returns updated Ne_2d.
+        """
+        from .spread_f_model import SpreadFModel
+        p   = self.spread_f
+        sfm = SpreadFModel(
+            Cs         = float(p.get('Cs',          1e-3)),
+            p          = float(p.get('p',           3.0)),
+            h_screen_km= float(p.get('h_screen_km', 300.0)),
+            L0_km      = float(p.get('L0_km',       50.0)),
+            seed       = p.get('seed', None),
+        )
+        return sfm.apply(Ne_2d, x_array, z_array)

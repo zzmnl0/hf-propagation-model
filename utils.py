@@ -87,6 +87,33 @@ def get_geomag(lat: float, lon: float,
         return {'fH_MHz': 1.197, 'dip_deg': 48.7, 'decl_deg': -5.5}
 
 
+# ── D-layer absorption ────────────────────────────────────────────────────────
+
+def d_layer_absorption_dB(freq_MHz: float, beta_deg: float,
+                           chi_deg: float = 60.0,
+                           A0: float = 500.0,
+                           fH_L_MHz: float = 0.789) -> float:
+    """
+    Empirical D-layer non-deviative absorption [dB] for one-way traversal.
+
+    A = A0 * cos(chi)^0.75 / ((f + fH_L)^2 * sin(beta))
+
+    chi_deg   : solar zenith angle [deg]  (90 = nighttime -> A = 0)
+    A0        : absorption coefficient [dB*MHz^2];  A0=500 gives ~5 dB one-way
+                at f=10 MHz, chi=60 deg, beta=30 deg.
+                Reference: Pederick & Cervera (2014), Radio Science 49:81-93,
+                doi:10.1002/2013RS005274  (Sen-Wyller + NRLMSISE-00)
+    beta_deg  : ray elevation angle at D-layer crossing [deg]
+    fH_L_MHz  : longitudinal gyrofrequency [MHz] = fH * cos(dip);
+                default 0.789 = GEOMAG (1.197 MHz * cos(48.7 deg))
+    """
+    f_eff = max(freq_MHz + fH_L_MHz, 0.1)
+    cos_chi = np.cos(np.radians(chi_deg))
+    A = (A0 * cos_chi ** 0.75
+         / (f_eff ** 2 * np.sin(np.radians(max(beta_deg, 5.0)))))
+    return float(max(A, 0.0))
+
+
 # ── Power unit conversions ────────────────────────────────────────────────────
 
 def to_dBW(P_W: float) -> float:

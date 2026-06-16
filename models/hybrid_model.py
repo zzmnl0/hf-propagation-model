@@ -16,14 +16,15 @@ import numpy as np
 from scipy.signal import find_peaks
 from config import (FREQ_MHZ, PT_W, GT, GR, ES, BUBBLE,
                     BG_X, BG_Z, PE, P2P, MODE, TX_POS, RX_POS, C_MS, EPS0,
-                    RADAR, LINK_BEARING_DEG, GEOMAG)
+                    RADAR, LINK_BEARING_DEG, GEOMAG, ABSORPTION)
 from .ionosphere_model import IonosphereModel
 from .ray_tracer import RefractiveIndex
 from .point_to_point import (find_all_rays_p2p, classify_mode,
                               extract_es_params, extract_bubble_entry)
 from .es_model import EsLayerModel
 from .pe_propagator import PEPropagator, construct_incident_field
-from utils import free_space_loss_dB, to_dBW, freq_to_k0, radar_equation_W
+from utils import (free_space_loss_dB, to_dBW, freq_to_k0,
+                   radar_equation_W, d_layer_absorption_dB)
 
 
 # ── Field-amplitude helper ────────────────────────────────────────────────────
@@ -126,18 +127,20 @@ class HybridPropagationModel:
     """
 
     def __init__(self,
-                 iono_params:   dict,
-                 radar_params:  dict,
-                 x_array: np.ndarray = BG_X,
-                 z_array: np.ndarray = BG_Z,
-                 radar_mode:    bool = False,
-                 geomag_params: dict | None = None):
+                 iono_params:        dict,
+                 radar_params:       dict,
+                 x_array:            np.ndarray = BG_X,
+                 z_array:            np.ndarray = BG_Z,
+                 radar_mode:         bool = False,
+                 geomag_params:      dict | None = None,
+                 absorption_params:  dict | None = None):
         self.iono_params  = iono_params
         self.radar_params = radar_params
         self.x_array      = x_array
         self.z_array      = z_array
         self.radar_mode   = radar_mode
         self.geomag       = geomag_params    # None -> isotropic; dict -> AH O/X
+        self.absorption   = absorption_params if absorption_params is not None else {}
         self.freq         = float(radar_params.get('freq_MHz', FREQ_MHZ))
         self.k0           = freq_to_k0(self.freq)
 
@@ -222,6 +225,19 @@ class HybridPropagationModel:
                 L_free_dB = free_space_loss_dB(gp, self.freq)
                 Pr_W = Pt * Gt * Gr * 10.0 ** (-L_free_dB / 10.0)
 
+            # ── D-layer absorption ────────────────────────────────────────────
+            if self.absorption.get('enable', False):
+                geomag  = self.geomag or GEOMAG
+                fH_L    = (float(geomag.get('fH_MHz', 1.197))
+                           * float(np.cos(np.radians(geomag.get('dip_deg', 48.7)))))
+                ab_kw   = {k: v for k, v in self.absorption.items()
+                           if k != 'enable'}
+                ab_kw['fH_L_MHz'] = fH_L
+                A_dB    = d_layer_absorption_dB(
+                    self.freq, float(ray.get('beta_deg', 30.0)), **ab_kw)
+                n_cross = 2 if self.radar_mode else 1
+                Pr_W   *= 10.0 ** (-(A_dB * n_cross) / 10.0)
+
             # ── Step 3a: Es model ─────────────────────────────────────────────
             if self.es is not None:
                 es_cfg = self.iono_params.get('es_params') or {}
@@ -301,5 +317,5 @@ class HybridPropagationModel:
 
 def _split_iono(iono_params: dict) -> dict:
     """Extract IonosphereModel keyword arguments from iono_params."""
-    keys = ('iri_params', 'tid_params', 'es_params', 'bubble_params')
+    keys = ('iri_params', 'tid_params', 'es_params', 'bubble_params', 'spread_f_params')
     return {k: iono_params[k] for k in keys if k in iono_params}

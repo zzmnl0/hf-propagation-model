@@ -146,6 +146,22 @@ RADAR = {
 # TX -> target bearing (arbitrary 0 deg for testing; update for real scenario)
 LINK_BEARING_DEG = 0.0   # [deg], clockwise from North
 
+# ── D-layer absorption (Phase 3) ─────────────────────────────────────────────
+ABSORPTION = {
+    'enable':   False,
+    'A0':       500.0,   # [dB*MHz^2]  Pederick & Cervera 2014
+    'chi_deg':  60.0,    # solar zenith angle [deg]  (60 = daytime mid-latitude)
+}
+
+# ── Spread-F parameters (Phase 3, Rino 1979) ─────────────────────────────────
+SPREAD_F = {
+    'enable':       False,
+    'Cs':           1e-3,   # phase spectral strength
+    'p':            3.0,    # power-law spectral index (typical 2.5-4.0)
+    'h_screen_km':  300.0,  # phase screen height [km]
+    'L0_km':        50.0,   # outer scale [km]
+}
+
 # ── Geomagnetic parameters (Phase 2) ─────────────────────────────────────────
 # Computed via ppigrf (IGRF-14) at IRI mid-path point (32.5N, 120E, 300 km, 2020-01-01).
 # Re-run utils.get_geomag(IRI_LAT, IRI_LON, dt=IRI_DT) to update for a new path.
