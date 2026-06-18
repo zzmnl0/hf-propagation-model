@@ -141,10 +141,22 @@ RADAR = {
     'target_range_km':  1169.0,        # TX -> target one-way distance [km]
     'sigma_rcs_m2':     5.0,           # Target RCS [m^2] (aircraft resonance region @10 MHz)
     'two_way':          True,          # Output two-way delay tau_2way_ms
+    'sigma0_ground_dB': -20.0,         # Ground normalized RCS [dBsm] (sea: -20, land: -25)
 }
 
 # TX -> target bearing (arbitrary 0 deg for testing; update for real scenario)
 LINK_BEARING_DEG = 0.0   # [deg], clockwise from North
+
+# ── Flux-tube ray tracer (Phase 4 upgrade, Coleman 1997/1998) ─────────────────
+TUBE_TRACER = {
+    'delta_beta_deg' : 0.5,    # Fan ray elevation spacing [deg]
+    'n_tube_rays'    : 80,     # Max rays in fan (capped at this count)
+    'x_tgt_tol_km'  : 80.0,   # Landing-point search window half-width [km]
+    'T_pulse_ms'     : 0.5,   # Radar pulse width [ms] (pulse correction ref)
+    'newton_tol_km'  : 1.0,   # Newton refinement convergence threshold [km]
+    'newton_max_iter': 5,      # Newton max iterations (2-3 usually sufficient)
+    'L_cross_km'     : 100.0, # Cross-range beam footprint [km] (2D->3D area)
+}
 
 # ── D-layer absorption (Phase 3) ─────────────────────────────────────────────
 ABSORPTION = {

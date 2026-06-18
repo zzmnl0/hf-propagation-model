@@ -53,7 +53,7 @@ print("  [PASS]")
 # ── [2] identify_main_mode ────────────────────────────────────────────────────
 print("\n[2] identify_main_mode: highest P-D peak maps to highest-power mode")
 
-main_mode, ranked = identify_main_mode(tau_axis, pd_W, modes_syn)
+main_mode, ranked, _ = identify_main_mode(tau_axis, pd_W, modes_syn)
 
 assert main_mode is not None,  "main_mode is None"
 assert len(ranked) >= 1,       "ranked list empty"

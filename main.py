@@ -60,6 +60,19 @@ def _make_radar_params():
             'Gt': cfg.GT, 'Gr': cfg.GR}
 
 
+def _make_tube_radar_params():
+    """Radar params dict with ground sigma0 for flux-tube tracer."""
+    return {
+        'freq_MHz'        : cfg.FREQ_MHZ,
+        'Pt_W'            : cfg.PT_W,
+        'Gt'              : cfg.GT,
+        'Gr'              : cfg.GR,
+        'sigma_rcs_m2'    : cfg.RADAR['sigma_rcs_m2'],
+        'bearing_deg'     : cfg.LINK_BEARING_DEG,
+        'sigma0_ground_dB': cfg.RADAR['sigma0_ground_dB'],
+    }
+
+
 def _make_link_info():
     """Build link_info dict for ray-fan annotation (see build_ray_info_text)."""
     return {
@@ -99,6 +112,18 @@ def _print_main(main):
             main['label'], main['tau_ms'], pr_str))
     else:
         print("  Main mode: None")
+
+
+def _print_summary(summary):
+    print("  n_modes={} main={} tau={:.3f}ms Pr={:.1f}dBW F_focus={:.2f}".format(
+        summary['n_modes'], summary['main_label'],
+        summary['main_tau_ms'], summary['main_Pr_dBW'],
+        summary['main_F_focus']))
+    if summary.get('mode_pairs'):
+        for p in summary['mode_pairs']:
+            print("    O/X: {}/{} dTau={:.3f}ms dPr={:.1f}dB".format(
+                p['label_O'], p['label_X'],
+                p['delta_tau_OX_ms'], p['delta_Pr_OX_dB']))
 
 
 def _add_free_space_power(modes):
@@ -216,7 +241,7 @@ def run_baseline():
 
     # P-D spectrum
     tau_ax, pd = build_pd_spectrum(modes)
-    main, _ = identify_main_mode(tau_ax, pd, modes)
+    main, _, _ = identify_main_mode(tau_ax, pd, modes)
     _print_main(main)
     csv_path = save_modes_csv('baseline', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
@@ -258,7 +283,7 @@ def run_with_tid():
 
     # P-D spectrum
     tau_ax, pd = build_pd_spectrum(modes)
-    main, _ = identify_main_mode(tau_ax, pd, modes)
+    main, _, _ = identify_main_mode(tau_ax, pd, modes)
     _print_main(main)
     csv_path = save_modes_csv('tid', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
@@ -525,6 +550,48 @@ def run_with_spreadf():
     _save(fig2, 'pd_spreadf.png')
 
 
+# ── Scenario TR: OTH radar flux-tube tracer ───────────────────────────────────
+
+def run_tube_radar():
+    """
+    OTH radar tube tracer scenario (Coleman 1997/1998 physical P-D spectrum).
+    Uses TubeRayTracer instead of radar equation approximation.
+    Outputs focusing factor and delay spread per mode.
+    Saves pd_tube_radar.png, modes_tube_radar.csv.
+    """
+    from models.hybrid_model import HybridPropagationModel
+
+    print("=" * 55)
+    print("  Scenario TR: OTH Radar Tube Tracer")
+    print("=" * 55)
+    print("  target_range={} km  sigma0={} dBsm".format(
+        cfg.RADAR['target_range_km'],
+        cfg.RADAR['sigma0_ground_dB']))
+
+    model = HybridPropagationModel(
+        _make_iono_params(),
+        _make_tube_radar_params(),
+        radar_mode=True,
+        tube_mode=True)
+
+    modes, tau_ax, pd, main = model.compute(cfg.TX_POS, cfg.RX_POS)
+
+    print("  Tube modes: {}".format(len(modes)))
+    print_mode_table(modes)
+    _print_main(main)
+
+    if hasattr(model, 'mode_summary'):
+        _print_summary(model.mode_summary)
+
+    csv_path = save_modes_csv('tube_radar', modes, tau_ax, pd,
+                               cfg.FREQ_MHZ, _OUT)
+    print("  Saved: output/{}".format(os.path.basename(csv_path)))
+
+    fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
+                                title='P-D - OTH Radar Tube Tracer')
+    _save(fig2, 'pd_tube_radar.png')
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
@@ -539,3 +606,4 @@ if __name__ == '__main__':
     run_with_OX()
     run_radar_baseline()
     run_with_spreadf()
+    run_tube_radar()
