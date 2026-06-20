@@ -165,6 +165,50 @@ TUBE_TRACER = {
     'L_cross_km'     : 100.0, # Cross-range beam footprint [km] (2D->3D area)
 }
 
+# ── Phase 6 upgrades: 3-D ray tracing + scatter theory ───────────────────────
+
+# SCATTER: Born / Rytov / MPS spectral parameters
+# Cs_rel  : relative rms fluctuation amplitude delta_Ne/Ne0 (dimensionless)
+#            Same convention as SPREAD_F.Cs (used by spread_f_model.py).
+# p       : 3-D von Karman spectral index (typ. 2.5-4.0; F-layer ~3.0)
+# L_outer_km : outer irregularity scale (correlation length) [km]
+# L_inner_m  : inner scale cutoff [m] (default 0.1 m ~ thermal ion gyro-radius)
+# DeltaL_km  : default scatter layer thickness [km] (used when not known from ray)
+# z_eff_km   : effective observer distance for Rytov Fresnel filter [km]
+#              (set to F2 peak height as default; ray tracer updates per-ray)
+SCATTER = {
+    'Cs_rel':      0.01,    # 1% rms relative fluctuation (moderate F-layer)
+    'p':           3.0,     # spectral index (Rino 1979 F-layer value)
+    'L_outer_km':  10.0,    # outer scale [km]
+    'L_inner_m':   0.1,     # inner scale [m]
+    'DeltaL_km':   100.0,   # default layer thickness [km]
+    'z_eff_km':    300.0,   # default observer distance for Fresnel filter [km]
+}
+
+# RT_3D: parameters for 3-D ray tracer (extends RT for 3-D tracing)
+RT_3D = {
+    'ds_km':       0.5,    # RK4 step [km]
+    'ds_min_km':   0.1,
+    'ds_max_km':   2.0,
+    'beta_min':    5.0,    # elevation fan min [deg]
+    'beta_max':    85.0,
+    'n_fan':       33,
+    'z_stop_km':   550.0,
+    'max_steps':   4000,
+    'earth_flat':  True,   # apply Jones 1975 Earth-flattening
+}
+
+# P2P_3D: parameters for 3-D P2P Newton shooter
+P2P_3D = {
+    'n_init':      18,     # number of seed elevations
+    'tol_km':      5.0,    # Newton convergence tolerance [km] (looser than 2-D)
+    'd_beta':      0.05,   # Jacobian step: elevation [deg]
+    'd_az':        0.10,   # Jacobian step: azimuth   [deg]
+    'max_iter':    20,     # Newton max iterations
+    'clust_h_km':  10.0,   # deduplication height tolerance
+    'clust_tau_ms': 0.05,  # deduplication delay tolerance
+}
+
 # ── Phase 5 upgrades: 3D ionospheric background ──────────────────────────────
 
 # B1: IRI lateral sampling along the link great-circle path
