@@ -51,12 +51,19 @@ TID = {
     'enable':         False,
     'lambda_h_km':    300.0,              # Horizontal wavelength [km]
     'T_s':            2400.0,             # Period [s] = 40 min (typical MSTID)
-    'amplitude':      0.10,               # Peak δNe/Ne₀  (0–1)
-    'u_para_ms':      50.0,               # Neutral wind ∥ B  [m/s]
+    'amplitude':      0.10,               # Peak dNe/Ne0  (0-1)
+    'u_para_ms':      50.0,               # Neutral wind || B  [m/s]
     'I_dip_deg':      50.0,               # Geomagnetic dip angle [deg]  (mid-latitude)
     'H_km':           60.0,               # Chapman scale height [km]
     't_s':            0.0,                # Snapshot time [s]
-    'omega_b_rad_s':  2.0 * np.pi / 1200.0,  # Brunt-Väisälä freq [rad/s] (20-min period)
+    'omega_b_rad_s':  2.0 * np.pi / 1200.0,  # Brunt-Vaisala freq [rad/s] (20-min period)
+    # Phase 5: multi-direction superposition (n_components=1 -> backward compat)
+    'n_components':     1,                # Number of TID wave components
+    'az_deg_list':      [0.0],            # Propagation azimuth per component [deg from North]
+    'amplitude_list':   [0.10],           # Amplitude per component (0-1)
+    'period_s_list':    [2400.0],         # Period per component [s]
+    'lambda_h_km_list': [300.0],          # Horizontal wavelength per component [km]
+    'link_bearing_deg': 0.0,              # Link bearing used to project wave vectors onto 2D plane
 }
 
 # ── Es layer parameters  (Hao et al. 2017) ───────────────────────────────────
@@ -156,6 +163,19 @@ TUBE_TRACER = {
     'newton_tol_km'  : 1.0,   # Newton refinement convergence threshold [km]
     'newton_max_iter': 5,      # Newton max iterations (2-3 usually sufficient)
     'L_cross_km'     : 100.0, # Cross-range beam footprint [km] (2D->3D area)
+}
+
+# ── Phase 5 upgrades: 3D ionospheric background ──────────────────────────────
+
+# B1: IRI lateral sampling along the link great-circle path
+IRI_LATERAL = {
+    'enable':      False,   # False -> broadcast single profile (backward compat)
+    'spacing_km':  50.0,    # Sample interval along great-circle [km]
+}
+
+# B2: position-dependent IGRF via GeomagnField2D
+GEOMAG_3D = {
+    'enable': False,   # False -> use fixed GEOMAG dict (backward compat)
 }
 
 # ── D-layer absorption (Phase 3) ─────────────────────────────────────────────

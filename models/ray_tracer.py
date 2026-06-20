@@ -315,35 +315,55 @@ class RefractiveIndexAH(RefractiveIndex):
         disc = sqrt(Y_T^4 / [4(1-X)^2] + Y_L^2)
         O-mode: minus sign;  X-mode: plus sign    (Budden 1961, Eq. 4.13)
 
-    Simplified angle approximation (initial implementation):
-        alpha = pi/2 - dip_deg  (ray nearly vertical at F-layer, angle to B)
+    Angle approximation: alpha = pi/2 - dip_deg (ray vertical at F-layer apex).
+    Phase 5: fH_MHz and dip_deg may be position-dependent via GeomagnField2D.
 
     Parameters
     ----------
     wave_mode : 'O' | 'X'
-    geomag    : dict with keys fH_MHz, dip_deg  (from config.GEOMAG)
+    geomag    : dict {'fH_MHz', 'dip_deg'} (fixed) OR GeomagnField2D (position-dep)
     """
 
     def __init__(self, Ne_2d: np.ndarray, x_km: np.ndarray, z_km: np.ndarray,
-                 freq_MHz: float, wave_mode: str = 'O', geomag: dict | None = None):
+                 freq_MHz: float, wave_mode: str = 'O', geomag=None):
         super().__init__(Ne_2d, x_km, z_km, freq_MHz)
         self.wave_mode = wave_mode
-        g = geomag or {}
-        self.fH_MHz = float(g.get('fH_MHz', 1.197))
-        self.dip    = float(np.radians(g.get('dip_deg', 48.7)))
+
+        # Detect whether geomag is a GeomagnField2D or a plain dict
+        from models.geomag_field import GeomagnField2D
+        if isinstance(geomag, GeomagnField2D):
+            self._geomag_field = geomag
+            self.fH_MHz        = None   # unused; provided by field
+            self.dip           = None
+        else:
+            self._geomag_field = None
+            g = geomag or {}
+            self.fH_MHz = float(g.get('fH_MHz', 1.197))
+            self.dip    = float(np.radians(g.get('dip_deg', 48.7)))
 
     def n_batch(self, pts: np.ndarray) -> np.ndarray:
-        """Vectorized AH refractive index for (M,2) pts -> (M,) array."""
-        Ne_arr = self._Ne_interp(pts)                         # (M,) [m^-3]
-        X  = (K_FP ** 2) * np.maximum(Ne_arr, 0.0) / (self.freq_MHz * 1e6) ** 2
+        """
+        Vectorized AH refractive index for (M, 2) pts -> (M,) array.
+        Supports both fixed and position-dependent (Phase 5) geomagnetic field.
+        """
+        Ne_arr = self._Ne_interp(pts)                          # (M,)
+        X = (K_FP ** 2) * np.maximum(Ne_arr, 0.0) / (self.freq_MHz * 1e6) ** 2
 
-        alpha = np.full_like(X, np.pi / 2.0 - self.dip)     # fixed-angle approx
-        Y  = self.fH_MHz / self.freq_MHz
+        if self._geomag_field is not None:
+            # Phase 5: position-dependent fH and dip
+            fH_arr  = self._geomag_field.fH_MHz_batch(pts)         # (M,)
+            dip_arr = np.radians(self._geomag_field.dip_deg_batch(pts))  # (M,) rad
+            alpha   = np.pi / 2.0 - dip_arr
+            Y  = fH_arr / self.freq_MHz
+        else:
+            # Backward-compatible: fixed values
+            alpha = np.full(len(X), np.pi / 2.0 - self.dip)
+            Y     = np.full(len(X), self.fH_MHz / self.freq_MHz)
+
         YL = Y * np.cos(alpha)
         YT = Y * np.sin(alpha)
 
         denom_base = 1.0 - X
-        # Guard: keep denom_base away from zero (critical-layer singularity)
         safe_db = np.where(np.abs(denom_base) < 1e-10,
                            np.sign(denom_base + 1e-30) * 1e-10,
                            denom_base)
@@ -351,9 +371,9 @@ class RefractiveIndexAH(RefractiveIndex):
         disc = np.sqrt(np.maximum(YT ** 4 / (4.0 * safe_db ** 2) + YL ** 2, 0.0))
 
         if self.wave_mode == 'O':
-            denom = 1.0 - half - disc      # Budden: O-mode uses minus sign
+            denom = 1.0 - half - disc      # Budden 1961: O-mode minus sign
         else:
-            denom = 1.0 - half + disc      # Budden: X-mode uses plus sign
+            denom = 1.0 - half + disc      # Budden 1961: X-mode plus sign
 
         safe_den = np.where(np.abs(denom) < 1e-10,
                             np.sign(denom + 1e-30) * 1e-10,

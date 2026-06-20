@@ -125,6 +125,26 @@ def from_dBW(P_dBW: float) -> float:
 
 # ── Coordinate helpers ────────────────────────────────────────────────────────
 
+def destination_point(lat1_deg: float, lon1_deg: float,
+                      bearing_deg: float, dist_km: float
+                      ) -> tuple[float, float]:
+    """
+    Compute destination (lat2, lon2) given origin, initial bearing, and distance.
+    Spherical-Earth formula (Vincenty accuracy not needed for 50 km IRI sampling).
+    Returns (lat2_deg, lon2_deg).
+    """
+    from config import RE_KM
+    d     = dist_km / RE_KM                        # angular distance [rad]
+    b     = np.radians(bearing_deg)
+    lat1  = np.radians(lat1_deg)
+    lon1  = np.radians(lon1_deg)
+    lat2  = np.arcsin(np.sin(lat1) * np.cos(d)
+                      + np.cos(lat1) * np.sin(d) * np.cos(b))
+    lon2  = lon1 + np.arctan2(np.sin(b) * np.sin(d) * np.cos(lat1),
+                               np.cos(d) - np.sin(lat1) * np.sin(lat2))
+    return float(np.degrees(lat2)), float(np.degrees(lon2))
+
+
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance between two geographic points [km]."""
     from config import RE_KM

@@ -1,16 +1,18 @@
 """
-Module M1 – Ionospheric electron-density field.
+Module M1 - Ionospheric electron-density field.
 Layers (added in order):
-    1. IRI-2016 background  (iri2016)
-    2. TID perturbation      (Hooke 1968 / Koval 2018)
+    1. IRI-2016 background  (iri2016)         [Phase 5: optional lateral sampling]
+    2. TID perturbation      (Hooke 1968)      [Phase 5: multi-direction superposition]
     3. Es thin layer         (Hao 2017)
     4. Plasma bubble         (analytic Gaussian depletion)
 Output: Ne_2d [m^-3] on the 2-D (x, z) Cartesian grid.
 """
 import numpy as np
 import iri2016
+from scipy.interpolate import RegularGridInterpolator
 from config import (K_FP, IRI_DT, IRI_LAT, IRI_LON,
-                    TID, ES, BUBBLE, SPREAD_F, FREQ_MHZ)
+                    TID, ES, BUBBLE, SPREAD_F, FREQ_MHZ,
+                    TX_LAT, TX_LON, LINK_BEARING_DEG, IRI_LATERAL)
 from utils import ne_to_n2, n2_to_n
 
 
@@ -21,26 +23,31 @@ class IonosphereModel:
 
     Parameters
     ----------
-    iri_params    : dict   keys: 'dt', 'lat', 'lon'
-    tid_params    : dict   from config.TID
-    es_params     : dict   from config.ES
-    bubble_params : dict   from config.BUBBLE
-    freq_MHz      : float  operating frequency (needed for n^2 computation)
+    iri_params         : dict   keys: 'dt', 'lat', 'lon'
+    tid_params         : dict   from config.TID
+    es_params          : dict   from config.ES
+    bubble_params      : dict   from config.BUBBLE
+    spread_f_params    : dict   from config.SPREAD_F
+    lateral_iri_params : dict   Phase 5 lateral sampling; keys: 'enable', 'spacing_km',
+                                'tx_lat', 'tx_lon', 'bearing_deg'
+    freq_MHz           : float  operating frequency
     """
 
     def __init__(self,
-                 iri_params:      dict | None = None,
-                 tid_params:      dict | None = None,
-                 es_params:       dict | None = None,
-                 bubble_params:   dict | None = None,
-                 spread_f_params: dict | None = None,
-                 freq_MHz:        float = FREQ_MHZ):
-        self.iri      = iri_params      or {'dt': IRI_DT, 'lat': IRI_LAT, 'lon': IRI_LON}
-        self.tid      = tid_params      or TID
-        self.es       = es_params       or ES
-        self.bubble   = bubble_params   or BUBBLE
-        self.spread_f = spread_f_params or SPREAD_F
-        self.freq     = freq_MHz
+                 iri_params:         dict | None = None,
+                 tid_params:         dict | None = None,
+                 es_params:          dict | None = None,
+                 bubble_params:      dict | None = None,
+                 spread_f_params:    dict | None = None,
+                 lateral_iri_params: dict | None = None,
+                 freq_MHz:           float = FREQ_MHZ):
+        self.iri         = iri_params      or {'dt': IRI_DT, 'lat': IRI_LAT, 'lon': IRI_LON}
+        self.tid         = tid_params      or TID
+        self.es          = es_params       or ES
+        self.bubble      = bubble_params   or BUBBLE
+        self.spread_f    = spread_f_params or SPREAD_F
+        self.lateral_iri = lateral_iri_params or IRI_LATERAL
+        self.freq        = freq_MHz
 
     # ── Public interface ──────────────────────────────────────────────────────
 
@@ -63,26 +70,28 @@ class IonosphereModel:
         Ne_2d : (Nx, Nz) electron density [m^-3]
         n_2d  : (Nx, Nz) refractive index n (isotropic, real)
         """
-        # 1. IRI 1D background
-        Ne_1d = self._iri_background(z_array)
+        # 1. IRI background (single profile broadcast, or lateral 2-D sampling)
+        if self.lateral_iri.get('enable', False):
+            Ne_2d = self._iri_lateral_background(x_array, z_array)
+        else:
+            Ne_1d = self._iri_background(z_array)
+            Ne_2d = np.tile(Ne_1d, (len(x_array), 1))
 
-        # 2. Broadcast to (Nx, Nz)
-        Ne_2d = np.tile(Ne_1d, (len(x_array), 1))
-
-        # 3. TID – uses pure IRI as background (x-dependent)
+        # 2. TID (single component or multi-direction superposition)
         if self.tid.get('enable', False):
             Ne_2d = self._add_tid(Ne_2d, x_array, z_array, t)
 
-        # 4. Es – uniform in x; compute contribution from IRI-only 1D
+        # 3. Es – uniform in x; delta relative to homogeneous IRI background
         if self.es.get('enable', False):
-            Ne_1d_es = self._add_es_layer(Ne_1d.copy(), z_array)
-            Ne_2d   += (Ne_1d_es - Ne_1d)[np.newaxis, :]
+            Ne_1d_ref = Ne_2d[len(x_array) // 2, :]   # mid-path column as ref
+            Ne_1d_es  = self._add_es_layer(Ne_1d_ref.copy(), z_array)
+            Ne_2d    += (Ne_1d_es - Ne_1d_ref)[np.newaxis, :]
 
-        # 5. Plasma bubble (Gaussian depletion)
+        # 4. Plasma bubble (Gaussian depletion)
         if self.bubble.get('enable', False):
             Ne_2d = self._add_plasma_bubble(Ne_2d, x_array, z_array)
 
-        # 6. Spread-F phase screen (applied last)
+        # 5. Spread-F phase screen (applied last)
         if self.spread_f.get('enable', False):
             Ne_2d = self._add_spread_f(Ne_2d, x_array, z_array)
 
@@ -93,24 +102,149 @@ class IonosphereModel:
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
-    def _iri_background(self, z_array: np.ndarray) -> np.ndarray:
-        """
-        Call iri2016 and return 1-D Ne profile Ne_1d(z) [m^-3].
-        The same profile is broadcast horizontally (homogeneous background).
-        """
-        dt  = self.iri.get('dt',  IRI_DT)
-        lat = self.iri.get('lat', IRI_LAT)
-        lon = self.iri.get('lon', IRI_LON)
+    def _iri_at_point(self,
+                      lat: float, lon: float,
+                      z_array: np.ndarray, dt) -> np.ndarray:
+        """Single iri2016 query at (lat, lon); return Ne_1d(z) [m^-3]."""
         z_min = float(z_array[0])
         z_max = float(z_array[-1])
         dz    = float(round(z_array[1] - z_array[0], 6))
         res   = iri2016.IRI(dt, (z_min, z_max, dz), lat, lon)
-        Ne_1d = res['ne'].values.astype(float)   # [m^-3]
+        Ne_1d = res['ne'].values.astype(float)
         assert len(Ne_1d) == len(z_array), (
-            f"iri2016 returned {len(Ne_1d)} pts but z_array has {len(z_array)} pts "
-            f"(z_min={z_min}, z_max={z_max}, dz={dz})"
+            f"iri2016 returned {len(Ne_1d)} pts but z_array has {len(z_array)} pts"
         )
         return np.maximum(Ne_1d, 0.0)
+
+    def _iri_background(self, z_array: np.ndarray) -> np.ndarray:
+        """Single mid-path IRI profile (backward-compatible path)."""
+        dt  = self.iri.get('dt',  IRI_DT)
+        lat = self.iri.get('lat', IRI_LAT)
+        lon = self.iri.get('lon', IRI_LON)
+        return self._iri_at_point(lat, lon, z_array, dt)
+
+    def _iri_lateral_background(self,
+                                 x_array: np.ndarray,
+                                 z_array: np.ndarray) -> np.ndarray:
+        """
+        Sample IRI along the link great-circle at ~spacing_km intervals.
+
+        Geographic coordinates at each sample x are derived from the TX
+        position and link bearing via the spherical-Earth destination formula.
+        Profiles are linearly interpolated onto the full x_array.
+
+        Ref: Cervera & Harris (2014) use position-dependent IRI for 3-D tracing.
+        """
+        from utils import destination_point
+
+        spacing   = float(self.lateral_iri.get('spacing_km', 50.0))
+        tx_lat    = float(self.lateral_iri.get('tx_lat',      TX_LAT))
+        tx_lon    = float(self.lateral_iri.get('tx_lon',      TX_LON))
+        bearing   = float(self.lateral_iri.get('bearing_deg', LINK_BEARING_DEG))
+        dt        = self.iri.get('dt', IRI_DT)
+
+        x_min, x_max = float(x_array[0]), float(x_array[-1])
+        # Extend sample range slightly beyond grid to avoid edge extrapolation
+        x_samp = np.arange(x_min, x_max + spacing * 0.5, spacing)
+        # Ensure endpoints are included
+        if x_samp[-1] < x_max:
+            x_samp = np.append(x_samp, x_max)
+        x_samp = np.clip(x_samp, x_min, x_max)
+        x_samp = np.unique(x_samp)
+
+        Ne_rows = []
+        for xs in x_samp:
+            lat_s, lon_s = destination_point(tx_lat, tx_lon, bearing, float(xs))
+            Ne_rows.append(self._iri_at_point(lat_s, lon_s, z_array, dt))
+
+        Ne_samp = np.array(Ne_rows)  # (N_samp, Nz)
+
+        if len(x_samp) == 1:
+            return np.tile(Ne_samp[0], (len(x_array), 1))
+
+        # Bilinear interpolation onto full x_array
+        interp = RegularGridInterpolator(
+            (x_samp, z_array), Ne_samp,
+            method='linear', bounds_error=False, fill_value=None
+        )
+        pts   = np.array([[x, z] for x in x_array for z in z_array])
+        Ne_2d = np.maximum(
+            interp(pts).reshape(len(x_array), len(z_array)), 0.0
+        )
+        return Ne_2d
+
+    def _tid_one_component(self,
+                            Ne_2d:       np.ndarray,
+                            x_array:     np.ndarray,
+                            z_array:     np.ndarray,
+                            t:           float,
+                            amplitude:   float,
+                            lambda_h_km: float,
+                            T_s:         float,
+                            I_dip_deg:   float,
+                            H_km:        float,
+                            omega_b:     float,
+                            kx:          float | None = None
+                            ) -> np.ndarray:
+        """
+        Apply one TID component to Ne_2d using the Hooke (1968) formula.
+
+        kx [rad/m]: horizontal wave-number projected onto the 2-D plane (x-axis).
+            If None, defaults to 2pi/lambda_h (TID aligned with link).
+            If given, must be the projected value; lambda_h_km is still used
+            for the dispersion relation (to get kz from the full |k_h|).
+
+        Hooke (1968) Eq. for AGW-driven Ne perturbation (Koval 2018 Eq. 1):
+            dNe = A * (-dNe0/dz * sinI * sin(phase)
+                       - k_para * Ne0 * cos(phase))
+            k_para = kx * cos(I) + kz * sin(I)
+            kz^2   = kh^2 * (wb^2/w^2 - 1) - 1/(4H^2)
+
+        The normalisation ensures max|dNe/Ne0| = amplitude over the
+        significant-density region (Ne > 1% of NmF2), following the
+        fix from Koval et al. (2018).
+        """
+        lam_h_m = lambda_h_km * 1e3              # [m]
+        kh_full = 2.0 * np.pi / lam_h_m          # full horizontal |k| for dispersion
+        if kx is None:
+            kx = kh_full                          # TID aligned with link
+
+        I_rad   = np.deg2rad(I_dip_deg)
+        H_m     = H_km * 1e3
+        omega   = 2.0 * np.pi / T_s
+
+        kz2 = kh_full**2 * (omega_b**2 / omega**2 - 1.0) - 1.0 / (4.0 * H_m**2)
+        if kz2 <= 0.0:
+            return Ne_2d                          # evanescent mode – skip
+
+        kz     = np.sqrt(kz2)
+        sinI   = np.sin(I_rad)
+        k_para = kx * np.cos(I_rad) + kz * np.sin(I_rad)
+
+        X_m = x_array * 1e3                       # (Nx,) [m]
+        Z_m = z_array * 1e3                        # (Nz,) [m]
+        phase = (kx * X_m[:, np.newaxis]
+                 + kz * Z_m[np.newaxis, :]
+                 - omega * t)                      # (Nx, Nz)
+
+        # Vertical gradient of background Ne at each column (handles lateral IRI)
+        dz_m      = (z_array[1] - z_array[0]) * 1e3
+        dNe_dz_2d = np.gradient(Ne_2d, dz_m, axis=1)   # (Nx, Nz)
+
+        dNe_raw = (-dNe_dz_2d * sinI * np.sin(phase)
+                   - k_para * Ne_2d * np.cos(phase))    # (Nx, Nz)
+
+        # Normalise over significant-density region (Ne > 1% of peak)
+        Ne_peak = Ne_2d.max()
+        f_mask  = Ne_2d > Ne_peak * 0.01
+        if not f_mask.any():
+            return Ne_2d
+        max_ratio = np.max(np.abs(dNe_raw[f_mask]) / Ne_2d[f_mask])
+        if max_ratio < 1e-30:
+            return Ne_2d
+        dNe = dNe_raw * (amplitude / max_ratio)
+
+        return np.maximum(Ne_2d + dNe, 0.0)
 
     def _add_tid(self,
                  Ne_2d:   np.ndarray,
@@ -118,61 +252,54 @@ class IonosphereModel:
                  z_array: np.ndarray,
                  t:       float) -> np.ndarray:
         """
-        Add TID perturbation dNe(x, z, t) to Ne_2d.
-        Uses Hooke (1968) formula; see Koval et al. (2018) Eq. 1.
-        Returns updated Ne_2d.
+        Dispatcher: single-component (backward compat) or
+        multi-direction superposition (Phase 5).
         """
-        p       = self.tid
-        lam_h_m = p['lambda_h_km'] * 1e3           # horizontal wavelength [m]
-        T_s     = p['T_s']                          # period [s]
-        amp     = p['amplitude']                    # desired max |dNe/Ne0|
-        I_rad   = np.deg2rad(p['I_dip_deg'])
-        H_m     = p['H_km'] * 1e3                  # scale height [m]
+        p      = self.tid
+        n_comp = int(p.get('n_components', 1))
         omega_b = p.get('omega_b_rad_s', 2.0 * np.pi / 1200.0)
 
-        kx    = 2.0 * np.pi / lam_h_m              # [rad/m]
-        omega = 2.0 * np.pi / T_s                  # [rad/s]
+        if n_comp == 1:
+            return self._tid_one_component(
+                Ne_2d, x_array, z_array, t,
+                amplitude   = p['amplitude'],
+                lambda_h_km = p['lambda_h_km'],
+                T_s         = p['T_s'],
+                I_dip_deg   = p['I_dip_deg'],
+                H_km        = p['H_km'],
+                omega_b     = omega_b,
+            )
 
-        kz2 = kx**2 * (omega_b**2 / omega**2 - 1.0) - 1.0 / (4.0 * H_m**2)
-        if kz2 <= 0.0:
-            return Ne_2d                            # evanescent – skip TID
+        # Multi-component: each component projected onto link direction (2-D plane)
+        az_list  = p.get('az_deg_list',      [0.0]           * n_comp)
+        amp_list = p.get('amplitude_list',   [p['amplitude']] * n_comp)
+        T_list   = p.get('period_s_list',    [p['T_s']]       * n_comp)
+        lam_list = p.get('lambda_h_km_list', [p['lambda_h_km']] * n_comp)
+        link_az  = float(p.get('link_bearing_deg', LINK_BEARING_DEG))
 
-        kz     = np.sqrt(kz2)                       # [rad/m]
-        k_para = kx * np.cos(I_rad) + kz * np.sin(I_rad)
-        sinI   = np.sin(I_rad)
+        Ne_out = Ne_2d.copy()
+        for i in range(n_comp):
+            # Project TID wave vector onto the link (x-axis) direction
+            # kx_eff = k_h * cos(az_TID - az_link)
+            # Using kh_full for dispersion; projected kx for phase and k_para
+            az_rel   = np.radians(float(az_list[i]) - link_az)
+            cos_proj = np.cos(az_rel)
+            if abs(cos_proj) < 1e-6:
+                # TID nearly perpendicular to link: no x-variation in 2-D cross-section
+                continue
+            kx_i = (2.0 * np.pi / (float(lam_list[i]) * 1e3)) * cos_proj
 
-        # Background 1D (all columns identical at this stage)
-        Ne_bg  = Ne_2d[0, :].copy()                # (Nz,)
-        dz_m   = (z_array[1] - z_array[0]) * 1e3  # [m]
-        dNe_dz = np.gradient(Ne_bg, dz_m)          # (Nz,) [m^-3/m]
-
-        # Phase field (Nx, Nz)
-        X_m   = x_array * 1e3                      # (Nx,) [m]
-        Z_m   = z_array * 1e3                      # (Nz,) [m]
-        phase = (kx * X_m[:, np.newaxis]
-                 + kz * Z_m[np.newaxis, :]
-                 - omega * t)                       # (Nx, Nz)
-
-        # Hooke (1968) un-normalised dNe
-        dNe_raw = (-dNe_dz[np.newaxis, :] * sinI * np.sin(phase)
-                   - k_para * Ne_bg[np.newaxis, :] * np.cos(phase))  # (Nx, Nz)
-
-        # Normalise so max|dNe/Ne0| = amp, evaluated only over significant-
-        # density altitudes (> 1% of F2 peak). Without this restriction the
-        # near-zero D-layer values dominate the ratio and suppress F-region
-        # perturbation to effectively zero.
-        Ne_peak = Ne_bg.max()
-        f_mask  = Ne_bg > Ne_peak * 0.01          # (Nz,) significant-Ne mask
-        if not f_mask.any():
-            return Ne_2d
-        max_ratio = np.max(
-            np.abs(dNe_raw[:, f_mask]) / Ne_bg[np.newaxis, f_mask]
-        )
-        if max_ratio < 1e-30:
-            return Ne_2d
-        dNe = dNe_raw * (amp / max_ratio)
-
-        return np.maximum(Ne_2d + dNe, 0.0)
+            Ne_out = self._tid_one_component(
+                Ne_out, x_array, z_array, t,
+                amplitude   = float(amp_list[i]),
+                lambda_h_km = float(lam_list[i]),
+                T_s         = float(T_list[i]),
+                I_dip_deg   = p['I_dip_deg'],
+                H_km        = p['H_km'],
+                omega_b     = omega_b,
+                kx          = kx_i,
+            )
+        return Ne_out
 
     def _add_es_layer(self,
                       Ne_1d:   np.ndarray,

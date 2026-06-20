@@ -1,0 +1,352 @@
+================================================================
+  HF混合传播建模升级方案 v1.0
+  IRI03-TID Project — Phase 5/6/7 升级路线图
+  日期：2026-06-19
+================================================================
+
+总任务路线：
+  复杂电离层环境
+    → 反射/散射混合传播建模
+    → 传播参数获取 (tau, Pr, 方位, 仰角, h_reflect, S4)
+    → 传播模式分类 (Es/E/F/1F/2F/O/X)
+    → 传播主模式识别
+
+----------------------------------------------------------------
+  已确认设计决策
+----------------------------------------------------------------
+
+D1. 3D射线坐标系：笛卡尔嵌入球（后续可升级为球坐标Haselgrove）
+D2. IRI横向采样分辨率：50 km（沿大地线均匀采样）
+D3. TID方位扰动：多方向叠加谱（N个方向分量线性叠加）
+D4. 散射区间自动选择：Rino强散射参数 U（方法3）
+D5. 向后兼容：保留2D fallback，2D/3D可配置切换
+
+----------------------------------------------------------------
+  Track A：2D → 3D 传播（所有模式）
+----------------------------------------------------------------
+
+A1. 3D射线方程（笛卡尔嵌入球）
+-------------------------------
+当前：2D平面内 [x, z, px, pz]，RK4积分
+升级：笛卡尔坐标 [x, y, z, px, py, pz]，单位球面约束
+
+  Hamilton量：H = (px²+py²+pz²) - n²(x,y,z) = 0
+
+  dx/ds = 2px,  dy/ds = 2py,  dz/ds = 2pz
+  dpx/ds = dn²/dx,  dpy/ds = dn²/dy,  dpz/ds = dn²/dz
+
+  n²(x,y,z) 由 Track B 的三维 Ne(x,y,z) 场提供，
+  含O/X磁旋修正（Appleton-Hartree，三维B向量）。
+
+  地球曲率：
+    z_physical = z_cart - R_earth + sqrt(R_earth² - x²- y²)
+    适用范围：链路1169 km必须引入，平地近似误差>30 km。
+  参考：Jones & Stephenson (1975)
+
+A2. 三维P2P双参数shooting
+--------------------------
+当前：1参数 shooting（仰角 elev），F(elev)=x_land-x_tgt=0
+升级：2参数 shooting（仰角 elev, 方位 az）：
+  F1(elev, az) = x_land - x_tgt = 0
+  F2(elev, az) = y_land - y_tgt = 0
+
+  Newton迭代：Jacobian 2×2 中心差分，收敛判据 |ΔF| < 0.1 km
+  参考：PHaRLAP（Cervera & Harris 2014），IONORT（arXiv:2506.24098）
+
+A3. 三维flux-tube tracer
+-------------------------
+当前：2D平面内圆形截面管，F_focus = R_eff·Δβ/Δx_land
+升级：3D椭圆截面管，两个主轴（仰角平面/方位角平面）分别求Δ：
+  F_focus_el = R_eff · Δelev / Δx_land_el
+  F_focus_az = R_eff · Δaz   / Δy_land_az
+  F_focus = sqrt(F_focus_el · F_focus_az)
+
+A4. 新增传播参数
+----------------
+  azimuth_deflect_deg  : 方位偏转（大圆路径横向偏离）
+  elevation_tx_deg     : 发射仰角（3D几何）
+  elevation_rx_deg     : 到达仰角（3D几何）
+  reflect_lat_deg      : 反射点纬度
+  reflect_lon_deg      : 反射点经度
+  reflect_h_km         : 反射点高度（km）
+
+  已有参数不变：tau_ms, Pr_W, group_path_km, F_focus, tau_spread_ms
+
+----------------------------------------------------------------
+  Track B：三维电离层背景
+----------------------------------------------------------------
+
+B1. IRI三维横向采样
+--------------------
+当前：单点 IRI 剖面（链路中点）
+升级：沿大地线每50 km采样一个IRI剖面 → Ne(x,y,z) 三维插值网格
+
+  采样点数：N_pts = ceil(link_range_km / 50) + 1
+  高度网格：与当前BG_Z保持一致（50-800 km，50层）
+  插值方式：三线性插值
+  工具：iri2016，已支持 iri2016.IRI(lat, lon, alt_km, dt) API
+  参数配置（config.py新增）：
+    IRI_LATERAL_SPACING_KM = 50
+    IRI_LATERAL_ENABLE = True
+
+B2. 三维IGRF磁场
+-----------------
+当前：链路中点单一 B 向量（大小+倾角）
+升级：沿射线每点计算 B(r)
+
+  工具：ppigrf（pip install ppigrf），纯Python，支持任意(lat,lon,alt)
+  调用：ppigrf.igrf(lon, lat, alt_km, dt) → (Be, Bn, Bu) nT
+
+  集成：RefractiveIndex 的 Appleton-Hartree 中，
+        用射线当前位置的B(r)替换固定B。
+  影响：O/X正确分裂，法拉第旋转，磁旋频率fH = eB/(2πm_e)
+
+B3. 三维TID扰动场（多方向叠加谱）
+-----------------------------------
+当前：δN(x,z) = A·cos(kx·x - kz·z - ω·t)
+升级：N个方向分量线性叠加
+
+  δN(x,y,z,t) = sum_{i=1}^{N} A_i · cos(kx_i·x + ky_i·y - kz_i·z - ω_i·t + φ_i)
+
+    kx_i = k_TID_i · cos(az_i),  ky_i = k_TID_i · sin(az_i)
+    kz_i = sqrt(k_TID_i² + (2π/λ_TID_z_i)²)  （垂直分量）
+
+  config.py 新参数：
+    TID['n_components']  : 叠加分量数（默认1，兼容现有）
+    TID['az_deg_list']   : 各分量传播方位角列表（deg，0=正北）
+    TID['amplitude_list']: 各分量幅度列表
+    TID['period_h_list'] : 各分量周期列表
+
+  参考：Cervera & Harris (2014)，Shi et al. (2020)
+
+B4. 三维等离子体泡（场向对齐）
+--------------------------------
+当前：2D高斯耗空 δN_bubble(x,z)
+升级：沿IGRF磁力线拉伸的3D椭球耗空
+
+  delta_r = r - r0  （到泡中心的向量）
+  r_perp = delta_r - (delta_r·B_hat)·B_hat  （垂直磁场分量）
+  r_para = (delta_r·B_hat)·B_hat             （平行磁场分量）
+
+  δN_bubble(r) = -dN_max · exp(-|r_perp|²/sigma_perp² - |r_para|²/sigma_para²)
+
+  参数：sigma_perp ~50 km, sigma_para ~550 km
+  参考：Martinis (2023), Ma et al. (2023)
+
+----------------------------------------------------------------
+  Track C：真实散射理论
+----------------------------------------------------------------
+
+C0. 散射区间自动选择（Rino强散射参数 U）
+------------------------------------------
+每条射线穿越扰动区时，计算 Rino (1979) 无量纲强散射参数：
+
+  kappa_F = sqrt(k0 / z_eff)          # Fresnel波数 (m^-1)
+  U_rino  = (r_e² * C_s * z_eff) / (k0 * kappa_F^(p+1))
+
+  其中：
+    r_e     = 2.818e-15 m            （经典电子半径）
+    k0      = 2*pi*f/c               （自由空间波数）
+    z_eff   = 穿越扰动区的有效路径长度（m）
+    C_s     = 不均匀体谱幅度（m^(-(p+3)) · m^3）
+    p       = 谱指数（TID典型值2.0，Es典型值1.5）
+
+  C_s 从扰动参数估算：
+    C_s ≈ delta_Ne_rms² · L_outer^(p+3) / Gamma((p+3)/2) / pi^(3/2)
+    L_outer : 不均匀体外尺度（TID: 波长λ_TID; 泡: sigma_perp）
+
+  分支判断：
+    U_rino < 0.1   → Born  弱散射
+    0.1 ≤ U < 10  → Rytov 中等散射
+    U_rino ≥ 10   → MPS   强散射
+
+  参考：Rino (1979) Part 1, Rino (2011)
+
+C1. Born 弱散射（δN/N < ~5%）
+-------------------------------
+体散射截面：
+  sigma_v(Delta_k) = (pi/2) · k0^4 · r_e^2 · Phi_deltaN(Delta_k)
+
+Bragg波数：|Delta_k| = 2*k0*sin(theta_s/2)
+  10 MHz时探测尺度：1.5 – 30 m
+
+不均匀谱模型（von Karman型）：
+  Phi_deltaN(kappa) = C_s · (kappa²+kappa_0²)^(-(p+3)/2) · exp(-kappa²/kappa_m²)
+    kappa_0 = 2*pi/L_outer  （外尺度截断）
+    kappa_m = 2*pi/l_inner  （内尺度截断，典型l_inner~0.1 m）
+
+沿射线积分：
+  Pr_scatter = Pt·Gt·Gr·lambda² / ((4*pi)³) · integral(sigma_v(s)/R(s)^4 · dV)
+
+新输出字段：
+  Pr_scatter_W     : Born散射功率
+  tau_scatter_ms   : 散射时延（Bragg散射贡献）
+  az_scatter_deg   : 方位散射扩散宽度
+  scatter_method   : 'Born'
+
+参考：Galushko et al. (2013), Booker & Gordon (1950)
+
+C2. Rytov 中等散射（S4 < 0.6）
+--------------------------------
+闪烁指数 S4：
+  S4² = (pi/2)·(k0²·r_e)²·z·integral(Phi_deltaN(k_perp)·sin²(k_perp²·z/2k0)·dk_perp)
+
+Fresnel尺度：r_F = sqrt(lambda·z / 2*pi)
+相位抖动：sigma_phi = sqrt(integral over k_perp of Phi_phi(k_perp)·dk_perp)
+
+新输出字段：
+  S4_index         : S4 闪烁指数（0–1）
+  sigma_tau_ms     : 时延抖动（rms）
+  sigma_phi_rad    : 相位抖动（rms, rad）
+  scatter_method   : 'Rytov'
+
+参考：Tatarski (1961), Yeh & Liu (1982), Rino (1979 Part 1)
+
+C3. Rino 三维相位屏（替换现有2D高斯屏）
+-----------------------------------------
+2D屏谱（从3D Born积分高度积分坍缩）：
+  Phi_2D(kappa_x, kappa_y) = C_s · (kappa_x²+kappa_y²)^(-(p+2)/2)
+
+强散射（S4 > 0.6，U >= 10）使用 Rino (1979 Part 2) 修正Rytov：
+  闭合解析式参见 Rino (2011) Chapter 3
+
+替换目标：models/ionosphere_model.py 中现有 SpreadF/Bubble 的 2D高斯相位屏
+参考：Rino (1979 Part 1 & 2), Rino (2011)
+
+C4. Booker-Gordon 各向异性 Es（替换Hao经验模型）
+--------------------------------------------------
+体散射截面（各向异性核）：
+  sigma_v(Delta_k_perp, Delta_k_para) ∝
+    k0^4 · Phi_deltaN(Delta_k_perp, Delta_k_para) · exp(-Delta_k_para²·L_para²/4)
+
+  L_para ~10 km  （Es不均匀体磁场方向纵向尺度）
+  → 10 MHz时Es散射半角 ~0.5°
+
+替换目标：models/ionosphere_model.py 中 _compute_es_scatter() 的 Hao (2017) 经验公式
+新输出字段：
+  es_aspect_angle_deg : 有效散射方位角约束
+  es_scatter_valid    : bool，当前几何是否满足Booker-Gordon方位条件
+
+参考：Booker (1956), Hao (2017)
+
+C5. MPS 多相屏强散射（等离子体泡）
+-------------------------------------
+Knepp (1983) 多相屏抛物波方程：
+  du/dz = (i/2k0)·nabla_perp²·u + i·k0·delta_n(x,y,z)·u
+
+数值实现：
+  1. 将穿越泡的路径分为 N_screen 个相位屏
+  2. 每屏相位增量：Delta_phi(x,y) = k0 · integral(delta_n · dz)  （屏内积分）
+  3. 屏间自由传播：FFT → 相位乘子 exp(-i·k_perp²·Delta_z/2k0) → IFFT
+  4. 累积至接收端
+
+适用条件：U_rino >= 10（由C0自动触发）
+新输出字段：
+  mps_Pr_W         : MPS散射功率
+  mps_S4           : 强散射S4
+  scatter_method   : 'MPS'
+
+参考：Knepp (1983)
+
+----------------------------------------------------------------
+  传播参数完整清单（升级后）
+----------------------------------------------------------------
+
+  tau_ms              : 传播时延（ms）
+  Pr_W / Pr_dBW       : 接收功率
+  elevation_tx_deg    : 发射仰角（新，3D）
+  elevation_rx_deg    : 到达仰角（新，3D）
+  azimuth_deflect_deg : 方位偏转（新，3D）
+  reflect_lat/lon/h   : 反射点坐标（新，3D）
+  F_focus             : 聚焦因子（扩展至3D）
+  tau_spread_ms       : 时延扩展（Born散射修正）
+  S4_index            : 闪烁指数（新，Rytov/Rino）
+  sigma_tau_ms        : 时延抖动（新）
+  sigma_phi_rad       : 相位抖动（新）
+  scatter_method      : 'Born'/'Rytov'/'MPS'（新）
+  wave_mode           : 'O'/'X'（O/X偏振，现有）
+  mode_label          : Es/E/F/1F/2F 分类（现有）
+  U_rino              : Rino散射强度参数（新，诊断用）
+
+----------------------------------------------------------------
+  实施分期计划
+----------------------------------------------------------------
+
+Phase 5（基础层，建议先行）：
+  5a. B2: ppigrf 三维IGRF集成
+  5b. B1: IRI 50km横向采样 + 三维Ne插值网格
+  5c. B3: TID 多方向叠加谱 (config.py扩展)
+  依赖：无新的射线方程，可在现有2D框架测试
+
+Phase 6（核心升级）：
+  6a. A1: 笛卡尔3D射线方程（ray_tracer.py重写）
+  6b. A2: 三维P2P双参数shooting (point_to_point.py)
+  6c. C0: Rino U参数自动选择（scatter_selector.py，新文件）
+  6d. C1: Born 体散射（scatter_born.py，新文件）
+  6e. C2: Rytov S4（scatter_rytov.py，新文件）
+  依赖：需要Phase 5的三维Ne场
+
+Phase 7（高级特性）：
+  7a. A3: 三维flux-tube（tube_tracer.py扩展）
+  7b. C4: Booker-Gordon Es（替换Hao经验模型）
+  7c. B4: 三维场向等离子体泡
+  7d. C3: Rino三维相位屏（替换现有2D高斯屏）
+  7e. C5: MPS多相屏强散射（仅泡强散射需要）
+
+----------------------------------------------------------------
+  关键文献
+----------------------------------------------------------------
+
+[1]  Jones, R. M. & Stephenson, J. J. (1975). A versatile three-dimensional
+     ray tracing computer program for radio waves in the ionosphere.
+     OT Report 75-76, US Dept. of Commerce.
+
+[2]  Cervera, M. A. & Harris, T. J. (2014). Modeling ionospheric disturbance
+     features in quasi-vertically incident ionograms using 3-D magnetoionic
+     ray tracing and atmospheric gravity waves.
+     J. Geophys. Res. Space Physics, 119, 431-440.
+
+[3]  Rino, C. L. (1979). A power law phase screen model for ionospheric
+     scintillation, 1. Weak scatter. Radio Sci., 14(6), 1135-1145.
+
+[4]  Rino, C. L. (1979). A power law phase screen model for ionospheric
+     scintillation, 2. Strong scatter. Radio Sci., 14(6), 1147-1155.
+
+[5]  Rino, C. L. (2011). The Theory of Scintillation with Applications in
+     Remote Sensing. IEEE Press / Wiley.
+
+[6]  Galushko, V. G., et al. (2013). Born approximation in HF radio wave
+     scattering from ionospheric irregularities.
+     Radio Sci., 48, 577-586.
+
+[7]  Tatarski, V. I. (1961). Wave Propagation in a Turbulent Medium.
+     McGraw-Hill, New York.
+
+[8]  Yeh, K. C. & Liu, C.-H. (1982). Radio wave scintillations in the
+     ionosphere. Proc. IEEE, 70(4), 324-360.
+
+[9]  Knepp, D. L. (1983). Multiple phase-screen calculation of the temporal
+     behavior of stochastic waves. Proc. IEEE, 71(6), 722-737.
+
+[10] Booker, H. G. (1956). A theory of scattering by nonisotropic
+     irregularities with application to radar reflections from the aurora.
+     J. Atm. Terr. Phys., 8, 204-221.
+
+[11] Booker, H. G. & Gordon, W. E. (1950). A theory of radio scattering in
+     the troposphere. Proc. IRE, 38, 401-412.
+
+[12] Martinis, C. (2023). Equatorial plasma bubbles: From discovery to
+     three-dimensional modeling. J. Geophys. Res., 128, e2023JA031820.
+
+[13] Ma, G., et al. (2023). Three-dimensional ray tracing through equatorial
+     plasma bubbles. GPS Solutions, 27, 45.
+
+[14] Coleman, C. J. (1997). A ray tracing formulation and its application to
+     some problems in over-the-horizon radar. Radio Sci., 33, 1187-1197.
+
+[15] Coleman, C. J. (1998). A model of HF sky wave radar clutter.
+     Radio Sci., 33(4), 915-923.
+
+----------------------------------------------------------------
+  END OF UPGRADE PLAN
+================================================================
