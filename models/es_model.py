@@ -16,7 +16,7 @@ compute_power() returns:
 """
 import numpy as np
 from math import factorial
-from config import C_MS, C_KMS, ES
+from config import C_MS, C_KMS, ES, GEOMAG
 
 
 class EsLayerModel:
@@ -197,3 +197,133 @@ class EsLayerModel:
         """
         rho_sq = self.reflection_coeff_sq(theta_rad, f_MHz)
         return float(np.sqrt(max(0.0, min(1.0, 1.0 - rho_sq))))
+
+
+# ── Booker-Gordon (1956) anisotropic irregularity scatter ────────────────────
+#
+# Reference: Booker, H.G. (1956). A theory of scattering by nonisotropic
+#   irregularities with application to radar reflections from the aurora.
+#   J. Atm. Terr. Phys. 8, 204-221.
+# Reference: Booker, H.G. & Gordon, W.E. (1950). Proc. IRE, 38, 401-412.
+# Reference: Fejer & Kan (1969); Hao (2017) [Hao model kept for comparison].
+
+
+def booker_gordon_sigma_v(freq_MHz:   float,
+                           Cs_rel:     float,
+                           Ne_m3:      float,
+                           L_perp_m:   float,
+                           L_para_m:   float,
+                           p_es:       float = 1.5,
+                           aspect_deg: float = 0.0) -> float:
+    """
+    Booker-Gordon (1956) volume scatter cross section [m^-1] for anisotropic
+    Es irregularities.
+
+    The anisotropic PSD separates into:
+      (a) an isotropic von Karman spectrum in the plane perpendicular to B
+      (b) a Gaussian field-aligned aspect filter parallel to B
+
+    Combined formula (Booker 1956; upgrade_plan_3d_scatter Section C4):
+      sigma_v = r_e^2 * (2*pi)^3 * C_s_abs
+                * (Dk_perp^2 + kappa_0^2)^(-(p+3)/2)
+                * exp(-Dk_para^2 * L_para^2 / 4)
+
+    where:
+      Dk      = 2*k0            (backscatter Bragg wavenumber [rad/m])
+      Dk_perp = Dk * cos(asp)   (component perpendicular to B)
+      Dk_para = Dk * sin(asp)   (component along B)
+      kappa_0 = 2*pi / L_perp   (outer-scale wavenumber for perpendicular turbulence)
+      C_s_abs = Cs_rel^2 * Ne^2 * p * (2*pi)^2 * kappa_0^p  (Born convention)
+
+    The Gaussian aspect filter exp(-Dk_para^2*L_para^2/4) enforces the
+    Es "aspect sensitivity": scatter is suppressed unless Dk_para*L_para << 1,
+    i.e., unless the Bragg vector is nearly perpendicular to B.
+
+    Parameters
+    ----------
+    freq_MHz   : operating frequency [MHz]
+    Cs_rel     : relative rms density fluctuation delta_Ne / Ne  (0-1)
+    Ne_m3      : background electron density [m^-3]
+    L_perp_m   : outer irregularity scale perpendicular to B [m]  (kappa_0 = 2pi/L_perp)
+    L_para_m   : field-aligned scale for aspect filter [m]  (large -> narrow aspect)
+    p_es       : power-law spectral index for Es turbulence (default 1.5)
+    aspect_deg : angle between Dk and B-perp plane [deg]
+                 (0 = optimal perpendicular scatter; 90 = fully field-aligned)
+
+    Returns
+    -------
+    sigma_v [m^-1]
+    """
+    r_e     = 2.818e-15   # classical electron radius [m]
+    TWO_PI  = 2.0 * np.pi
+    k0      = TWO_PI * freq_MHz * 1e6 / C_MS
+    Dk      = 2.0 * k0    # backscatter Bragg wavenumber [rad/m]
+
+    asp_r   = np.radians(float(aspect_deg))
+    Dk_perp = Dk * np.cos(asp_r)
+    Dk_para = Dk * np.sin(asp_r)
+
+    # Von Karman outer-scale wavenumber and absolute spectral strength
+    kappa_0 = TWO_PI / float(L_perp_m)
+    C_s_abs = (float(Cs_rel) * float(Ne_m3))**2 * float(p_es) * TWO_PI**2 * kappa_0**float(p_es)
+
+    # Isotropic von Karman spectrum at perpendicular Bragg wavenumber
+    phi_iso = C_s_abs * (Dk_perp**2 + kappa_0**2) ** (-0.5 * (float(p_es) + 3.0))
+
+    # Field-aligned (aspect) suppression filter
+    gauss   = np.exp(-Dk_para**2 * float(L_para_m)**2 / 4.0)
+
+    return float(r_e**2 * TWO_PI**3 * phi_iso * gauss)
+
+
+def es_aspect_angle_deg(theta_rad: float,
+                         dip_deg:   float = GEOMAG['dip_deg']) -> float:
+    """
+    Booker-Gordon aspect angle for Es backscatter at grazing angle theta [deg].
+
+    For oblique incidence at grazing angle theta, the Bragg wavevector is
+    directed upward at ~90-theta from horizontal.  The aspect angle with
+    respect to the horizontal geomagnetic field direction is approximately:
+      aspect = |90 - dip - theta_deg|
+
+    For vertical incidence (theta=90 deg) and dip=48.7 deg: aspect = 41.3 deg.
+    The exponential suppression exp(-Dk_para^2*L_para^2/4) makes scatter
+    essentially zero unless aspect << arcsin(sqrt(4*ln(100))/(Dk*L_para)).
+
+    Parameters
+    ----------
+    theta_rad : grazing angle from horizontal [rad]
+    dip_deg   : magnetic dip angle [deg] (positive downward)
+
+    Returns
+    -------
+    aspect_deg [deg]  (0 = perpendicular to B, optimal scatter)
+    """
+    theta_deg  = float(np.degrees(theta_rad))
+    aspect_deg = abs(90.0 - float(dip_deg) - theta_deg)
+    return float(np.clip(aspect_deg, 0.0, 90.0))
+
+
+def es_scatter_valid(aspect_deg: float,
+                     L_para_m:   float,
+                     freq_MHz:   float,
+                     threshold:  float = 0.01) -> bool:
+    """
+    Check whether the Booker-Gordon aspect condition allows significant scatter.
+
+    Returns True when exp(-Dk_para^2*L_para^2/4) > threshold, meaning the
+    field-aligned scale L_para is large enough relative to the Bragg half-wavelength
+    that scatter is not suppressed below threshold level.
+
+    Parameters
+    ----------
+    aspect_deg : aspect angle [deg]
+    L_para_m   : field-aligned irregularity scale [m]
+    freq_MHz   : operating frequency [MHz]
+    threshold  : minimum Gaussian suppression factor (default 0.01)
+    """
+    k0      = 2.0 * np.pi * freq_MHz * 1e6 / C_MS
+    Dk      = 2.0 * k0
+    Dk_para = Dk * np.sin(np.radians(float(aspect_deg)))
+    gauss   = np.exp(-Dk_para**2 * float(L_para_m)**2 / 4.0)
+    return bool(gauss > float(threshold))

@@ -31,7 +31,7 @@ import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 from config import (C_KMS, FREQ_MHZ, RT, RE_KM, K_FP,
                     IRI_DT, IRI_LAT, IRI_LON, LINK_BEARING_DEG,
-                    TX_LAT, TX_LON)
+                    TX_LAT, TX_LON, GEOMAG)
 from utils import freq_to_k0, group_delay_ms, destination_point
 
 
@@ -42,33 +42,37 @@ class RefractiveIndex3D:
     Position-dependent refractive index n^2(x, y, z) for 3-D ray tracing.
 
     Background (no y-variation): 2-D IRI Ne(x, z) grid broadcast in y.
-    TID perturbation (Phase 5/6): 3-D δNe(x, y, z, t) with full wave vector
+    TID perturbation (Phase 5/6): 3-D delta_Ne(x,y,z,t) with full wave vector
       including cross-path component ky = k_h * sin(az_TID - az_link).
+    Bubble 3-D (Phase 7): field-aligned Gaussian depletion (Ma et al. 2023).
     Earth-flattening: z_phys = z_cart - (x^2+y^2)/(2*R_E)  (Jones 1975).
 
     Parameters
     ----------
-    Ne_2d      : (Nx, Nz) IRI background electron density [m^-3]
-    x_km       : (Nx,)  horizontal positions along link [km]
-    z_km       : (Nz,)  heights [km]
-    freq_MHz   : float  operating frequency [MHz]
-    tid_params : dict   from config.TID (optional; None = no TID)
-    earth_flat : bool   apply Earth-flattening correction (default True)
+    Ne_2d         : (Nx, Nz) IRI background electron density [m^-3]
+    x_km          : (Nx,)  horizontal positions along link [km]
+    z_km          : (Nz,)  heights [km]
+    freq_MHz      : float  operating frequency [MHz]
+    tid_params    : dict   from config.TID (optional; None = no TID)
+    bubble_3d_params : dict  from config.BUBBLE_3D (optional; None = no 3-D bubble)
+    earth_flat    : bool   apply Earth-flattening correction (default True)
     """
 
     def __init__(self,
-                 Ne_2d:      np.ndarray,
-                 x_km:       np.ndarray,
-                 z_km:       np.ndarray,
-                 freq_MHz:   float = FREQ_MHZ,
-                 tid_params: dict | None = None,
-                 earth_flat: bool = True):
+                 Ne_2d:            np.ndarray,
+                 x_km:             np.ndarray,
+                 z_km:             np.ndarray,
+                 freq_MHz:         float = FREQ_MHZ,
+                 tid_params:       dict | None = None,
+                 bubble_3d_params: dict | None = None,
+                 earth_flat:       bool = True):
         self.freq_MHz   = freq_MHz
         self.Ne_2d      = Ne_2d
         self.x_km       = x_km
         self.z_km       = z_km
         self.earth_flat = earth_flat
         self.tid        = tid_params
+        self.bubble_3d  = bubble_3d_params
 
         freq_Hz  = freq_MHz * 1e6
         fp2_2d   = (K_FP ** 2) * Ne_2d                        # [Hz^2]
@@ -85,6 +89,19 @@ class RefractiveIndex3D:
         self._tid_norms = []
         if self.tid is not None and self.tid.get('enable', False):
             self._tid_norms = self._precompute_tid_norms()
+
+        # Geomagnetic field unit vector in (x=along-link, y=cross-link, z=up)
+        # Used by 3-D field-aligned bubble and Booker-Gordon Es geometry.
+        # B_hat = (cos(I)*cos(D-phi_link), cos(I)*sin(D-phi_link), -sin(I))
+        # I = dip_deg (positive downward), D = decl_deg (positive eastward)
+        _I    = np.radians(GEOMAG.get('dip_deg',  48.7))
+        _D    = np.radians(GEOMAG.get('decl_deg', -5.5))
+        _phi  = np.radians(LINK_BEARING_DEG)
+        _Bx   = np.cos(_I) * np.cos(_D - _phi)   # along-link
+        _By   = np.cos(_I) * np.sin(_D - _phi)   # cross-link
+        _Bz   = -np.sin(_I)                       # upward (negative of downward dip)
+        _norm = np.sqrt(_Bx**2 + _By**2 + _Bz**2)
+        self._B_hat = np.array([_Bx, _By, _Bz]) / max(_norm, 1e-30)
 
     def _precompute_tid_norms(self) -> list:
         """
@@ -190,15 +207,38 @@ class RefractiveIndex3D:
 
         return dNe_total
 
+    def _bubble_3d_depletion(self, x_km: float, y_km: float,
+                              z_phys_km: float) -> float:
+        """
+        Fractional Ne depletion from 3-D field-aligned plasma bubble [0, delta_max].
+        Apply as: Ne_tot = Ne_bg * (1 - frac).
+
+        Gaussian depletion elongated along B_hat (Ma et al. 2023; Martinis 2023):
+          r_perp = r - (r.B_hat)*B_hat   (cross-field component)
+          r_para = r . B_hat             (field-aligned component)
+          frac   = delta_max * exp(-|r_perp|^2/sigma_perp^2 - r_para^2/sigma_para^2)
+        """
+        p       = self.bubble_3d
+        r       = np.array([x_km      - float(p['x0_km']),
+                             y_km      - float(p.get('y0_km', 0.0)),
+                             z_phys_km - float(p['z0_km'])])
+        r_dot_B   = float(np.dot(r, self._B_hat))
+        r_perp    = r - r_dot_B * self._B_hat
+        r_perp_sq = float(np.dot(r_perp, r_perp))
+        frac = float(p['delta_max']) * np.exp(
+            -r_perp_sq / float(p['sigma_perp_km'])**2
+            - r_dot_B**2 / float(p['sigma_para_km'])**2)
+        return float(np.clip(frac, 0.0, 1.0))
+
     def n2(self, x_km: float, y_km: float, z_cart_km: float,
            t: float = 0.0) -> float:
         """
-        n^2_eff(x, y, z_cart) with Earth-flattening and optional 3-D TID.
+        n^2_eff(x, y, z_cart) with Earth-flattening, 3-D TID and 3-D bubble.
 
         Steps:
           1. z_phys = z_cart - (x^2+y^2)/(2*R_E)   [km]
-          2. n^2_plasma from 2-D IRI at (x, z_phys)
-          3. Add TID δNe contribution
+          2. Ne_tot = IRI background + TID delta_Ne - bubble depletion
+          3. n^2_plasma = max(1 - fp^2/f^2, 1e-6)
           4. Apply Earth-flattening factor (1 + z_phys/R_E)^2
         """
         if self.earth_flat:
@@ -207,20 +247,29 @@ class RefractiveIndex3D:
             z_phys = z_cart_km
         z_phys = max(z_phys, float(self.z_km[0]))
 
-        # Base n^2 from IRI
-        pt      = np.array([[x_km, z_phys]])
-        n2_base = float(self._n2_interp(pt)[0])
+        pt = np.array([[x_km, z_phys]])
 
-        # TID perturbation
-        if self.tid is not None and self.tid.get('enable', False):
+        tid_on    = self.tid       is not None and self.tid.get('enable', False)
+        bubble_on = self.bubble_3d is not None and self.bubble_3d.get('enable', False)
+
+        if tid_on or bubble_on:
             freq_Hz = self.freq_MHz * 1e6
             Ne_bg   = float(self._Ne_interp(pt)[0])
-            dNe     = self._tid_delta_Ne(x_km, y_km, z_phys, t)
-            Ne_tot  = max(Ne_bg + dNe, 0.0)
+            Ne_tot  = Ne_bg
+
+            if tid_on:
+                dNe    = self._tid_delta_Ne(x_km, y_km, z_phys, t)
+                Ne_tot = max(Ne_tot + dNe, 0.0)
+
+            if bubble_on:
+                frac   = self._bubble_3d_depletion(x_km, y_km, z_phys)
+                Ne_tot = max(Ne_tot * (1.0 - frac), 0.0)
+
             fp2_tot = (K_FP**2) * Ne_tot
             n2_base = max(1.0 - fp2_tot / freq_Hz**2, 1e-6)
+        else:
+            n2_base = float(self._n2_interp(pt)[0])
 
-        # Earth-flattening correction
         if self.earth_flat:
             ef = (1.0 + z_phys / RE_KM) ** 2
             n2_base *= ef

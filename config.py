@@ -209,6 +209,56 @@ P2P_3D = {
     'clust_tau_ms': 0.05,  # deduplication delay tolerance
 }
 
+# ── Phase 7 upgrades: 3-D flux-tube, field-aligned bubble, BG Es, phase screen
+# ─────────────────────────────────────────────────────────────────────────────
+
+# B4: 3-D field-aligned plasma bubble (Martinis 2023; Ma et al. 2023)
+# Gaussian depletion elongated along the geomagnetic field direction.
+# sigma_perp_km : half-width perpendicular to B  (~50 km, cross-field)
+# sigma_para_km : half-length parallel to B      (~550 km, field-aligned)
+BUBBLE_3D = {
+    'enable':        False,
+    'delta_max':     0.6,        # maximum depletion fraction  (0-1)
+    'x0_km':         600.0,      # bubble centre along link    [km]
+    'y0_km':         0.0,        # bubble centre cross-path    [km]
+    'z0_km':         350.0,      # bubble centre height        [km]
+    'sigma_perp_km': 50.0,       # perpendicular-to-B half-width [km]
+    'sigma_para_km': 550.0,      # parallel-to-B half-length    [km]
+}
+
+# A3: 3-D flux-tube tracer (Coleman 1997/1998 extended to 3-D)
+# delta_az_deg : azimuth perturbation step used to compute F_focus_az [deg]
+TUBE_3D = {
+    'delta_beta_deg': 0.5,       # elevation fan spacing [deg]
+    'delta_az_deg':   0.5,       # azimuth perturbation for F_focus_az [deg]
+    'n_tube_rays':    80,        # max rays in elevation fan
+    'x_tgt_tol_km':  80.0,      # search window half-width around x_tgt [km]
+    'T_pulse_ms':    0.5,        # radar pulse width [ms]
+    'L_cross_km':    100.0,      # cross-range beam footprint [km]
+}
+
+# C4: Booker-Gordon anisotropic Es scatter parameters (Booker 1956)
+# L_perp_m : irregularity scale perpendicular to B  (horizontal drift scale)
+# L_para_m : irregularity scale along B             (field-aligned elongation)
+# p_es     : power-law spectral index for Es (shallower than F-layer p~3)
+ES_BG = {
+    'L_perp_m':  300.0,          # transverse irregularity scale [m]
+    'L_para_m':  10000.0,        # field-aligned scale [m]
+    'p_es':      1.5,            # Es spectral index
+}
+
+# C3/C5: Rino phase screen (C3) and Knepp MPS (C5)
+# N_screen : number of phase screens for MPS (C5 only)
+# n_pts    : transverse grid points per dimension (square grid)
+# dx_m     : transverse grid spacing [m]
+# seed     : random seed for phase screen (None = random)
+PHASE_SCREEN = {
+    'N_screen': 10,              # MPS screen count
+    'n_pts':    512,             # transverse grid size
+    'dx_m':     200.0,           # transverse spacing [m]
+    'seed':     None,            # random seed
+}
+
 # ── Phase 5 upgrades: 3D ionospheric background ──────────────────────────────
 
 # B1: IRI lateral sampling along the link great-circle path
