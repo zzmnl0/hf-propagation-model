@@ -32,7 +32,7 @@ GR        = 1.0            # RX gain (isotropic, linear)
 # Ray tracer interpolates from this grid.
 # Margins on both sides capture ray paths that swing beyond TX/RX.
 BG_X_MIN = -50.0     # [km]
-BG_X_MAX = 1300.0    # [km]
+BG_X_MAX = 2000.0    # [km]
 BG_DX    = 5.0       # [km]
 BG_Z_MIN = 60.0      # [km]  IRI lower limit
 BG_Z_MAX = 600.0     # [km]
@@ -64,6 +64,27 @@ TID = {
     'period_s_list':    [2400.0],         # Period per component [s]
     'lambda_h_km_list': [300.0],          # Horizontal wavelength per component [km]
     'link_bearing_deg': 0.0,              # Link bearing used to project wave vectors onto 2D plane
+}
+
+# ── Multi-direction TID for 3-D scenarios  (Huang & Kelley 1996; Ding et al. 2011) ─
+# Superposition of 3 MSTID components from different propagation azimuths.
+# Dominant SW component (az=0 relative to link) + two oblique components (+/-40 deg).
+# IonosphereModel projects these onto x-z at y=0 for the background Ne snapshot;
+# RefractiveIndex3D evaluates the full 3-D phase at every query point.
+TID_3D = {
+    'enable':           False,
+    'n_components':     3,
+    'az_deg_list':      [0.0,    40.0,   -40.0],   # [deg] relative to link bearing
+    'amplitude_list':   [0.10,   0.05,    0.05],   # dNe/Ne per component
+    'period_s_list':    [2400.0, 2700.0, 2100.0],  # [s]   (typical MSTID range)
+    'lambda_h_km_list': [300.0,  350.0,  250.0],   # [km]
+    # Shared physical parameters (same as TID)
+    'u_para_ms':        50.0,
+    'I_dip_deg':        50.0,
+    'H_km':             60.0,
+    't_s':              0.0,
+    'omega_b_rad_s':    2.0 * np.pi / 1200.0,
+    'link_bearing_deg': 0.0,
 }
 
 # ── Es layer parameters  (Hao et al. 2017) ───────────────────────────────────
@@ -200,11 +221,11 @@ RT_3D = {
 
 # P2P_3D: parameters for 3-D P2P Newton shooter
 P2P_3D = {
-    'n_init':      18,     # number of seed elevations
+    'n_init':      6,      # number of seed elevations (fan-seeded: top-6 by proximity to RX)
     'tol_km':      5.0,    # Newton convergence tolerance [km] (looser than 2-D)
     'd_beta':      0.05,   # Jacobian step: elevation [deg]
     'd_az':        0.10,   # Jacobian step: azimuth   [deg]
-    'max_iter':    20,     # Newton max iterations
+    'max_iter':    12,     # Newton max iterations (early-exit if diverging)
     'clust_h_km':  10.0,   # deduplication height tolerance
     'clust_tau_ms': 0.05,  # deduplication delay tolerance
 }

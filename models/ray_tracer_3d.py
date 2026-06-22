@@ -85,6 +85,43 @@ class RefractiveIndex3D:
             (x_km, z_km), Ne_2d,
             method='linear', bounds_error=False, fill_value=0.0)
 
+        # Precompute vertical Ne gradient for fast _tid_delta_Ne
+        dNe_dz_2d = np.gradient(Ne_2d, z_km * 1e3, axis=1)
+        self._dNe_dz_interp = RegularGridInterpolator(
+            (x_km, z_km), dNe_dz_2d,
+            method='linear', bounds_error=False, fill_value=0.0)
+        # Raw arrays for _bilin2 (also covers Ne and dNe/dz TID lookups)
+        self._Ne_arr     = Ne_2d
+        self._dNe_dz_arr = dNe_dz_2d
+
+        # Precompute Cartesian n2_eff gradients for fast grad_n2() (no TID/bubble):
+        # 3 interp lookups per call vs 6 n2() calls (each with 1 interp each).
+        _X, _Z = np.meshgrid(x_km, z_km, indexing='ij')
+        _Z_phys = np.maximum(_Z - _X**2 / (2.0 * RE_KM), float(z_km[0]))
+        _n2_cart = self._n2_interp(
+            np.column_stack([_X.ravel(), _Z_phys.ravel()])
+        ).reshape(Ne_2d.shape)
+        if earth_flat:
+            _n2_cart = np.maximum(_n2_cart * (1.0 + _Z_phys / RE_KM)**2, 1e-6)
+        _dn2_dx_2d = np.gradient(_n2_cart, x_km, axis=0)
+        _dn2_dz_2d = np.gradient(_n2_cart, z_km, axis=1)
+        self._dn2_dx_interp = RegularGridInterpolator(
+            (x_km, z_km), _dn2_dx_2d,
+            method='linear', bounds_error=False, fill_value=0.0)
+        self._dn2_dz_interp = RegularGridInterpolator(
+            (x_km, z_km), _dn2_dz_2d,
+            method='linear', bounds_error=False, fill_value=0.0)
+        # Fast manual bilinear-interp arrays for tight ray-loop (avoids scipy overhead)
+        self._n2_arr     = n2_2d
+        self._dn2_dx_arr = _dn2_dx_2d
+        self._dn2_dz_arr = _dn2_dz_2d
+        self._x0_km  = float(x_km[0])
+        self._z0_km  = float(z_km[0])
+        self._inv_dx = 1.0 / float(x_km[1] - x_km[0])
+        self._inv_dz = 1.0 / float(z_km[1] - z_km[0])
+        self._nx_m1  = int(len(x_km)) - 1
+        self._nz_m1  = int(len(z_km)) - 1
+
         # Pre-compute TID normalization factors (from 2D cross-section at y=0)
         self._tid_norms = []
         if self.tid is not None and self.tid.get('enable', False):
@@ -171,26 +208,19 @@ class RefractiveIndex3D:
         return norms
 
     def _tid_delta_Ne(self, x_km: float, y_km: float, z_phys_km: float,
-                      t: float = 0.0) -> float:
+                      t: float = 0.0, Ne_bg: float | None = None) -> float:
         """
-        Evaluate total TID δNe(x, y, z, t) [m^-3] using Hooke (1968) formula
+        Evaluate total TID delta_Ne(x, y, z, t) [m^-3] using Hooke (1968) formula
         with 3-D wave vector including cross-path ky component.
+        Ne_bg can be passed from n2() to avoid a duplicate interpolator call.
         """
         if not self._tid_norms:
             return 0.0
 
-        I_rad  = np.deg2rad(float(self.tid.get('I_dip_deg', 50.0)))
-        dz_m   = (self.z_km[1] - self.z_km[0]) * 1e3
-        z_m    = z_phys_km * 1e3
-
-        # Look up local Ne and its vertical gradient from 2-D IRI grid
-        pt    = np.array([[x_km, z_phys_km]])
-        Ne_bg = float(self._Ne_interp(pt)[0])
-        # Finite-difference dNe/dz at this point
-        pt_up  = np.array([[x_km, z_phys_km + dz_m/1e3]])
-        pt_dn  = np.array([[x_km, z_phys_km - dz_m/1e3]])
-        dNe_dz = (float(self._Ne_interp(pt_up)[0]) -
-                  float(self._Ne_interp(pt_dn)[0])) / (2.0 * dz_m)
+        z_m = z_phys_km * 1e3
+        if Ne_bg is None:
+            Ne_bg  = self._bilin2(self._Ne_arr, x_km, z_phys_km)
+        dNe_dz = self._bilin2(self._dNe_dz_arr, x_km, z_phys_km)
 
         dNe_total = 0.0
         x_m = x_km * 1e3
@@ -206,6 +236,37 @@ class RefractiveIndex3D:
             dNe_total += norm * dNe_i
 
         return dNe_total
+
+    def _bilin2(self, arr: np.ndarray, xi: float, zi: float) -> float:
+        """
+        Fast bilinear interpolation on the uniform (x_km, z_km) grid.
+        O(1) index arithmetic; no scipy/numpy allocation overhead.
+        Used in the hot ray-tracing loop (no TID/bubble active path).
+        """
+        ifx = (xi - self._x0_km) * self._inv_dx
+        ifz = (zi - self._z0_km) * self._inv_dz
+        ix0 = int(ifx)
+        iz0 = int(ifz)
+        if ix0 < 0:
+            ix0 = 0
+        elif ix0 >= self._nx_m1:
+            ix0 = self._nx_m1 - 1
+        if iz0 < 0:
+            iz0 = 0
+        elif iz0 >= self._nz_m1:
+            iz0 = self._nz_m1 - 1
+        fx = ifx - ix0
+        fz = ifz - iz0
+        if fx < 0.0: fx = 0.0
+        elif fx > 1.0: fx = 1.0
+        if fz < 0.0: fz = 0.0
+        elif fz > 1.0: fz = 1.0
+        omfx = 1.0 - fx
+        omfz = 1.0 - fz
+        return (arr[ix0,   iz0  ] * omfx * omfz
+              + arr[ix0+1, iz0  ] * fx   * omfz
+              + arr[ix0,   iz0+1] * omfx * fz
+              + arr[ix0+1, iz0+1] * fx   * fz)
 
     def _bubble_3d_depletion(self, x_km: float, y_km: float,
                               z_phys_km: float) -> float:
@@ -247,18 +308,16 @@ class RefractiveIndex3D:
             z_phys = z_cart_km
         z_phys = max(z_phys, float(self.z_km[0]))
 
-        pt = np.array([[x_km, z_phys]])
-
         tid_on    = self.tid       is not None and self.tid.get('enable', False)
         bubble_on = self.bubble_3d is not None and self.bubble_3d.get('enable', False)
 
         if tid_on or bubble_on:
             freq_Hz = self.freq_MHz * 1e6
-            Ne_bg   = float(self._Ne_interp(pt)[0])
+            Ne_bg   = self._bilin2(self._Ne_arr, x_km, z_phys)
             Ne_tot  = Ne_bg
 
             if tid_on:
-                dNe    = self._tid_delta_Ne(x_km, y_km, z_phys, t)
+                dNe    = self._tid_delta_Ne(x_km, y_km, z_phys, t, Ne_bg=Ne_bg)
                 Ne_tot = max(Ne_tot + dNe, 0.0)
 
             if bubble_on:
@@ -268,7 +327,7 @@ class RefractiveIndex3D:
             fp2_tot = (K_FP**2) * Ne_tot
             n2_base = max(1.0 - fp2_tot / freq_Hz**2, 1e-6)
         else:
-            n2_base = float(self._n2_interp(pt)[0])
+            n2_base = self._bilin2(self._n2_arr, x_km, z_phys)
 
         if self.earth_flat:
             ef = (1.0 + z_phys / RE_KM) ** 2
@@ -281,7 +340,14 @@ class RefractiveIndex3D:
                 t: float = 0.0) -> tuple[float, float, float]:
         """
         Central-difference gradient (dn^2/dx, dn^2/dy, dn^2/dz) [km^-1].
+        Fast path (3 interp lookups) when no TID/bubble perturbation is active.
         """
+        tid_on    = self.tid       is not None and self.tid.get('enable', False)
+        bubble_on = self.bubble_3d is not None and self.bubble_3d.get('enable', False)
+        if not tid_on and not bubble_on:
+            return (self._bilin2(self._dn2_dx_arr, x_km, z_cart_km),
+                    0.0,
+                    self._bilin2(self._dn2_dz_arr, x_km, z_cart_km))
         dn2_dx = (self.n2(x_km+dx, y_km,    z_cart_km,    t)
                 - self.n2(x_km-dx, y_km,    z_cart_km,    t)) / (2.0*dx)
         dn2_dy = (self.n2(x_km,    y_km+dy, z_cart_km,    t)

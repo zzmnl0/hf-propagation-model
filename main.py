@@ -1,40 +1,44 @@
 """
 main.py - Entry point for the HF hybrid propagation model.
+All scenarios use 3-D Haselgrove ray tracing (Jones & Stephenson 1975).
+TID irregularities: 3-component multi-direction superposition (config.TID_3D).
+Plasma bubble: 3-D field-aligned Gaussian depletion (config.BUBBLE_3D).
 
 Usage:
     conda run -n pytorch_cpu python main.py
 
 Scenarios (each saves ray_fan_*.png and pd_*.png to output/):
-    run_baseline()       IRI only               -> ray_fan_baseline, pd_baseline
-    run_with_tid()       IRI + TID              -> ray_fan_tid,      pd_tid
-    run_with_es()        IRI + Es               -> ray_fan_es,       pd_es
-    run_with_bubble()    IRI + bubble           -> ray_fan_bubble,   pd_bubble
-    run_full()           TID + Es + bubble      -> ray_fan_full,     pd_full
-                         (full uses P2P mode-path overlay instead of fan)
-    run_radar_baseline() OTH radar monostatic   -> ray_fan_radar,    pd_radar
-    run_with_OX()        IRI + TID + O/X modes -> ray_fan_OX,        pd_OX
-    run_with_spreadf()   IRI + TID + spread-F  -> ray_fan_spreadf,  pd_spreadf
+    run_baseline()        IRI only, 3-D RT
+    run_with_tid()        IRI + 3-dir TID (3-D), lateral deflection plot
+    run_with_es()         IRI + Es, 3-D RT + Hao 2017 power
+    run_with_bubble()     IRI + 3-D field-aligned bubble
+    run_full()            3-dir TID + Es + 3-D bubble (mode paths overlay)
+    run_with_OX()         3-dir TID, 3-D fan; OX power via 2-D AH (pending 3-D port)
+    run_radar_baseline()  OTH radar, 3-D RT
+    run_with_spreadf()    3-dir TID + spread-F, 3-D RT
+    run_tube_radar()      OTH radar, 3-D flux-tube tracer (Coleman 1997/1998)
 
-Test link: TX @ 30N 120E,  RX @ 1169 km,  f = 10 MHz.
+Test link: TX @ 30N 120E, RX @ 1169 km, f = 10 MHz.
 """
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 import matplotlib
-matplotlib.use('Agg')          # non-interactive backend; avoids GUI windows
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
 import config as cfg
 from viz.plot_utils import (print_mode_table, plot_ray_fan, plot_pd_spectrum,
                              save_modes_csv, build_ray_info_text)
+from models.hybrid_model import build_pd_spectrum, identify_main_mode
 
 _OUT = os.path.join(os.path.dirname(__file__), 'output')
 os.makedirs(_OUT, exist_ok=True)
 
 
-# ── Shared helpers ────────────────────────────────────────────────────────────
+# -- Shared helpers -------------------------------------------------------------
 
 def _save(fig, name):
     """Save figure to output/ and close it."""
@@ -43,15 +47,82 @@ def _save(fig, name):
     print("  Saved: output/{}".format(name))
 
 
+# -- 3-D model helpers ----------------------------------------------------------
+
+def _make_n3d(Ne_2d, tid_params=None, bubble_3d_params=None):
+    """Build RefractiveIndex3D with optional TID and 3-D field-aligned bubble."""
+    from models.ray_tracer_3d import RefractiveIndex3D
+    return RefractiveIndex3D(Ne_2d, cfg.BG_X, cfg.BG_Z, cfg.FREQ_MHZ,
+                              tid_params=tid_params,
+                              bubble_3d_params=bubble_3d_params,
+                              earth_flat=True)
+
+
+def _rays3d_to_fan(rays3d):
+    """
+    Project 3-D trajectory_3d (list of [x,y,z,...] states) onto the x-z
+    plane so that plot_ray_fan (which reads r['trajectory']) can display it.
+    """
+    out = []
+    for r in rays3d:
+        r2 = dict(r)
+        r2['trajectory'] = [(float(s[0]), float(s[2])) for s in r['trajectory_3d']]
+        out.append(r2)
+    return out
+
+
+def _add_power_3d(modes, radar_mode=False, sigma_rcs=1.0):
+    """Fill Pr_W, Pr_dBW, delta_tau_ms in 3-D P2P mode dicts."""
+    from utils import free_space_loss_dB, to_dBW, radar_equation_W
+    for m in modes:
+        gp = float(m['group_path_km'])
+        if radar_mode:
+            m['Pr_W'] = radar_equation_W(cfg.PT_W, cfg.GT, cfg.GR,
+                                          cfg.FREQ_MHZ, gp, sigma_rcs)
+        else:
+            L_dB      = free_space_loss_dB(gp, cfg.FREQ_MHZ)
+            m['Pr_W'] = cfg.PT_W * cfg.GT * cfg.GR * 10.0**(-L_dB / 10.0)
+        m['Pr_dBW']       = to_dBW(m['Pr_W'])
+        m['delta_tau_ms'] = 0.0
+
+
+def _extract_es_grazing_3d(ray3d, h_Es_km):
+    """
+    Find grazing angle [deg] at the first upward crossing of h_Es_km in a
+    3-D trajectory (physical height = z_cart - (x^2+y^2)/(2*R_E)).
+    Returns None if no crossing is found.
+    """
+    traj = ray3d['trajectory_3d']
+    for i in range(1, len(traj)):
+        s0, s1 = traj[i-1], traj[i]
+        z0p = float(s0[2]) - (float(s0[0])**2 + float(s0[1])**2) / (2.0*cfg.RE_KM)
+        z1p = float(s1[2]) - (float(s1[0])**2 + float(s1[1])**2) / (2.0*cfg.RE_KM)
+        if z0p < h_Es_km <= z1p:
+            t   = (h_Es_km - z0p) / max(z1p - z0p, 1e-6)
+            kx  = float(s0[3]) + t*(float(s1[3])-float(s0[3]))
+            ky  = float(s0[4]) + t*(float(s1[4])-float(s0[4]))
+            kz  = float(s0[5]) + t*(float(s1[5])-float(s0[5]))
+            km  = max((kx**2 + ky**2 + kz**2)**0.5, 1e-30)
+            return float(np.degrees(np.arcsin(np.clip(abs(kz)/km, 0.0, 1.0))))
+    return None
+
+
+# -- Iono / radar / link helpers ------------------------------------------------
+
 def _make_iono_params(enable_tid=False, enable_es=False,
                        enable_bubble=False, enable_spread_f=False):
-    """Assemble iono_params dict from config defaults with selected flags."""
+    """
+    Assemble iono_params dict.
+    TID always uses multi-direction 3-component TID_3D.
+    Bubble uses 2-D Gaussian (BUBBLE) for IonosphereModel background field;
+    3-D field-aligned depletion is applied via RefractiveIndex3D directly.
+    """
     return {
         'iri_params':      {'dt': cfg.IRI_DT, 'lat': cfg.IRI_LAT, 'lon': cfg.IRI_LON},
-        'tid_params':      {**cfg.TID,      'enable': enable_tid},
-        'es_params':       {**cfg.ES,       'enable': enable_es},
-        'bubble_params':   {**cfg.BUBBLE,   'enable': enable_bubble},
-        'spread_f_params': {**cfg.SPREAD_F, 'enable': enable_spread_f},
+        'tid_params':      {**cfg.TID_3D,     'enable': enable_tid},
+        'es_params':       {**cfg.ES,         'enable': enable_es},
+        'bubble_params':   {**cfg.BUBBLE,     'enable': enable_bubble},
+        'spread_f_params': {**cfg.SPREAD_F,   'enable': enable_spread_f},
     }
 
 
@@ -61,7 +132,6 @@ def _make_radar_params():
 
 
 def _make_tube_radar_params():
-    """Radar params dict with ground sigma0 for flux-tube tracer."""
     return {
         'freq_MHz'        : cfg.FREQ_MHZ,
         'Pt_W'            : cfg.PT_W,
@@ -74,7 +144,6 @@ def _make_tube_radar_params():
 
 
 def _make_link_info():
-    """Build link_info dict for ray-fan annotation (see build_ray_info_text)."""
     return {
         'TX_LAT':   cfg.TX_LAT,
         'TX_LON':   cfg.TX_LON,
@@ -88,19 +157,25 @@ def _make_link_info():
 
 
 def _make_pert_info(enable_tid=False, enable_es=False, enable_bubble=False):
-    """Build pert_info dict listing only the active perturbations."""
+    """Annotation dict for ray-fan plots (active perturbations only)."""
     p = {}
     if enable_tid:
-        p['TID'] = {'amplitude':   cfg.TID['amplitude'],
-                    'lambda_h_km': cfg.TID['lambda_h_km'],
-                    'T_s':         cfg.TID['T_s']}
+        # Show dominant (first) component; n_comp count goes in title
+        p['TID'] = {
+            'amplitude':   cfg.TID_3D['amplitude_list'][0],
+            'lambda_h_km': cfg.TID_3D['lambda_h_km_list'][0],
+            'T_s':         cfg.TID_3D['period_s_list'][0],
+        }
     if enable_es:
         p['Es'] = {'foEs_MHz': cfg.ES['foEs_MHz'],
                    'h_Es_km':  cfg.ES['h_Es_km']}
     if enable_bubble:
-        p['Bubble'] = {'z0_km':     cfg.BUBBLE['z0_km'],
-                       'Lx_km':     cfg.BUBBLE['Lx_km'],
-                       'delta_max': cfg.BUBBLE['delta_max']}
+        # sigma_perp_km serves as cross-field scale, analogous to Lx_km
+        p['Bubble'] = {
+            'z0_km':     cfg.BUBBLE_3D['z0_km'],
+            'Lx_km':     cfg.BUBBLE_3D['sigma_perp_km'],
+            'delta_max': cfg.BUBBLE_3D['delta_max'],
+        }
     return p
 
 
@@ -126,27 +201,11 @@ def _print_summary(summary):
                 p['delta_tau_OX_ms'], p['delta_Pr_OX_dB']))
 
 
-def _add_free_space_power(modes):
-    """
-    Fill Pr_W, Pr_dBW, delta_tau_ms into mode dicts returned by
-    find_all_rays_p2p (which does not compute power).
-    Used in baseline and TID scenarios where HybridModel is not called.
-    """
-    from utils import free_space_loss_dB, to_dBW
-    Pt = cfg.PT_W; Gt = cfg.GT; Gr = cfg.GR
-    for m in modes:
-        L_dB       = free_space_loss_dB(m['group_path_km'], cfg.FREQ_MHZ)
-        m['Pr_W']          = Pt * Gt * Gr * 10.0 ** (-L_dB / 10.0)
-        m['Pr_dBW']        = to_dBW(m['Pr_W'])
-        m['delta_tau_ms']  = 0.0
-
-
-def _plot_mode_paths(modes, Ne_2d, x_km, z_km, title='P2P Mode Paths',
+def _plot_mode_paths(modes, Ne_2d, x_km, z_km, title='3-D Mode Paths',
                      link_info=None, pert_info=None):
     """
-    Plot converged P2P variational paths (one per mode) over the Ne field.
-    Used in run_full() where the full fan is replaced by the P2P solutions.
-    Includes Ne colorbar and parameter annotation box (same style as plot_ray_fan).
+    Mode path overlay on Ne background.
+    Accepts 3-D modes (key 'trajectory_3d') and 2-D P2P modes (key 'points').
     """
     fig, ax = plt.subplots(figsize=(12, 6))
     pcm = ax.pcolormesh(x_km, z_km, Ne_2d.T / 1e10,
@@ -155,9 +214,16 @@ def _plot_mode_paths(modes, Ne_2d, x_km, z_km, title='P2P Mode Paths',
                  fraction=0.046, pad=0.04)
     colors = cm.tab10(np.linspace(0, 1, max(len(modes), 1)))
     for m, c in zip(modes, colors):
-        pts = m['points']          # (n_ctrl+2, 2) control-point array
-        ax.plot(pts[:, 0], pts[:, 1], '-', color=c, lw=1.8,
-                label='{} ({:.2f} ms)'.format(m['label'], m['tau_ms']))
+        if 'trajectory_3d' in m:
+            xs = [float(s[0]) for s in m['trajectory_3d']]
+            zs = [float(s[2]) for s in m['trajectory_3d']]
+        elif 'points' in m:
+            pts = np.asarray(m['points'])
+            xs, zs = pts[:, 0].tolist(), pts[:, 1].tolist()
+        else:
+            continue
+        ax.plot(xs, zs, '-', color=c, lw=1.8,
+                label='{} ({:.2f} ms)'.format(m.get('label', '?'), m['tau_ms']))
     ax.axvline(cfg.TX_POS[0], color='g', lw=1.2, ls='--', label='TX')
     ax.axvline(cfg.RX_POS[0], color='b', lw=1.2, ls='--', label='RX')
     ax.set_xlabel('Distance (km)')
@@ -166,28 +232,24 @@ def _plot_mode_paths(modes, Ne_2d, x_km, z_km, title='P2P Mode Paths',
     ax.legend(fontsize=7, ncol=2, loc='upper left')
     ax.set_title(title)
     ax.grid(True, alpha=0.2)
-
     if link_info is not None:
         info_text = build_ray_info_text(link_info, Ne_2d, z_km, pert_info)
         ax.text(0.99, 0.97, info_text,
-                transform=ax.transAxes,
-                fontsize=6.5, va='top', ha='right',
+                transform=ax.transAxes, fontsize=6.5, va='top', ha='right',
                 family='monospace',
-                bbox=dict(boxstyle='round,pad=0.4',
-                          facecolor='white', alpha=0.88,
-                          edgecolor='gray', lw=0.8))
-
+                bbox=dict(boxstyle='round,pad=0.4', facecolor='white',
+                          alpha=0.88, edgecolor='gray', lw=0.8))
     plt.tight_layout()
     return fig, ax
 
 
-# ── Environment check ─────────────────────────────────────────────────────────
+# -- Environment check ---------------------------------------------------------
 
 def check_env() -> bool:
-    """Verify that all required packages are installed and print versions."""
+    """Verify required packages and print versions."""
     ok = True
     print("=" * 55)
-    print("  Environment check")
+    print("  Environment check (3-D mode)")
     print("=" * 55)
     for name in ('numpy', 'scipy', 'matplotlib', 'iri2016'):
         try:
@@ -200,243 +262,334 @@ def check_env() -> bool:
     print("=" * 55)
     print("  Test link : TX @ {}N {}E".format(cfg.TX_LAT, cfg.TX_LON))
     print("  RX range  : {} km    freq = {} MHz".format(cfg.RX_RANGE, cfg.FREQ_MHZ))
+    print("  TID_3D    : {} components  az={}".format(
+        cfg.TID_3D['n_components'], cfg.TID_3D['az_deg_list']))
     print()
     return ok
 
 
-# ── Scenario 0: IRI baseline ──────────────────────────────────────────────────
+# -- Scenario 0: IRI baseline ---------------------------------------------------
 
 def run_baseline():
-    """IRI background only. Saves ray_fan_baseline.png and pd_baseline.png."""
+    """IRI background only, 3-D ray tracer.
+    Saves ray_fan_baseline.png, pd_baseline.png."""
     from models.ionosphere_model import IonosphereModel
-    from models.ray_tracer import RefractiveIndex, shoot_rays_fan
-    from models.point_to_point import find_all_rays_p2p
-    from models.hybrid_model import build_pd_spectrum, identify_main_mode
+    from models.ray_tracer_3d import shoot_rays_fan_3d
+    from models.point_to_point_3d import find_all_rays_3d
 
     print("=" * 55)
-    print("  Scenario 0: Baseline (IRI only)")
+    print("  Scenario 0: Baseline (IRI only, 3-D RT)")
     print("=" * 55)
 
-    iono = IonosphereModel()
+    iono  = IonosphereModel()
     Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
     print("  Ne field: shape {}  max = {:.2e} m^-3".format(
         Ne_2d.shape, float(Ne_2d.max())))
 
-    n_model = RefractiveIndex(Ne_2d, cfg.BG_X, cfg.BG_Z, cfg.FREQ_MHZ)
+    n3d    = _make_n3d(Ne_2d)
+    rays3d = shoot_rays_fan_3d(cfg.TX_POS, n3d, cfg.FREQ_MHZ, cfg.RT_3D)
+    print("  Ray fan : {} rays".format(len(rays3d)))
 
-    # Ray fan
-    rays = shoot_rays_fan(cfg.TX_POS, n_model)
-    print("  Ray fan : {} rays".format(len(rays)))
-    fig, _ = plot_ray_fan(rays, Ne_2d, cfg.BG_X, cfg.BG_Z,
-                          title='Ray Fan - IRI baseline',
+    fig, _ = plot_ray_fan(_rays3d_to_fan(rays3d), Ne_2d, cfg.BG_X, cfg.BG_Z,
+                          title='Ray Fan - IRI baseline (3-D)',
                           link_info=_make_link_info(),
                           pert_info=_make_pert_info())
     _save(fig, 'ray_fan_baseline.png')
 
-    # P2P modes + free-space power
-    modes = find_all_rays_p2p(cfg.TX_POS, cfg.RX_POS, n_model, cfg.FREQ_MHZ)
-    _add_free_space_power(modes)
+    modes = find_all_rays_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D,
+                             rays_fan=rays3d)
+    _add_power_3d(modes)
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
 
-    # P-D spectrum
     tau_ax, pd = build_pd_spectrum(modes)
     main, _, _ = identify_main_mode(tau_ax, pd, modes)
     _print_main(main)
     csv_path = save_modes_csv('baseline', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
-    fig2, _ = plot_pd_spectrum(tau_ax, pd, modes, title='P-D - IRI baseline')
+    fig2, _ = plot_pd_spectrum(tau_ax, pd, modes, title='P-D - IRI baseline (3-D)')
     _save(fig2, 'pd_baseline.png')
 
 
-# ── Scenario 1: IRI + TID ────────────────────────────────────────────────────
+# -- Scenario 1: IRI + multi-direction TID -------------------------------------
 
 def run_with_tid():
-    """IRI + MSTID. Saves ray_fan_tid.png and pd_tid.png."""
+    """IRI + 3-component multi-direction TID, 3-D ray tracer.
+    Saves ray_fan_tid.png, pd_tid.png, ray_deflect_tid.png."""
     from models.ionosphere_model import IonosphereModel
-    from models.ray_tracer import RefractiveIndex, shoot_rays_fan
-    from models.point_to_point import find_all_rays_p2p
-    from models.hybrid_model import build_pd_spectrum, identify_main_mode
+    from models.ray_tracer_3d import shoot_rays_fan_3d
+    from models.point_to_point_3d import find_all_rays_3d
 
+    n_comp = cfg.TID_3D['n_components']
     print("=" * 55)
-    print("  Scenario 1: IRI + TID")
+    print("  Scenario 1: IRI + {}-dir TID (3-D RT)".format(n_comp))
     print("=" * 55)
+    print("  az_list={} deg  amp_list={}".format(
+        cfg.TID_3D['az_deg_list'], cfg.TID_3D['amplitude_list']))
 
-    iono = IonosphereModel(tid_params={**cfg.TID, 'enable': True})
+    tid_p = {**cfg.TID_3D, 'enable': True}
+    iono  = IonosphereModel(tid_params=tid_p)
     Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
-    n_model = RefractiveIndex(Ne_2d, cfg.BG_X, cfg.BG_Z, cfg.FREQ_MHZ)
 
-    # Ray fan
-    rays = shoot_rays_fan(cfg.TX_POS, n_model)
-    print("  Ray fan : {} rays".format(len(rays)))
-    fig, _ = plot_ray_fan(rays, Ne_2d, cfg.BG_X, cfg.BG_Z,
-                          title='Ray Fan - IRI + TID',
+    # TID baked into Ne_2d; grad_n2() fast path active (no runtime TID interp)
+    n3d    = _make_n3d(Ne_2d)
+    rays3d = shoot_rays_fan_3d(cfg.TX_POS, n3d, cfg.FREQ_MHZ, cfg.RT_3D)
+    print("  Ray fan : {} rays".format(len(rays3d)))
+
+    fig, _ = plot_ray_fan(_rays3d_to_fan(rays3d), Ne_2d, cfg.BG_X, cfg.BG_Z,
+                          title='Ray Fan - IRI + TID ({}-dir, 3-D)'.format(n_comp),
                           link_info=_make_link_info(),
                           pert_info=_make_pert_info(enable_tid=True))
     _save(fig, 'ray_fan_tid.png')
 
-    # P2P modes + free-space power
-    modes = find_all_rays_p2p(cfg.TX_POS, cfg.RX_POS, n_model, cfg.FREQ_MHZ)
-    _add_free_space_power(modes)
+    # Mini-fan with 3-D TID active to show lateral y-deflection (cross-path TID)
+    _rt_mini  = {**cfg.RT_3D, 'n_fan': 7, 'max_steps': 3000}
+    n3d_tid   = _make_n3d(Ne_2d, tid_params=tid_p)
+    rays_mini = shoot_rays_fan_3d(cfg.TX_POS, n3d_tid, cfg.FREQ_MHZ, _rt_mini)
+    betas = [float(r['beta_deg_tx']) for r in rays_mini]
+    ys    = [float(r['y_land_km'])   for r in rays_mini]
+    fig3, ax3 = plt.subplots(figsize=(8, 4))
+    ax3.plot(betas, ys, 'b.-', lw=1.2)
+    ax3.axhline(0.0, color='k', lw=0.6, ls=':')
+    ax3.set_xlabel('TX Elevation (deg)')
+    ax3.set_ylabel('Lateral landing y (km)')
+    ax3.set_title('3-D TID lateral deflection ({}-component)'.format(n_comp))
+    ax3.grid(True, alpha=0.3)
+    plt.tight_layout()
+    _save(fig3, 'ray_deflect_tid.png')
+
+    modes = find_all_rays_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D,
+                             rays_fan=rays3d)
+    _add_power_3d(modes)
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
 
-    # P-D spectrum
     tau_ax, pd = build_pd_spectrum(modes)
     main, _, _ = identify_main_mode(tau_ax, pd, modes)
     _print_main(main)
     csv_path = save_modes_csv('tid', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
-    fig2, _ = plot_pd_spectrum(tau_ax, pd, modes, title='P-D - IRI + TID')
+    fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
+                               title='P-D - IRI + TID ({}-dir, 3-D)'.format(n_comp))
     _save(fig2, 'pd_tid.png')
 
 
-# ── Scenario 2: IRI + Es ─────────────────────────────────────────────────────
+# -- Scenario 2: IRI + Es -------------------------------------------------------
 
 def run_with_es():
-    """
-    IRI + sporadic-E layer. Saves ray_fan_es.png and pd_es.png.
-    Ray fan uses IRI+Es Ne field.  Power computation via HybridPropagationModel.
-    """
+    """IRI + Es layer. 3-D RT + Es three-segment power correction (Hao 2017).
+    Saves ray_fan_es.png, pd_es.png."""
     from models.ionosphere_model import IonosphereModel
-    from models.ray_tracer import RefractiveIndex, shoot_rays_fan
-    from models.hybrid_model import HybridPropagationModel
+    from models.ray_tracer_3d import shoot_rays_fan_3d
+    from models.point_to_point_3d import find_all_rays_3d
+    from models.es_model import EsLayerModel
+    from utils import to_dBW
 
     print("=" * 55)
-    print("  Scenario 2: IRI + Es")
+    print("  Scenario 2: IRI + Es (3-D RT + Hao 2017)")
     print("=" * 55)
     print("  foEs = {} MHz  f = {} MHz  foEs/f = {:.2f}".format(
         cfg.ES['foEs_MHz'], cfg.FREQ_MHZ,
         cfg.ES['foEs_MHz'] / cfg.FREQ_MHZ))
 
-    # Build Ne field for ray fan visualisation
-    iono = IonosphereModel(es_params={**cfg.ES, 'enable': True})
+    iono  = IonosphereModel(es_params={**cfg.ES, 'enable': True})
     Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
-    n_model = RefractiveIndex(Ne_2d, cfg.BG_X, cfg.BG_Z, cfg.FREQ_MHZ)
+    n3d    = _make_n3d(Ne_2d)
+    rays3d = shoot_rays_fan_3d(cfg.TX_POS, n3d, cfg.FREQ_MHZ, cfg.RT_3D)
+    print("  Ray fan : {} rays".format(len(rays3d)))
 
-    rays = shoot_rays_fan(cfg.TX_POS, n_model)
-    print("  Ray fan : {} rays".format(len(rays)))
-    fig, _ = plot_ray_fan(rays, Ne_2d, cfg.BG_X, cfg.BG_Z,
-                          title='Ray Fan - IRI + Es',
+    fig, _ = plot_ray_fan(_rays3d_to_fan(rays3d), Ne_2d, cfg.BG_X, cfg.BG_Z,
+                          title='Ray Fan - IRI + Es (3-D)',
                           link_info=_make_link_info(),
                           pert_info=_make_pert_info(enable_es=True))
     _save(fig, 'ray_fan_es.png')
 
-    # Full power pipeline via HybridPropagationModel (Decision 1: Option A)
-    model = HybridPropagationModel(
-        _make_iono_params(enable_es=True), _make_radar_params())
-    modes, tau_ax, pd, main = model.compute(cfg.TX_POS, cfg.RX_POS)
+    modes = find_all_rays_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D,
+                             rays_fan=rays3d)
+    _add_power_3d(modes)
+
+    es    = EsLayerModel(**{k: v for k, v in cfg.ES.items() if k != 'enable'})
+    h_Es  = float(cfg.ES['h_Es_km'])
+    for m in modes:
+        # Only apply Es correction to rays that reflect at or below Es layer
+        if m.get('h_reflect_km', 999.0) > h_Es + 20.0:
+            continue
+        theta_deg = _extract_es_grazing_3d(m, h_Es)
+        if theta_deg is None:
+            continue
+        theta_rad = np.radians(max(theta_deg, 0.5))
+        es_res    = es.compute_power(m['Pr_W'], cfg.GT, cfg.GR,
+                                      cfg.FREQ_MHZ, m['group_path_km'] / 2.0,
+                                      theta_rad)
+        m['Pr_W']         = float(es_res['Pr_W'])
+        m['Pr_dBW']       = to_dBW(m['Pr_W'])
+        m['delta_tau_ms'] = float(es_res['delta_tau_ms'])
+        m['label']        = 'Es_' + es_res['mode']
+
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
+    tau_ax, pd = build_pd_spectrum(modes)
+    main, _, _ = identify_main_mode(tau_ax, pd, modes)
     _print_main(main)
     csv_path = save_modes_csv('es', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
-
-    fig2, _ = plot_pd_spectrum(tau_ax, pd, modes, title='P-D - IRI + Es')
+    fig2, _ = plot_pd_spectrum(tau_ax, pd, modes, title='P-D - IRI + Es (3-D)')
     _save(fig2, 'pd_es.png')
 
 
-# ── Scenario 3: IRI + plasma bubble ──────────────────────────────────────────
+# -- Scenario 3: IRI + 3-D field-aligned bubble --------------------------------
 
 def run_with_bubble():
-    """
-    IRI + plasma bubble (PE/SSF). Saves ray_fan_bubble.png and pd_bubble.png.
-    Ray fan uses bubble-modified Ne field (depletion visible in background).
-    """
+    """IRI + 3-D field-aligned plasma bubble (Ma et al. 2023, Martinis 2023).
+    Saves ray_fan_bubble.png, pd_bubble.png."""
     from models.ionosphere_model import IonosphereModel
-    from models.ray_tracer import RefractiveIndex, shoot_rays_fan
-    from models.hybrid_model import HybridPropagationModel
+    from models.ray_tracer_3d import shoot_rays_fan_3d
+    from models.point_to_point_3d import find_all_rays_3d
 
     print("=" * 55)
-    print("  Scenario 3: IRI + Plasma Bubble")
+    print("  Scenario 3: IRI + 3-D Field-Aligned Bubble")
     print("=" * 55)
-    print("  Bubble: x0={} km  z0={} km  Lx={} km  Lz={} km  dmax={}".format(
-        cfg.BUBBLE['x0_km'], cfg.BUBBLE['z0_km'],
-        cfg.BUBBLE['Lx_km'], cfg.BUBBLE['Lz_km'], cfg.BUBBLE['delta_max']))
+    b = cfg.BUBBLE_3D
+    print("  x0={} km  z0={} km  s_perp={} km  s_para={} km  dmax={}".format(
+        b['x0_km'], b['z0_km'], b['sigma_perp_km'], b['sigma_para_km'], b['delta_max']))
 
-    # Build Ne field for ray fan visualisation (bubble-modified background)
-    iono = IonosphereModel(bubble_params={**cfg.BUBBLE, 'enable': True})
+    # 2-D Gaussian bubble in IonosphereModel for Ne background visualisation;
+    # 3-D field-aligned depletion applied by RefractiveIndex3D during ray tracing.
+    iono   = IonosphereModel(bubble_params={**cfg.BUBBLE, 'enable': True})
     Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
-    n_model = RefractiveIndex(Ne_2d, cfg.BG_X, cfg.BG_Z, cfg.FREQ_MHZ)
 
-    rays = shoot_rays_fan(cfg.TX_POS, n_model)
-    print("  Ray fan : {} rays".format(len(rays)))
-    fig, _ = plot_ray_fan(rays, Ne_2d, cfg.BG_X, cfg.BG_Z,
-                          title='Ray Fan - IRI + Plasma Bubble',
+    bub3d_p = {**cfg.BUBBLE_3D, 'enable': True}
+    n3d     = _make_n3d(Ne_2d, bubble_3d_params=bub3d_p)
+    rays3d  = shoot_rays_fan_3d(cfg.TX_POS, n3d, cfg.FREQ_MHZ, cfg.RT_3D)
+    print("  Ray fan : {} rays".format(len(rays3d)))
+
+    fig, _ = plot_ray_fan(_rays3d_to_fan(rays3d), Ne_2d, cfg.BG_X, cfg.BG_Z,
+                          title='Ray Fan - IRI + 3-D Field-Aligned Bubble',
                           link_info=_make_link_info(),
                           pert_info=_make_pert_info(enable_bubble=True))
     _save(fig, 'ray_fan_bubble.png')
 
-    # Full power pipeline via HybridPropagationModel (PE/SSF for bubble)
-    model = HybridPropagationModel(
-        _make_iono_params(enable_bubble=True), _make_radar_params())
-    modes, tau_ax, pd, main = model.compute(cfg.TX_POS, cfg.RX_POS)
+    modes = find_all_rays_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D,
+                             rays_fan=rays3d)
+    _add_power_3d(modes)
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
+
+    tau_ax, pd = build_pd_spectrum(modes)
+    main, _, _ = identify_main_mode(tau_ax, pd, modes)
     _print_main(main)
     csv_path = save_modes_csv('bubble', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
-
     fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
-                               title='P-D - IRI + Plasma Bubble')
+                               title='P-D - IRI + 3-D Bubble')
     _save(fig2, 'pd_bubble.png')
 
 
-# ── Scenario 4: Full model ────────────────────────────────────────────────────
+# -- Scenario 4: Full model -----------------------------------------------------
 
 def run_full():
-    """
-    IRI + TID + Es + bubble. Saves ray_fan_full.png and pd_full.png.
-    ray_fan_full shows P2P mode paths (Decision 2: Option C) so each
-    labelled mode is individually visible against the composite Ne field.
-    """
-    from models.hybrid_model import HybridPropagationModel
+    """Full 3-D model: 3-dir TID + Es + 3-D field-aligned bubble.
+    Saves ray_fan_full.png (mode paths), pd_full.png."""
+    from models.ionosphere_model import IonosphereModel
+    from models.ray_tracer_3d import shoot_rays_fan_3d
+    from models.point_to_point_3d import find_all_rays_3d
+    from models.es_model import EsLayerModel
+    from utils import to_dBW
 
+    n_comp = cfg.TID_3D['n_components']
     print("=" * 55)
-    print("  Scenario 4: Full model (TID + Es + Bubble)")
+    print("  Scenario 4: Full 3-D ({}-dir TID + Es + Bubble)".format(n_comp))
     print("=" * 55)
 
-    model = HybridPropagationModel(
-        _make_iono_params(enable_tid=True, enable_es=True, enable_bubble=True),
-        _make_radar_params())
-    modes, tau_ax, pd, main = model.compute(cfg.TX_POS, cfg.RX_POS)
+    tid_p   = {**cfg.TID_3D,   'enable': True}
+    bub3d_p = {**cfg.BUBBLE_3D,'enable': True}
+
+    iono = IonosphereModel(
+        tid_params=tid_p,
+        es_params={**cfg.ES,    'enable': True},
+        bubble_params={**cfg.BUBBLE, 'enable': True})
+    Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
+
+    n3d          = _make_n3d(Ne_2d, bubble_3d_params=bub3d_p)
+    _rays_seed   = shoot_rays_fan_3d(cfg.TX_POS, n3d, cfg.FREQ_MHZ, cfg.RT_3D)
+    modes  = find_all_rays_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D,
+                               rays_fan=_rays_seed)
+    _add_power_3d(modes)
+
+    # Es three-segment correction
+    es   = EsLayerModel(**{k: v for k, v in cfg.ES.items() if k != 'enable'})
+    h_Es = float(cfg.ES['h_Es_km'])
+    for m in modes:
+        if m.get('h_reflect_km', 999.0) > h_Es + 20.0:
+            continue
+        theta_deg = _extract_es_grazing_3d(m, h_Es)
+        if theta_deg is None:
+            continue
+        theta_rad = np.radians(max(theta_deg, 0.5))
+        es_res = es.compute_power(m['Pr_W'], cfg.GT, cfg.GR,
+                                   cfg.FREQ_MHZ, m['group_path_km'] / 2.0,
+                                   theta_rad)
+        m['Pr_W']         = float(es_res['Pr_W'])
+        m['Pr_dBW']       = to_dBW(m['Pr_W'])
+        m['delta_tau_ms'] = float(es_res['delta_tau_ms'])
+        m['label']        = 'Es_' + es_res['mode']
+
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
+    tau_ax, pd = build_pd_spectrum(modes)
+    main, _, _ = identify_main_mode(tau_ax, pd, modes)
     _print_main(main)
     csv_path = save_modes_csv('full', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
 
-    # Mode-path overlay: rebuild Ne from the model's iono (all effects active)
-    Ne_2d, _ = model.iono.build_Ne_field(model.x_array, model.z_array)
+    # Mode-path overlay on full Ne background
     fig, _ = _plot_mode_paths(
-        modes, Ne_2d, model.x_array, model.z_array,
-        title='P2P Mode Paths - Full model (TID + Es + Bubble)',
+        modes, Ne_2d, cfg.BG_X, cfg.BG_Z,
+        title='3-D Mode Paths - {}-dir TID + Es + Bubble'.format(n_comp),
         link_info=_make_link_info(),
-        pert_info=_make_pert_info(enable_tid=True, enable_es=True,
-                                   enable_bubble=True))
+        pert_info=_make_pert_info(enable_tid=True, enable_es=True, enable_bubble=True))
     _save(fig, 'ray_fan_full.png')
 
     fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
-                               title='P-D - Full model (TID + Es + Bubble)')
+                               title='P-D - Full 3-D ({}-dir TID + Es + Bubble)'.format(n_comp))
     _save(fig2, 'pd_full.png')
 
 
-# ── Scenario OX: O/X wave splitting ──────────────────────────────────────────
+# -- Scenario OX: O/X splitting ------------------------------------------------
 
 def run_with_OX():
     """
-    IRI + TID with Appleton-Hartree O/X magnetoionic splitting.
-    Each isotropic mode splits into *_O and *_X variants with different tau.
-    Saves ray_fan_OX.png, pd_OX.png, modes_OX.csv.
+    IRI + TID with Appleton-Hartree O/X mode splitting.
+    Ray fan: 3-D Haselgrove (isotropic n^2).
+    P-D / modes: 2-D AH via HybridPropagationModel.
+    NOTE: Full AH magneto-ionic n^2 is not yet ported to RefractiveIndex3D.
+    Saves ray_fan_OX.png, pd_OX.png.
     """
+    from models.ionosphere_model import IonosphereModel
+    from models.ray_tracer_3d import shoot_rays_fan_3d
     from models.hybrid_model import HybridPropagationModel
 
+    n_comp = cfg.TID_3D['n_components']
     print("=" * 55)
-    print("  Scenario OX: IRI + TID + O/X mode splitting")
+    print("  Scenario OX: {}-dir TID + O/X (3-D fan / 2-D AH modes)".format(n_comp))
     print("=" * 55)
     print("  fH = {} MHz   dip = {} deg   decl = {} deg".format(
         cfg.GEOMAG['fH_MHz'], cfg.GEOMAG['dip_deg'], cfg.GEOMAG['decl_deg']))
 
+    # 3-D ray fan (isotropic geometry)
+    tid_p = {**cfg.TID_3D, 'enable': True}
+    iono  = IonosphereModel(tid_params=tid_p)
+    Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
+    n3d    = _make_n3d(Ne_2d)
+    rays3d = shoot_rays_fan_3d(cfg.TX_POS, n3d, cfg.FREQ_MHZ, cfg.RT_3D)
+    print("  Ray fan : {} rays".format(len(rays3d)))
+    fig, _ = plot_ray_fan(_rays3d_to_fan(rays3d), Ne_2d, cfg.BG_X, cfg.BG_Z,
+                          title='Ray Fan - O/X (3-D isotropic + {}-dir TID)'.format(n_comp),
+                          link_info=_make_link_info(),
+                          pert_info=_make_pert_info(enable_tid=True))
+    _save(fig, 'ray_fan_OX.png')
+
+    # OX mode splitting via 2-D Appleton-Hartree (AH not yet in RefractiveIndex3D)
     model = HybridPropagationModel(
         _make_iono_params(enable_tid=True),
         _make_radar_params(),
@@ -447,152 +600,153 @@ def run_with_OX():
     _print_main(main)
     csv_path = save_modes_csv('OX', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
-
-    # Mode-path overlay (shows O and X paths side by side)
-    Ne_2d, _ = model.iono.build_Ne_field(model.x_array, model.z_array)
-    fig, _ = _plot_mode_paths(
-        modes, Ne_2d, model.x_array, model.z_array,
-        title='P2P Mode Paths - O/X splitting (IRI + TID)',
-        link_info=_make_link_info(),
-        pert_info=_make_pert_info(enable_tid=True))
-    _save(fig, 'ray_fan_OX.png')
-
     fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
-                               title='P-D - O/X mode splitting (IRI + TID)')
+                               title='P-D - O/X splitting ({}-dir TID, 2-D AH)'.format(n_comp))
     _save(fig2, 'pd_OX.png')
 
 
-# ── Scenario R: OTH radar baseline ───────────────────────────────────────────
+# -- Scenario R: OTH radar baseline -------------------------------------------
 
 def run_radar_baseline():
-    """
-    OTH radar mode: monostatic, IRI background only, target at 1169 km.
-    Power via radar equation (Pr ~ sigma/R^4) instead of Friis.
-    Saves ray_fan_radar.png, pd_radar.png, modes_radar.csv.
-    """
+    """OTH radar monostatic, IRI background, 3-D RT.
+    Saves ray_fan_radar.png, pd_radar.png."""
     from models.ionosphere_model import IonosphereModel
-    from models.ray_tracer import RefractiveIndex, shoot_rays_fan
-    from models.hybrid_model import HybridPropagationModel
+    from models.ray_tracer_3d import shoot_rays_fan_3d
+    from models.point_to_point_3d import find_all_rays_3d
 
     print("=" * 55)
-    print("  Scenario R: OTH Radar baseline (monostatic)")
+    print("  Scenario R: OTH Radar baseline (3-D RT)")
     print("=" * 55)
     print("  sigma_rcs = {} m^2   bearing = {} deg".format(
         cfg.RADAR['sigma_rcs_m2'], cfg.LINK_BEARING_DEG))
 
-    radar_rp = {**_make_radar_params(),
-                'sigma_rcs_m2': cfg.RADAR['sigma_rcs_m2'],
-                'bearing_deg':  cfg.LINK_BEARING_DEG}
-
-    # Ray fan (geometry visualisation — same ionosphere as baseline)
-    iono = IonosphereModel()
+    iono   = IonosphereModel()
     Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
-    n_model = RefractiveIndex(Ne_2d, cfg.BG_X, cfg.BG_Z, cfg.FREQ_MHZ)
-    rays = shoot_rays_fan(cfg.TX_POS, n_model)
-    print("  Ray fan : {} rays".format(len(rays)))
-    fig, _ = plot_ray_fan(rays, Ne_2d, cfg.BG_X, cfg.BG_Z,
-                          title='Ray Fan - OTH Radar (monostatic, IRI baseline)',
+    n3d    = _make_n3d(Ne_2d)
+    rays3d = shoot_rays_fan_3d(cfg.TX_POS, n3d, cfg.FREQ_MHZ, cfg.RT_3D)
+    print("  Ray fan : {} rays".format(len(rays3d)))
+    fig, _ = plot_ray_fan(_rays3d_to_fan(rays3d), Ne_2d, cfg.BG_X, cfg.BG_Z,
+                          title='Ray Fan - OTH Radar (3-D)',
                           link_info=_make_link_info(),
                           pert_info=_make_pert_info())
     _save(fig, 'ray_fan_radar.png')
 
-    # Radar model: radar equation replaces Friis
-    model = HybridPropagationModel(
-        _make_iono_params(), radar_rp, radar_mode=True)
-    modes, tau_ax, pd, main = model.compute(cfg.TX_POS, cfg.RX_POS)
+    modes = find_all_rays_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D,
+                             rays_fan=rays3d)
+    _add_power_3d(modes, radar_mode=True,
+                  sigma_rcs=float(cfg.RADAR['sigma_rcs_m2']))
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
+
+    tau_ax, pd = build_pd_spectrum(modes)
+    main, _, _ = identify_main_mode(tau_ax, pd, modes)
     _print_main(main)
     csv_path = save_modes_csv('radar', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
-
     fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
-                               title='P-D - OTH Radar baseline (monostatic)')
+                               title='P-D - OTH Radar (3-D)')
     _save(fig2, 'pd_radar.png')
 
 
-# ── Scenario SF: Spread-F ────────────────────────────────────────────────────
+# -- Scenario SF: Spread-F ------------------------------------------------------
 
 def run_with_spreadf():
-    """
-    IRI + TID + spread-F Rino (1979) phase screen.
-    Saves ray_fan_spreadf.png, pd_spreadf.png, modes_spreadf.csv.
-    """
-    from models.hybrid_model import HybridPropagationModel
+    """IRI + 3-dir TID + spread-F (Rino 1979 Ne perturbation), 3-D RT.
+    Saves ray_fan_spreadf.png (mode paths), pd_spreadf.png."""
+    from models.ionosphere_model import IonosphereModel
+    from models.ray_tracer_3d import shoot_rays_fan_3d
+    from models.point_to_point_3d import find_all_rays_3d
 
+    n_comp = cfg.TID_3D['n_components']
     print("=" * 55)
-    print("  Scenario SF: IRI + TID + Spread-F")
+    print("  Scenario SF: {}-dir TID + Spread-F (3-D RT)".format(n_comp))
     print("=" * 55)
     sf = cfg.SPREAD_F
     print("  Cs={} p={} h_screen={} km L0={} km".format(
         sf['Cs'], sf['p'], sf['h_screen_km'], sf['L0_km']))
 
-    model = HybridPropagationModel(
-        _make_iono_params(enable_tid=True, enable_spread_f=True),
-        _make_radar_params())
-    modes, tau_ax, pd, main = model.compute(cfg.TX_POS, cfg.RX_POS)
+    tid_p = {**cfg.TID_3D, 'enable': True}
+    iono  = IonosphereModel(tid_params=tid_p,
+                             spread_f_params={**cfg.SPREAD_F, 'enable': True})
+    Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
+    n3d          = _make_n3d(Ne_2d)
+    _rays_seed   = shoot_rays_fan_3d(cfg.TX_POS, n3d, cfg.FREQ_MHZ, cfg.RT_3D)
+    modes  = find_all_rays_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D,
+                               rays_fan=_rays_seed)
+    _add_power_3d(modes)
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
+
+    tau_ax, pd = build_pd_spectrum(modes)
+    main, _, _ = identify_main_mode(tau_ax, pd, modes)
     _print_main(main)
     csv_path = save_modes_csv('spreadf', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
 
-    Ne_2d, _ = model.iono.build_Ne_field(model.x_array, model.z_array)
-    fig, _ = _plot_mode_paths(
-        modes, Ne_2d, model.x_array, model.z_array,
-        title='P2P Mode Paths - IRI + TID + Spread-F (Rino 1979)',
-        link_info=_make_link_info(),
-        pert_info=_make_pert_info(enable_tid=True))
+    fig, _ = _plot_mode_paths(modes, Ne_2d, cfg.BG_X, cfg.BG_Z,
+                               title='3-D Mode Paths - {}-dir TID + Spread-F'.format(n_comp),
+                               link_info=_make_link_info(),
+                               pert_info=_make_pert_info(enable_tid=True))
     _save(fig, 'ray_fan_spreadf.png')
 
     fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
-                               title='P-D - IRI + TID + Spread-F')
+                               title='P-D - {}-dir TID + Spread-F (3-D)'.format(n_comp))
     _save(fig2, 'pd_spreadf.png')
 
 
-# ── Scenario TR: OTH radar flux-tube tracer ───────────────────────────────────
+# -- Scenario TR: 3-D flux-tube OTH radar --------------------------------------
 
 def run_tube_radar():
-    """
-    OTH radar tube tracer scenario (Coleman 1997/1998 physical P-D spectrum).
-    Uses TubeRayTracer instead of radar equation approximation.
-    Outputs focusing factor and delay spread per mode.
-    Saves pd_tube_radar.png, modes_tube_radar.csv.
-    """
-    from models.hybrid_model import HybridPropagationModel
+    """OTH radar 3-D flux-tube tracer (TubeRayTracer3D, Coleman 1997/1998).
+    Saves pd_tube_radar.png, modes_tube_radar.csv."""
+    from models.ionosphere_model import IonosphereModel
+    from models.tube_tracer_3d import TubeRayTracer3D
+    from models.point_to_point_3d import classify_mode_3d
 
     print("=" * 55)
-    print("  Scenario TR: OTH Radar Tube Tracer")
+    print("  Scenario TR: OTH Radar 3-D Tube Tracer")
     print("=" * 55)
     print("  target_range={} km  sigma0={} dBsm".format(
-        cfg.RADAR['target_range_km'],
-        cfg.RADAR['sigma0_ground_dB']))
+        cfg.RADAR['target_range_km'], cfg.RADAR['sigma0_ground_dB']))
 
-    model = HybridPropagationModel(
-        _make_iono_params(),
-        _make_tube_radar_params(),
-        radar_mode=True,
-        tube_mode=True)
+    iono   = IonosphereModel()
+    Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
+    n3d    = _make_n3d(Ne_2d)
 
-    modes, tau_ax, pd, main = model.compute(cfg.TX_POS, cfg.RX_POS)
+    sigma0 = 10.0**(float(cfg.RADAR['sigma0_ground_dB']) / 10.0)
+    tracer = TubeRayTracer3D(n3d, cfg.FREQ_MHZ,
+                              tube_params=cfg.TUBE_3D, rt_params=cfg.RT_3D)
+    modes  = tracer.compute(cfg.TX_POS,
+                             float(cfg.RADAR['target_range_km']),
+                             Pt_W=cfg.PT_W, Gt=cfg.GT, Gr=cfg.GR, sigma0=sigma0)
+
+    # Add label and delta_tau_ms for table / CSV compatibility
+    for m in modes:
+        if 'label' not in m:
+            m['label'] = classify_mode_3d(m)
+        m['delta_tau_ms'] = float(m.get('tau_spread_ms', 0.0))
 
     print("  Tube modes: {}".format(len(modes)))
     print_mode_table(modes)
+    if modes:
+        best = modes[0]
+        print("  Best: tau={:.3f}ms  F_focus_3d={:.3f}  A_tube={:.1f} km^2".format(
+            best['tau_ms'], best.get('F_focus_3d', 0.0), best.get('A_tube_km2', 0.0)))
+
+    tau_ax, pd = build_pd_spectrum(modes, method='tube')
+    main, _, ms = identify_main_mode(tau_ax, pd, modes)
     _print_main(main)
+    if ms:
+        _print_summary(ms)
 
-    if hasattr(model, 'mode_summary'):
-        _print_summary(model.mode_summary)
-
-    csv_path = save_modes_csv('tube_radar', modes, tau_ax, pd,
-                               cfg.FREQ_MHZ, _OUT)
+    csv_path = save_modes_csv('tube_radar', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
+    fig, _ = plot_pd_spectrum(tau_ax, pd, modes,
+                               title='P-D - OTH Radar 3-D Tube Tracer')
+    _save(fig, 'pd_tube_radar.png')
 
-    fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
-                                title='P-D - OTH Radar Tube Tracer')
-    _save(fig2, 'pd_tube_radar.png')
 
-
-# ── Entry point ───────────────────────────────────────────────────────────────
+# -- Entry point ---------------------------------------------------------------
 
 if __name__ == '__main__':
     if not check_env():

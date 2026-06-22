@@ -272,9 +272,9 @@ class IonosphereModel:
 
         # Multi-component: each component projected onto link direction (2-D plane)
         az_list  = p.get('az_deg_list',      [0.0]           * n_comp)
-        amp_list = p.get('amplitude_list',   [p['amplitude']] * n_comp)
-        T_list   = p.get('period_s_list',    [p['T_s']]       * n_comp)
-        lam_list = p.get('lambda_h_km_list', [p['lambda_h_km']] * n_comp)
+        amp_list = p['amplitude_list'] if 'amplitude_list' in p else [float(p.get('amplitude', 0.1))] * n_comp
+        T_list   = p['period_s_list']    if 'period_s_list'    in p else [float(p.get('T_s',       2400.0))] * n_comp
+        lam_list = p['lambda_h_km_list'] if 'lambda_h_km_list' in p else [float(p.get('lambda_h_km', 300.0))] * n_comp
         link_az  = float(p.get('link_bearing_deg', LINK_BEARING_DEG))
 
         Ne_out = Ne_2d.copy()
