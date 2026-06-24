@@ -557,26 +557,115 @@ def run_full():
 
 # -- Scenario OX: O/X splitting ------------------------------------------------
 
+def _apply_OX_split_3d(modes_iso, Ne_2d, n3d):
+    """
+    Post-process 3-D isotropic modes into O/X pairs via Appleton-Hartree.
+
+    For each mode the 3-D trajectory is used as-is (isotropic path approximation).
+    O and X group paths are computed by integrating ds/n_{O,X} along that path,
+    where n_{O,X}(x,z) is the AH phase index from RefractiveIndexAH.n_batch().
+
+    Group path formula (Budden 1961, plasma approximation):
+        P'_{O,X} = integral(ds / n_{O,X})   ->  tau_{O,X} = P'_{O,X} / c
+
+    Limitation: O and X rays physically follow different paths; proper 3-D AH
+    ray tracing (separate Haselgrove trajectories per mode) is a future upgrade.
+    """
+    from models.ray_tracer import RefractiveIndexAH
+    from models.point_to_point_3d import classify_mode_3d
+
+    nm_O = RefractiveIndexAH(Ne_2d, cfg.BG_X, cfg.BG_Z, cfg.FREQ_MHZ,
+                              wave_mode='O', geomag=cfg.GEOMAG)
+    nm_X = RefractiveIndexAH(Ne_2d, cfg.BG_X, cfg.BG_Z, cfg.FREQ_MHZ,
+                              wave_mode='X', geomag=cfg.GEOMAG)
+
+    result = []
+    for m in modes_iso:
+        traj = m['trajectory_3d']
+        n_seg = len(traj) - 1
+        if n_seg < 1:
+            continue
+
+        # Collect midpoint (x, z_phys) for every segment — one vectorized call each
+        xs   = np.empty(n_seg)
+        zps  = np.empty(n_seg)
+        segs = np.empty(n_seg)
+
+        for i in range(n_seg):
+            s0, s1 = traj[i], traj[i + 1]
+            x_m  = (float(s0[0]) + float(s1[0])) * 0.5
+            z_cm = (float(s0[2]) + float(s1[2])) * 0.5
+            xs[i]   = x_m
+            zps[i]  = max(z_cm - x_m**2 / (2.0 * cfg.RE_KM), float(cfg.BG_Z[0]))
+            dx = float(s1[0]) - float(s0[0])
+            dy = float(s1[1]) - float(s0[1])
+            dz = float(s1[2]) - float(s0[2])
+            segs[i] = (dx*dx + dy*dy + dz*dz) ** 0.5
+
+        pts = np.column_stack([xs, zps])          # (n_seg, 2)
+        n_O_arr = nm_O.n_batch(pts)               # AH phase index (not n^2)
+        n_X_arr = nm_X.n_batch(pts)
+
+        n_O_arr = np.maximum(n_O_arr, 1e-4)
+        n_X_arr = np.maximum(n_X_arr, 1e-4)
+
+        # Group paths
+        gp_O = float(np.sum(segs / n_O_arr))
+        gp_X = float(np.sum(segs / n_X_arr))
+
+        # Isotropic reference group path from Cartesian n2 array
+        z_c_arr = np.array([(float(traj[i][2]) + float(traj[i+1][2])) * 0.5
+                             for i in range(n_seg)])
+        n_iso_arr = np.sqrt(np.maximum(
+            np.array([n3d._bilin2(n3d._n2_arr, xs[i], z_c_arr[i])
+                      for i in range(n_seg)]), 1e-8))
+        gp_iso = float(np.sum(segs / np.maximum(n_iso_arr, 1e-4)))
+
+        # Correction ratios
+        ratio_O = gp_O / max(gp_iso, 1.0)
+        ratio_X = gp_X / max(gp_iso, 1.0)
+
+        # O-mode copy
+        m_O = dict(m)
+        m_O['wave_mode']     = 'O'
+        m_O['tau_ms']        = float(m['tau_ms']) * ratio_O
+        m_O['group_path_km'] = float(m['group_path_km']) * ratio_O
+        m_O['label']         = classify_mode_3d(m_O)
+        result.append(m_O)
+
+        # X-mode copy — skip only if X is evanescent over most of path
+        x_valid = float(np.mean(n_X_arr > 1e-3))
+        if x_valid > 0.5:
+            m_X = dict(m)
+            m_X['wave_mode']     = 'X'
+            m_X['tau_ms']        = float(m['tau_ms']) * ratio_X
+            m_X['group_path_km'] = float(m['group_path_km']) * ratio_X
+            m_X['label']         = classify_mode_3d(m_X)
+            result.append(m_X)
+
+    result.sort(key=lambda r: r['tau_ms'])
+    return result
+
+
 def run_with_OX():
     """
-    IRI + TID with Appleton-Hartree O/X mode splitting.
-    Ray fan: 3-D Haselgrove (isotropic n^2).
-    P-D / modes: 2-D AH via HybridPropagationModel.
-    NOTE: Full AH magneto-ionic n^2 is not yet ported to RefractiveIndex3D.
-    Saves ray_fan_OX.png, pd_OX.png.
+    IRI + TID + Appleton-Hartree O/X splitting, full 3-D RT.
+    Fan and P2P: 3-D Haselgrove (isotropic n^2).
+    O/X correction: post-processing via RefractiveIndexAH group-path integration
+    along 3-D isotropic trajectories.
+    Saves ray_fan_OX.png, pd_OX.png, modes_OX.csv.
     """
     from models.ionosphere_model import IonosphereModel
     from models.ray_tracer_3d import shoot_rays_fan_3d
-    from models.hybrid_model import HybridPropagationModel
+    from models.point_to_point_3d import find_all_rays_3d
 
     n_comp = cfg.TID_3D['n_components']
     print("=" * 55)
-    print("  Scenario OX: {}-dir TID + O/X (3-D fan / 2-D AH modes)".format(n_comp))
+    print("  Scenario OX: {}-dir TID + O/X (3-D RT + AH post-proc)".format(n_comp))
     print("=" * 55)
     print("  fH = {} MHz   dip = {} deg   decl = {} deg".format(
         cfg.GEOMAG['fH_MHz'], cfg.GEOMAG['dip_deg'], cfg.GEOMAG['decl_deg']))
 
-    # 3-D ray fan (isotropic geometry)
     tid_p = {**cfg.TID_3D, 'enable': True}
     iono  = IonosphereModel(tid_params=tid_p)
     Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
@@ -584,24 +673,28 @@ def run_with_OX():
     rays3d = shoot_rays_fan_3d(cfg.TX_POS, n3d, cfg.FREQ_MHZ, cfg.RT_3D)
     print("  Ray fan : {} rays".format(len(rays3d)))
     fig, _ = plot_ray_fan(_rays3d_to_fan(rays3d), Ne_2d, cfg.BG_X, cfg.BG_Z,
-                          title='Ray Fan - O/X (3-D isotropic + {}-dir TID)'.format(n_comp),
+                          title='Ray Fan - O/X (3-D + {}-dir TID)'.format(n_comp),
                           link_info=_make_link_info(),
                           pert_info=_make_pert_info(enable_tid=True))
     _save(fig, 'ray_fan_OX.png')
 
-    # OX mode splitting via 2-D Appleton-Hartree (AH not yet in RefractiveIndex3D)
-    model = HybridPropagationModel(
-        _make_iono_params(enable_tid=True),
-        _make_radar_params(),
-        geomag_params={**cfg.GEOMAG, 'enable_OX': True})
-    modes, tau_ax, pd, main = model.compute(cfg.TX_POS, cfg.RX_POS)
+    # 3-D P2P for isotropic modes (same pipeline as all other 3-D scenarios)
+    modes_iso = find_all_rays_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D,
+                                  rays_fan=rays3d)
+    _add_power_3d(modes_iso)
+
+    # Appleton-Hartree O/X post-processing on 3-D trajectories
+    modes = _apply_OX_split_3d(modes_iso, Ne_2d, n3d)
+
     print("  P2P modes: {} (expect ~2x isotropic count)".format(len(modes)))
     print_mode_table(modes)
+    tau_ax, pd = build_pd_spectrum(modes)
+    main, _, _ = identify_main_mode(tau_ax, pd, modes)
     _print_main(main)
     csv_path = save_modes_csv('OX', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
     fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
-                               title='P-D - O/X splitting ({}-dir TID, 2-D AH)'.format(n_comp))
+                               title='P-D - O/X (3-D + AH post-proc, {}-dir TID)'.format(n_comp))
     _save(fig2, 'pd_OX.png')
 
 
