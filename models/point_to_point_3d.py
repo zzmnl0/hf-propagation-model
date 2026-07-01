@@ -3,7 +3,7 @@ Module: 3-D point-to-point ray solver (two-parameter Newton shooting).
 
 Finds rays that travel from TX (x=0, y=0, z=0) to RX (x=x_rx, y=0, z=0)
 by iterating over launch (elevation beta, azimuth az) using Newton's method
-with a 2x2 Jacobian computed via central differences.
+with a 2x2 Jacobian computed via forward or central finite differences.
 
 Algorithm:
   1. Seed elevations from a coarse scan (same betas as 2-D P2P).
@@ -37,12 +37,13 @@ def _shoot_3d(tx: tuple,
               tol_km:    float = 5.0,
               d_beta:    float = 0.05,
               d_az:      float = 0.10,
+              jacobian:  str   = 'forward',
               t:         float = 0.0
               ) -> dict | None:
     """
     Newton 2-parameter shooting: iterate (beta, az) to hit (x_rx, y_rx=0).
 
-    Jacobian (2x2) via central differences:
+    Jacobian (2x2) via finite differences:
       J11 = dx_land/dbeta,  J12 = dx_land/daz
       J21 = dy_land/dbeta,  J22 = dy_land/daz
 
@@ -54,19 +55,33 @@ def _shoot_3d(tx: tuple,
     x_rx  = float(rx[0])
     y_rx  = 0.0
 
-    # One-sided Jacobian: 3 ray traces per iteration instead of 5 (central diff).
+    jacobian = str(jacobian).lower()
+    if jacobian not in ('forward', 'central'):
+        jacobian = 'forward'
+
+    # Forward Jacobian: 3 ray traces per iteration; central uses 5.
     # Early termination: abandon seed if error is not decreasing after iter 3.
     prev_err = float('inf')
     for k in range(max_iter):
         ray_c  = trace_single_ray_3d(tx, beta,        az,        n3d, freq_MHz, t=t)
-        ray_bh = trace_single_ray_3d(tx, beta+d_beta, az,        n3d, freq_MHz, t=t)
-        ray_ah = trace_single_ray_3d(tx, beta,        az+d_az,   n3d, freq_MHz, t=t)
 
         x_c = ray_c['x_land_km'];  y_c = ray_c['y_land_km']
-        dx_db = (ray_bh['x_land_km'] - x_c) / d_beta
-        dy_db = (ray_bh['y_land_km'] - y_c) / d_beta
-        dx_da = (ray_ah['x_land_km'] - x_c) / d_az
-        dy_da = (ray_ah['y_land_km'] - y_c) / d_az
+        if jacobian == 'central':
+            ray_bp = trace_single_ray_3d(tx, beta+d_beta, az,        n3d, freq_MHz, t=t)
+            ray_bm = trace_single_ray_3d(tx, beta-d_beta, az,        n3d, freq_MHz, t=t)
+            ray_ap = trace_single_ray_3d(tx, beta,        az+d_az,   n3d, freq_MHz, t=t)
+            ray_am = trace_single_ray_3d(tx, beta,        az-d_az,   n3d, freq_MHz, t=t)
+            dx_db = (ray_bp['x_land_km'] - ray_bm['x_land_km']) / (2.0*d_beta)
+            dy_db = (ray_bp['y_land_km'] - ray_bm['y_land_km']) / (2.0*d_beta)
+            dx_da = (ray_ap['x_land_km'] - ray_am['x_land_km']) / (2.0*d_az)
+            dy_da = (ray_ap['y_land_km'] - ray_am['y_land_km']) / (2.0*d_az)
+        else:
+            ray_bh = trace_single_ray_3d(tx, beta+d_beta, az,        n3d, freq_MHz, t=t)
+            ray_ah = trace_single_ray_3d(tx, beta,        az+d_az,   n3d, freq_MHz, t=t)
+            dx_db = (ray_bh['x_land_km'] - x_c) / d_beta
+            dy_db = (ray_bh['y_land_km'] - y_c) / d_beta
+            dx_da = (ray_ah['x_land_km'] - x_c) / d_az
+            dy_da = (ray_ah['y_land_km'] - y_c) / d_az
 
         J  = np.array([[dx_db, dx_da],
                         [dy_db, dy_da]])
@@ -181,6 +196,7 @@ def find_all_rays_3d(tx:        tuple,
     max_iter  = p2p_params.get('max_iter', 12)
     d_beta    = p2p_params.get('d_beta', 0.05)
     d_az      = p2p_params.get('d_az',   0.10)
+    jacobian  = p2p_params.get('jacobian', 'forward')
 
     # Seeding: warm start from ray fan (sorted by landing proximity to RX)
     if rays_fan:
@@ -202,6 +218,7 @@ def find_all_rays_3d(tx:        tuple,
                             tol_km=tol_km,
                             d_beta=d_beta,
                             d_az=d_az,
+                            jacobian=jacobian,
                             t=t)
             if ray is None:
                 continue

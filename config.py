@@ -225,6 +225,7 @@ P2P_3D = {
     'tol_km':      5.0,    # Newton convergence tolerance [km] (looser than 2-D)
     'd_beta':      0.05,   # Jacobian step: elevation [deg]
     'd_az':        0.10,   # Jacobian step: azimuth   [deg]
+    'jacobian':    'forward',  # 'forward' (fast) or 'central' (more accurate)
     'max_iter':    12,     # Newton max iterations (early-exit if diverging)
     'clust_h_km':  10.0,   # deduplication height tolerance
     'clust_tau_ms': 0.05,  # deduplication delay tolerance

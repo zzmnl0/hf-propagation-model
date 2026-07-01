@@ -15,11 +15,33 @@ Run:
 import sys
 import os
 import numpy as np
+from collections import defaultdict
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from utils import d_layer_absorption_dB
+from utils import d_layer_absorption_dB, radar_equation_W
 import config as cfg
+
+
+def _group_by_label(modes):
+    grouped = defaultdict(list)
+    for m in modes:
+        grouped[m['label']].append(m)
+    for vals in grouped.values():
+        vals.sort(key=lambda r: r['tau_ms'])
+    return grouped
+
+
+def _nearest_by_tau(modes, tau_ms):
+    return min(modes, key=lambda r: abs(r['tau_ms'] - tau_ms))
+
+
+def _nearest_by_tau_beta(modes, mode):
+    return min(
+        modes,
+        key=lambda r: (abs(r['tau_ms'] - mode['tau_ms']) +
+                       10.0 * abs(r.get('beta_deg', 0.0) -
+                                  mode.get('beta_deg', 0.0))))
 
 
 def _make_iono():
@@ -88,18 +110,18 @@ def run():
     modes_abs, _, _, _ = m_abs.compute(
         cfg.TX_POS, cfg.RX_POS, p2p_params=p2p_fast)
 
-    clean_d = {m['label']: m for m in modes_clean}
     n_checked = 0
-    for ma in modes_abs:
-        mc = clean_d.get(ma['label'])
-        if mc is None:
-            continue
-        ok_i = ma['Pr_W'] < mc['Pr_W']
-        print("    {:16s}  clean={:.2e}W  abs={:.2e}W  {}".format(
-            ma['label'], mc['Pr_W'], ma['Pr_W'], 'OK' if ok_i else 'FAIL'))
-        if not ok_i:
-            n_fail += 1
-        n_checked += 1
+    clean_g = _group_by_label(modes_clean)
+    abs_g = _group_by_label(modes_abs)
+    for lab in sorted(set(clean_g) & set(abs_g)):
+        for mc, ma in zip(clean_g[lab], abs_g[lab]):
+            ok_i = ma['Pr_W'] < mc['Pr_W']
+            print("    {:16s}  tau={:.3f}/{:.3f}ms  clean={:.2e}W  abs={:.2e}W  {}".format(
+                lab, mc['tau_ms'], ma['tau_ms'], mc['Pr_W'], ma['Pr_W'],
+                'OK' if ok_i else 'FAIL'))
+            if not ok_i:
+                n_fail += 1
+            n_checked += 1
     if n_checked == 0:
         print("    WARN: no matching modes to compare")
 
@@ -132,26 +154,21 @@ def run():
     modes_cna, _, _, _ = m_comm_noabs.compute(
         cfg.TX_POS, cfg.RX_POS, p2p_params=p2p_fast)
 
-    radar_d = {m['label']: m for m in modes_radar}
-    rna_d   = {m['label']: m for m in modes_rna}
-    comm_d  = {m['label']: m for m in modes_comm}
-    cna_d   = {m['label']: m for m in modes_cna}
-
     n_2x = 0
     n_2x_ok = 0
-    for lab in sorted(radar_d.keys()):
-        if lab not in (rna_d | comm_d | cna_d):
-            continue
-        if lab not in rna_d or lab not in comm_d or lab not in cna_d:
-            continue
-        dB_radar = 10*np.log10(max(radar_d[lab]['Pr_W'], 1e-30)) - \
-                   10*np.log10(max(rna_d[lab]['Pr_W'],   1e-30))
-        dB_comm  = 10*np.log10(max(comm_d[lab]['Pr_W'],  1e-30)) - \
-                   10*np.log10(max(cna_d[lab]['Pr_W'],   1e-30))
-        ratio = dB_radar / dB_comm if abs(dB_comm) > 0.01 else 0.0
-        ok_i = abs(ratio - 2.0) < 0.05  # ratio should be ~2 (2x absorption)
-        print("    {:16s}  radar_loss={:.2f} dB  comm_loss={:.2f} dB  ratio={:.2f}  {}".format(
-            lab, -dB_radar, -dB_comm, ratio, 'OK' if ok_i else 'FAIL'))
+    fH_L = cfg.GEOMAG['fH_MHz'] * np.cos(np.radians(cfg.GEOMAG['dip_deg']))
+    for mr in modes_radar:
+        A_oneway = d_layer_absorption_dB(
+            cfg.FREQ_MHZ, float(mr['beta_deg']),
+            A0=500.0, chi_deg=60.0, fH_L_MHz=fH_L)
+        p0 = radar_equation_W(
+            cfg.PT_W, cfg.GT, cfg.GR, cfg.FREQ_MHZ,
+            float(mr['group_path_km']), cfg.RADAR['sigma_rcs_m2'])
+        expected_pr = p0 * 10.0 ** (-(2.0 * A_oneway) / 10.0)
+        ok_i = abs(mr['Pr_W'] / expected_pr - 1.0) < 1e-10
+        print("    {:16s}  beta={:.1f}  Pr={:.3e}  expected={:.3e}  {}".format(
+            mr['label'], mr['beta_deg'], mr['Pr_W'], expected_pr,
+            'OK' if ok_i else 'FAIL'))
         n_2x += 1
         if ok_i:
             n_2x_ok += 1

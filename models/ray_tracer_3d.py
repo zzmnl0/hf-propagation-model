@@ -6,13 +6,13 @@ with Earth-curvature correction (Earth-flattening transform) and optional
 3-D TID perturbation including cross-path (y) variation.
 
 State vector:   [x, y, z, kx, ky, kz]   (km, km, km, km^-1, km^-1, km^-1)
-Integration parameter: group path P [km]
+Integration parameter: geometric path length s [km]
 
 Haselgrove / Jones & Stephenson (1975) Cartesian form:
-  dx/dP = kx / |k|,  dy/dP = ky / |k|,  dz/dP = kz / |k|
-  dkx/dP = (k0^2 / 2|k|) * dn^2_eff / dx
-  dky/dP = (k0^2 / 2|k|) * dn^2_eff / dy
-  dkz/dP = (k0^2 / 2|k|) * dn^2_eff / dz
+  dx/ds = kx / |k|,  dy/ds = ky / |k|,  dz/ds = kz / |k|
+  dkx/ds = (k0^2 / 2|k|) * dn^2_eff / dx
+  dky/ds = (k0^2 / 2|k|) * dn^2_eff / dy
+  dkz/ds = (k0^2 / 2|k|) * dn^2_eff / dz
 
 where |k| = n_eff * k0 (on-shell condition H = |k|^2 - n^2 k0^2 = 0).
 
@@ -97,7 +97,10 @@ class RefractiveIndex3D:
         # Precompute Cartesian n2_eff gradients for fast grad_n2() (no TID/bubble):
         # 3 interp lookups per call vs 6 n2() calls (each with 1 interp each).
         _X, _Z = np.meshgrid(x_km, z_km, indexing='ij')
-        _Z_phys = np.maximum(_Z - _X**2 / (2.0 * RE_KM), float(z_km[0]))
+        if earth_flat:
+            _Z_phys = np.maximum(_Z - _X**2 / (2.0 * RE_KM), float(z_km[0]))
+        else:
+            _Z_phys = _Z
         _n2_cart = self._n2_interp(
             np.column_stack([_X.ravel(), _Z_phys.ravel()])
         ).reshape(Ne_2d.shape)
@@ -377,7 +380,7 @@ def haselgrove_3d_deriv(state: np.ndarray,
     """
     RHS of 3-D Haselgrove equations.
     State: [x, y, z, kx, ky, kz]  (km, km, km, km^-1, km^-1, km^-1)
-    Returns d(state)/dP  (P = group path [km]).
+    Returns d(state)/ds, where s is geometric ray path length [km].
     """
     x, y, z, kx, ky, kz = state
     dn2_dx, dn2_dy, dn2_dz = n3d.grad_n2(x, y, z, t=t)
@@ -450,7 +453,8 @@ def trace_single_ray_3d(tx_pos:    tuple,
 
     Returns dict with fields:
       x_land_km, y_land_km, z_land_km : landing position
-      group_path_km, tau_ms           : propagation delay
+      geom_path_km                    : geometric ray path length
+      group_path_km, tau_ms           : group path and propagation delay
       h_reflect_km                    : peak height above Earth (physical)
       reflect_x_km, reflect_y_km     : horizontal position at reflection
       beta_deg_tx                     : TX elevation (input)
@@ -481,6 +485,7 @@ def trace_single_ray_3d(tx_pos:    tuple,
     state = np.array([x0, y0, z0, kx0, ky0, kz0], dtype=float)
 
     traj       = [state.copy()]
+    geom_path  = 0.0
     group_path = 0.0
     h_reflect  = z0     # maximum z (Cartesian), used for reflection height
     x_reflect  = x0
@@ -499,9 +504,20 @@ def trace_single_ray_3d(tx_pos:    tuple,
         else:
             ds = ds_nom
 
+        state_prev = state
         state      = rk4_step_3d(state, n3d, k0, ds, t=t)
         state      = _renorm_k(state, n3d, k0)        # PHaRLAP on-shell renorm
-        group_path += ds
+
+        dx_seg = float(state[0] - state_prev[0])
+        dy_seg = float(state[1] - state_prev[1])
+        dz_seg = float(state[2] - state_prev[2])
+        ds_geom = (dx_seg*dx_seg + dy_seg*dy_seg + dz_seg*dz_seg) ** 0.5
+        x_mid = float(0.5 * (state[0] + state_prev[0]))
+        y_mid = float(0.5 * (state[1] + state_prev[1]))
+        z_mid = float(0.5 * (state[2] + state_prev[2]))
+        n_mid = max(np.sqrt(n3d.n2(x_mid, y_mid, z_mid, t=t)), 1e-4)
+        geom_path  += ds_geom
+        group_path += ds_geom / n_mid
 
         x, y, z, kx, ky, kz = state
         traj.append(state.copy())
@@ -538,6 +554,7 @@ def trace_single_ray_3d(tx_pos:    tuple,
         'x_land_km'        : float(x_f),
         'y_land_km'        : float(y_f),
         'z_land_km'        : float(z_f),
+        'geom_path_km'     : float(geom_path),
         'group_path_km'    : group_path,
         'tau_ms'           : group_delay_ms(group_path),
         'h_reflect_km'     : float(h_phys),

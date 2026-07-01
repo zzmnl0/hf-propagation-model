@@ -73,7 +73,8 @@ def _rays3d_to_fan(rays3d):
 
 def _add_power_3d(modes, radar_mode=False, sigma_rcs=1.0):
     """Fill Pr_W, Pr_dBW, delta_tau_ms in 3-D P2P mode dicts."""
-    from utils import free_space_loss_dB, to_dBW, radar_equation_W
+    from utils import (free_space_loss_dB, to_dBW, radar_equation_W,
+                       d_layer_absorption_dB)
     for m in modes:
         gp = float(m['group_path_km'])
         if radar_mode:
@@ -82,8 +83,37 @@ def _add_power_3d(modes, radar_mode=False, sigma_rcs=1.0):
         else:
             L_dB      = free_space_loss_dB(gp, cfg.FREQ_MHZ)
             m['Pr_W'] = cfg.PT_W * cfg.GT * cfg.GR * 10.0**(-L_dB / 10.0)
+
+        abs_oneway_dB = 0.0
+        abs_total_dB = 0.0
+        if cfg.ABSORPTION.get('enable', False):
+            beta_deg = float(m.get('beta_deg_tx',
+                             m.get('elevation_tx_deg',
+                             m.get('beta_deg', 30.0))))
+            fH_L = (float(cfg.GEOMAG.get('fH_MHz', 1.197)) *
+                    float(np.cos(np.radians(cfg.GEOMAG.get('dip_deg', 48.7)))))
+            ab_kw = {k: v for k, v in cfg.ABSORPTION.items() if k != 'enable'}
+            ab_kw['fH_L_MHz'] = fH_L
+            abs_oneway_dB = d_layer_absorption_dB(
+                cfg.FREQ_MHZ, beta_deg, **ab_kw)
+            n_cross = 2 if radar_mode else 1
+            abs_total_dB = abs_oneway_dB * n_cross
+            m['Pr_W'] *= 10.0**(-abs_total_dB / 10.0)
+
+        m['abs_dB']        = float(abs_oneway_dB)
+        m['abs_total_dB']  = float(abs_total_dB)
         m['Pr_dBW']       = to_dBW(m['Pr_W'])
         m['delta_tau_ms'] = 0.0
+
+
+def _add_scatter_3d(modes, n3d):
+    """Attach Born/Rytov/MPS scatter diagnostics to 3-D modes."""
+    if not cfg.SCATTER.get('enable', True):
+        return modes
+    from models.scatter_coupler import apply_scatter_regime_3d
+    return apply_scatter_regime_3d(
+        modes, n3d, cfg.SCATTER, cfg.FREQ_MHZ, cfg.PT_W, cfg.GT, cfg.GR,
+        enable_mps=cfg.SCATTER.get('enable_mps', False))
 
 
 def _extract_es_grazing_3d(ray3d, h_Es_km):
@@ -299,6 +329,7 @@ def run_baseline():
     modes = find_all_rays_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D,
                              rays_fan=rays3d)
     _add_power_3d(modes)
+    _add_scatter_3d(modes, n3d)
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
 
@@ -361,6 +392,7 @@ def run_with_tid():
     modes = find_all_rays_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D,
                              rays_fan=rays3d)
     _add_power_3d(modes)
+    _add_scatter_3d(modes, n3d)
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
 
@@ -426,6 +458,7 @@ def run_with_es():
         m['delta_tau_ms'] = float(es_res['delta_tau_ms'])
         m['label']        = 'Es_' + es_res['mode']
 
+    _add_scatter_3d(modes, n3d)
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
     tau_ax, pd = build_pd_spectrum(modes)
@@ -472,6 +505,7 @@ def run_with_bubble():
     modes = find_all_rays_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D,
                              rays_fan=rays3d)
     _add_power_3d(modes)
+    _add_scatter_3d(modes, n3d)
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
 
@@ -534,6 +568,7 @@ def run_full():
         m['delta_tau_ms'] = float(es_res['delta_tau_ms'])
         m['label']        = 'Es_' + es_res['mode']
 
+    _add_scatter_3d(modes, n3d)
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
     tau_ax, pd = build_pd_spectrum(modes)
@@ -573,6 +608,7 @@ def _apply_OX_split_3d(modes_iso, Ne_2d, n3d):
     """
     from models.ray_tracer import RefractiveIndexAH
     from models.point_to_point_3d import classify_mode_3d
+    from utils import group_delay_ms
 
     nm_O = RefractiveIndexAH(Ne_2d, cfg.BG_X, cfg.BG_Z, cfg.FREQ_MHZ,
                               wave_mode='O', geomag=cfg.GEOMAG)
@@ -594,9 +630,11 @@ def _apply_OX_split_3d(modes_iso, Ne_2d, n3d):
         for i in range(n_seg):
             s0, s1 = traj[i], traj[i + 1]
             x_m  = (float(s0[0]) + float(s1[0])) * 0.5
+            y_m  = (float(s0[1]) + float(s1[1])) * 0.5
             z_cm = (float(s0[2]) + float(s1[2])) * 0.5
             xs[i]   = x_m
-            zps[i]  = max(z_cm - x_m**2 / (2.0 * cfg.RE_KM), float(cfg.BG_Z[0]))
+            zps[i]  = max(z_cm - (x_m**2 + y_m**2) / (2.0 * cfg.RE_KM),
+                           float(cfg.BG_Z[0]))
             dx = float(s1[0]) - float(s0[0])
             dy = float(s1[1]) - float(s0[1])
             dz = float(s1[2]) - float(s0[2])
@@ -612,24 +650,15 @@ def _apply_OX_split_3d(modes_iso, Ne_2d, n3d):
         # Group paths
         gp_O = float(np.sum(segs / n_O_arr))
         gp_X = float(np.sum(segs / n_X_arr))
-
-        # Isotropic reference group path from Cartesian n2 array
-        z_c_arr = np.array([(float(traj[i][2]) + float(traj[i+1][2])) * 0.5
-                             for i in range(n_seg)])
-        n_iso_arr = np.sqrt(np.maximum(
-            np.array([n3d._bilin2(n3d._n2_arr, xs[i], z_c_arr[i])
-                      for i in range(n_seg)]), 1e-8))
-        gp_iso = float(np.sum(segs / np.maximum(n_iso_arr, 1e-4)))
-
-        # Correction ratios
-        ratio_O = gp_O / max(gp_iso, 1.0)
-        ratio_X = gp_X / max(gp_iso, 1.0)
+        gp_iso = float(m.get('group_path_km',
+                             np.sum(segs / np.maximum(n_O_arr, 1e-4))))
 
         # O-mode copy
         m_O = dict(m)
         m_O['wave_mode']     = 'O'
-        m_O['tau_ms']        = float(m['tau_ms']) * ratio_O
-        m_O['group_path_km'] = float(m['group_path_km']) * ratio_O
+        m_O['group_path_km'] = gp_O
+        m_O['tau_ms']        = group_delay_ms(gp_O)
+        m_O['OX_gp_ratio']   = gp_O / max(gp_iso, 1.0)
         m_O['label']         = classify_mode_3d(m_O)
         result.append(m_O)
 
@@ -638,8 +667,9 @@ def _apply_OX_split_3d(modes_iso, Ne_2d, n3d):
         if x_valid > 0.5:
             m_X = dict(m)
             m_X['wave_mode']     = 'X'
-            m_X['tau_ms']        = float(m['tau_ms']) * ratio_X
-            m_X['group_path_km'] = float(m['group_path_km']) * ratio_X
+            m_X['group_path_km'] = gp_X
+            m_X['tau_ms']        = group_delay_ms(gp_X)
+            m_X['OX_gp_ratio']   = gp_X / max(gp_iso, 1.0)
             m_X['label']         = classify_mode_3d(m_X)
             result.append(m_X)
 
@@ -681,10 +711,11 @@ def run_with_OX():
     # 3-D P2P for isotropic modes (same pipeline as all other 3-D scenarios)
     modes_iso = find_all_rays_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D,
                                   rays_fan=rays3d)
-    _add_power_3d(modes_iso)
 
     # Appleton-Hartree O/X post-processing on 3-D trajectories
     modes = _apply_OX_split_3d(modes_iso, Ne_2d, n3d)
+    _add_power_3d(modes)
+    _add_scatter_3d(modes, n3d)
 
     print("  P2P modes: {} (expect ~2x isotropic count)".format(len(modes)))
     print_mode_table(modes)
@@ -728,6 +759,7 @@ def run_radar_baseline():
                              rays_fan=rays3d)
     _add_power_3d(modes, radar_mode=True,
                   sigma_rcs=float(cfg.RADAR['sigma_rcs_m2']))
+    _add_scatter_3d(modes, n3d)
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
 
@@ -767,6 +799,7 @@ def run_with_spreadf():
     modes  = find_all_rays_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D,
                                rays_fan=_rays_seed)
     _add_power_3d(modes)
+    _add_scatter_3d(modes, n3d)
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
 

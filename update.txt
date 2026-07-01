@@ -1,0 +1,567 @@
+================================================================================
+短波传播混合模型修复实施方案
+HF Shortwave Hybrid Propagation Model Update Plan
+================================================================================
+依据文档:
+  - tutor2.txt
+  - function-checking.txt
+  - AGENTS.md
+
+生成日期: 2026-07-01
+目标: 针对六项自检中发现的 BUG / WARN / GAP，形成后续模型修复工作的
+      实施路线。后续代码修改以本文为指导，按阶段修复、验证、确认。
+
+重要说明:
+  1. 本方案先修正影响 SS1/SS2/SS4/SS5 的核心物理量，再接入复杂耦合。
+  2. 已复核当前代码: scatter_selector.py、scatter_born.py、scatter_rytov.py
+     已存在；散射问题不是模块完全缺失，而是未统一接入 3-D 主流程。
+  3. Python print() 输出保持 ASCII，避免 Windows GBK 控制台编码错误。
+
+
+================================================================================
+一、总体优先级
+================================================================================
+
+P0  架构基线确认
+    确认当前 Ne_2d + 3-D 扰动查询架构的适用范围，不立即升级完整 Ne_3d。
+
+P1  最高优先级 BUG 修复
+    修复 2-D / 3-D 射线追踪中的群路径和群延迟公式:
+      当前: group_path = integral(ds)
+      正确: group_path = P' = integral(ds / n)
+      tau_ms = P' / c
+
+P2  功率链路联动修正
+    SS4 Friis、SS5 雷达方程继续使用 group_path_km。P1 修复后，这些参数
+    自动从几何路径切换到真实群路径。
+
+P3  3-D D 层吸收接入
+    将现有 D-layer absorption 逻辑接入 _add_power_3d()，解决 3-D 场景
+    未计 D 层吸收的问题。
+
+P4  多散射机制统一接入
+    复用已有 Born / Rytov / selector 模块，在 3-D 主流程末端增加统一
+    scatter regime 诊断与字段写回。
+
+P5  P2P 收敛质量增强
+    保持当前 forward Jacobian 为默认快速路径，增加 central Jacobian 可选项
+    作为高精度验证模式。
+
+P6  文档和验证同步
+    更新自检结论、说明书差异和验证脚本，确保模型行为与文档一致。
+
+
+================================================================================
+二、P0 架构基线: Ne_2d 是否升级为 Ne_3d
+================================================================================
+
+结论:
+  暂不立即升级完整 Ne_3d(Nx, Ny, Nz)。当前架构为:
+    - IRI 背景: Ne_2d(x, z)，沿 y 方向近似不变
+    - TID: 查询时使用完整 (x, y, z) 相位叠加
+    - 3-D bubble: 查询时使用场向三维 Gaussian depletion
+
+理由:
+  该架构与 Cervera & Harris (2014) / PHaRLAP 类似，对典型 MSTID
+  y_land < 50 km 场景可接受。若 y_land 达到 50-100 km 以上，背景 IRI
+  的 y 向梯度会成为新的误差源。
+
+实施要求:
+  - 保留当前 RefractiveIndex3D(Ne_2d, x, z, ...) 接口。
+  - 在文档中标注适用范围:
+      y_land < 50 km: 可接受
+      y_land >= 50-100 km: 建议未来实现 Ne_3d
+  - 未来 Ne_3d 升级可作为独立阶段:
+      BG_Y, BG_DY, IRI_LATERAL_Y, Ne_3d interpolation
+
+验收:
+  - 不改代码，仅作为后续设计约束写入文档/注释。
+
+
+================================================================================
+三、P1 核心 BUG: 群路径与群延迟公式修复
+================================================================================
+
+问题:
+  当前 2-D 和 3-D 射线追踪都将 group_path_km 累积为几何弧长:
+    group_path += ds
+    tau_ms = group_path / c
+
+  冷等离子体中群折射指数:
+    n_g = 1 / n
+
+  正确群路径:
+    P' = integral(n_g ds) = integral(ds / n)
+
+  正确群延迟:
+    tau = P' / c = integral(ds / (n c))
+
+影响:
+  - SS1 tau_ms
+  - SS2 group_path_km
+  - SS4 Friis path loss
+  - SS5 radar equation
+  - SS8 O/X 后处理的参考路径
+  - P-D 谱峰位置
+
+涉及文件:
+  - code/models/ray_tracer_3d.py
+  - code/models/ray_tracer.py
+  - code/main.py 中 _apply_OX_split_3d()
+  - 相关 tests
+
+实施方案 3-D:
+  1. 在 trace_single_ray_3d() 中同时累积:
+       geom_path_km  = integral(ds_geom)
+       group_path_km = integral(ds_geom / n_mid)
+
+  2. 每个 RK4 步完成后，用前后状态的几何距离作为 ds_seg:
+       s0 = state_before
+       s1 = state_after
+       ds_seg = sqrt((x1-x0)^2 + (y1-y0)^2 + (z1-z0)^2)
+
+  3. 使用段中点折射率:
+       x_mid = 0.5 * (x0 + x1)
+       y_mid = 0.5 * (y0 + y1)
+       z_mid = 0.5 * (z0 + z1)
+       n_mid = sqrt(max(n3d.n2(x_mid, y_mid, z_mid, t=t), 1e-8))
+       group_path += ds_seg / max(n_mid, 1e-4)
+       geom_path  += ds_seg
+
+  4. 返回字段:
+       'group_path_km': group_path
+       'geom_path_km' : geom_path
+       'tau_ms'       : group_delay_ms(group_path)
+
+  5. 不再用 nominal ds 直接累积 group_path。
+
+实施方案 2-D:
+  1. 在 trace_single_ray() 中同样使用前后状态段长 ds_seg。
+  2. 段中点折射率:
+       n_mid = n_model.n(x_mid, z_mid)
+       group_path += ds_seg / max(n_mid, 1e-4)
+       geom_path  += ds_seg
+  3. at_Es / at_bubble 中记录的 group_path_km 应使用修复后的 group_path。
+  4. L_bg_dB 使用修复后的 group_path_km。
+
+O/X 后处理修正:
+  当前 _apply_OX_split_3d() 已用:
+    gp_O = sum(segs / n_O)
+    gp_X = sum(segs / n_X)
+
+  修复要求:
+    - O 模式:
+        m_O['group_path_km'] = gp_O
+        m_O['tau_ms'] = group_delay_ms(gp_O)
+    - X 模式:
+        m_X['group_path_km'] = gp_X
+        m_X['tau_ms'] = group_delay_ms(gp_X)
+    - ratio_O / ratio_X 仅作为可选诊断字段:
+        group_path_ratio_O, group_path_ratio_X
+
+  注意:
+    修复 P1 后，m['group_path_km'] 本身已经是 integral(ds/n_iso)，
+    不应再用 tau_iso * ratio 进行间接放大。
+
+新增/更新验证:
+  - 新增 tests/_verify_group_path.py 或并入 _verify_phase6.py。
+  - 验证点:
+      1. 对典型反射射线: group_path_km >= geom_path_km。
+      2. tau_ms == group_path_km / C_KMS * 1e3。
+      3. 3-D noflat + az=0 与 2-D 单射线 tau 差仍 < 0.1 ms。
+      4. O/X 后处理: tau_O/tau_X 直接由 gp_O/gp_X 得到。
+
+验收标准:
+  - tests/_verify_part2.py、tests/_verify_phase6.py 通过。
+  - 新增群路径验证通过。
+  - 典型 1169 km 链路 tau 相比旧代码增加约 5-15%，属于预期变化。
+
+
+================================================================================
+四、P2 功率链路联动修正
+================================================================================
+
+问题:
+  SS4/SS5 本身公式形式基本正确，但使用的 group_path_km 目前是几何路径。
+  P1 修复后，Friis 和雷达方程应自动使用真实群路径。
+
+涉及文件:
+  - code/main.py
+  - code/utils.py
+  - code/models/hybrid_model.py
+
+实施方案:
+  1. 保持 free_space_loss_dB(group_path_km, freq_MHz) 接口不变。
+  2. 保持 radar_equation_W(..., group_path_km, ...) 接口不变。
+  3. 在调用前保证 group_path_km 是 P' = integral(ds/n)。
+  4. 如需几何路径，仅使用新增 geom_path_km 字段。
+
+输出字段建议:
+  - group_path_km: 群路径 P'
+  - geom_path_km: 几何弧长
+  - path_loss_dB: Friis loss using group_path_km
+
+验收:
+  - _add_power_3d() 输出 Pr_W / Pr_dBW 不报错。
+  - 修复后路径损耗相对旧版本略增，量级约 0.5-1.5 dB，符合 n_avg < 1。
+
+
+================================================================================
+五、P3 3-D D 层吸收接入
+================================================================================
+
+问题:
+  2-D hybrid_model.py 已有 D-layer absorption 逻辑；3-D main.py 的
+  _add_power_3d() 未接入吸收，导致 3-D 场景 SS12 缺失。
+
+公式选择:
+  第一阶段沿用项目已有经验公式/参数体系，不在同一阶段切换到 Sen-Wyller。
+  原因: 先解决 3-D 流程缺失问题，避免同时改变多个物理假设。
+
+涉及文件:
+  - code/main.py
+  - code/utils.py
+  - code/config.py
+
+实施方案:
+  1. 在 _add_power_3d(modes, radar_mode=False, ...) 中读取 cfg.ABSORPTION。
+  2. 若 ABSORPTION['enable'] 为 True:
+       beta_deg = mode.get('beta_deg_tx') or mode.get('beta_deg')
+       A_oneway_dB = d_layer_absorption_dB(
+           cfg.FREQ_MHZ, beta_deg, **ABSORPTION参数
+       )
+  3. 通信单程:
+       total_abs_dB = A_oneway_dB
+  4. 雷达双程:
+       total_abs_dB = 2 * A_oneway_dB
+  5. 功率扣除:
+       Pr_W *= 10 ** (-total_abs_dB / 10)
+  6. 写回字段:
+       abs_dB
+       abs_total_dB
+
+注意:
+  - 现有 utils.d_layer_absorption_dB() 使用 ASCII 输出即可。
+  - 若当前 d_layer_absorption_dB() 与 _martyn_absorption_dB() 并存，优先复用
+    public utils 函数；后续再统一公式说明。
+
+验收:
+  - ABSORPTION['enable']=False 时，结果与 P1/P2 修复后基线一致。
+  - ABSORPTION['enable']=True 时，Pr_dBW 降低，abs_total_dB 字段存在。
+  - 新增或更新 _verify_absorption.py 覆盖 3-D 模式。
+
+
+================================================================================
+六、P4 多散射机制统一接入
+================================================================================
+
+复核结论:
+  当前以下模块已存在:
+    - models/scatter_selector.py
+      scatter_phase_variance(), select_scatter_method(), diagnose_scatter()
+    - models/scatter_born.py
+      born_sigma_v(), born_scatter()
+    - models/scatter_rytov.py
+      rytov_full(), rytov_s4(), rytov_sigma_phi(), rytov_sigma_tau()
+    - models/scatter_phase_screen.py
+      RinoPhaseScreen2D, MultiPhaseScreen
+
+  因此问题不是完全未实现，而是:
+    - 3-D main.py 主流程未统一调用这些模块
+    - mode dict 中缺少统一散射字段
+    - P-D 谱未感知散射诊断或散射功率
+
+建议新增函数:
+  文件位置二选一:
+    A. code/main.py 中新增 _apply_scatter_regime_3d()
+    B. 新建 code/models/scatter_coupler.py
+
+  推荐 B，保持 main.py 简洁。
+
+函数接口建议:
+  apply_scatter_regime_3d(
+      modes,
+      Ne_2d,
+      n3d,
+      scatter_params,
+      freq_MHz,
+      Pt_W,
+      Gt,
+      Gr,
+      enable_mps=False,
+  ) -> list
+
+每个 mode 处理流程:
+  1. 估计代表性 Ne0:
+       - 优先取反射点或扰动层中心附近 Ne
+       - 初版可用 cfg.SCATTER 默认 Ne0 或轨迹中 h=250-350 km 的中位数 Ne
+
+  2. 计算:
+       sigma_phi_sq = scatter_phase_variance(
+           Ne0_m3,
+           Cs_rel,
+           DeltaL_km,
+           L_outer_km,
+           freq_MHz
+       )
+
+  3. 选择方法:
+       method = select_scatter_method(sigma_phi_sq)
+
+  4. Born:
+       if method == 'Born':
+           born_scatter(...)
+           写回 Pr_scatter_W, Pr_scatter_dBW, sigma_v_m1
+
+  5. Rytov:
+       if method == 'Rytov':
+           rytov_full(...)
+           写回 S4, sigma_phi_rad, sigma_tau_ms, fresnel_r_km
+           delta_tau_ms 可选择:
+             mode['delta_tau_ms'] = max(existing_delta_tau_ms, sigma_tau_ms)
+
+  6. MPS:
+       if method == 'MPS':
+           初版可只写:
+             scatter_method='MPS'
+             mps_required=True
+           若 enable_mps=True，再调用 MultiPhaseScreen，避免主流程默认变慢。
+
+  7. 通用写回:
+       scatter_method
+       sigma_phi_sq
+       sigma_phi_rad
+       scatter_Cs_rel
+       scatter_L_outer_km
+       scatter_DeltaL_km
+
+功率耦合策略:
+  第一阶段仅附加散射诊断字段，不直接改写 mode['Pr_W']。
+  原因:
+    - Born/Rytov/MPS 代表散射/闪烁附加效应，不应未经验证直接替代主模功率。
+    - P-D 谱改动应在诊断字段稳定后单独确认。
+
+第二阶段可选:
+  - 将 Pr_scatter_W 作为独立散射模式加入 P-D 谱。
+  - Rytov 的 sigma_tau_ms 用作 P-D 展宽。
+  - MPS/PE 输出作为强散射时延扩展或附加模式。
+
+验收:
+  - tests/_verify_phase6.py 中已有 Born/Rytov 函数级验证继续通过。
+  - 新增主流程接入验证:
+      1. mode dict 包含 scatter_method。
+      2. Cs_rel 扫描时 scatter_method 按 Born -> Rytov -> MPS 单调变化。
+      3. Rytov 模式写回 S4 和 sigma_tau_ms。
+      4. enable_mps=False 时不触发耗时 MPS。
+
+
+================================================================================
+七、P5 P2P 射线搜索与模式收敛增强
+================================================================================
+
+当前状态:
+  - 3-D P2P 使用 Newton(beta, az)。
+  - Jacobian 为 forward difference，3 条射线/迭代。
+  - 注释中写 central differences，但实际实现为 one-sided Jacobian。
+
+结论:
+  当前实现对主要 F2 模式可接受，性能好。无需立即替换默认行为。
+
+实施方案:
+  1. 在 config.P2P_3D 中增加:
+       'jacobian': 'forward'
+     可选值:
+       'forward'
+       'central'
+
+  2. 在 point_to_point_3d.py 的 _shoot_3d() 中:
+       if jacobian == 'forward':
+           保持当前 3-ray 实现
+       elif jacobian == 'central':
+           追踪 beta +/- d_beta, az +/- d_az，共 5-ray
+           使用中心差分:
+             dx_db = (x_beta_plus - x_beta_minus) / (2*d_beta)
+             ...
+
+  3. 更新注释，避免“central differences”与代码不一致。
+
+  4. 去重逻辑后续增强:
+       当前: (h_reflect_km, tau_ms)
+       建议: 增加 (tau_ms, beta_deg_tx) 二级判据
+       不建议与 P1 同批修改。
+
+验收:
+  - 默认 forward 下性能不明显退化。
+  - central 下结果与 forward 主要模式一致，复杂扰动下收敛更稳。
+  - tests/_verify_phase6.py 继续通过。
+
+
+================================================================================
+八、SS9 Coleman 聚焦因子处理策略
+================================================================================
+
+问题:
+  TubeRayTracer3D 已实现 F_focus_3d，但普通 Scenarios 0-7 的 P2P 模式
+  _add_power_3d() 未应用 Coleman 聚焦修正。
+
+决策:
+  不在第一轮核心修复中强行把 Coleman 聚焦并入所有 P2P 功率。
+
+理由:
+  1. 普通 P2P mode 并不天然携带相邻射线管面积。
+  2. 若要后处理聚焦，需要对每个 mode 额外追踪 beta +/- d_beta 和
+     az +/- d_az，计算成本上升。
+  3. 聚焦因子是功率校正，不应阻塞 P1 群路径核心 BUG 修复。
+
+后续方案:
+  新增可选函数 focus_3d_postprocess():
+    输入: mode, n3d, freq_MHz, delta_beta_deg, delta_az_deg
+    输出:
+      F_focus_el
+      F_focus_az
+      F_focus_3d
+      focus_dB
+
+  配置开关:
+    POWER_3D['enable_focus'] = False
+
+  仅当用户确认后，再将:
+    通信: Pr_W *= focus_power_factor
+    雷达: Pr_W *= radar_focus_power_factor
+
+待讨论问题:
+  tutor2.txt 中写 "Pr_corrected = Pr / F_focus_3d^2"，但 Coleman 公式中
+  F_focus 的物理定义在当前 tube_tracer 中更接近 focusing/defocusing factor。
+  在接入 Scenarios 0-7 前，需要确认 F_focus > 1 到底表示功率增强还是
+  路径损耗增强，避免符号反向。
+
+
+================================================================================
+九、文档与测试同步
+================================================================================
+
+需要更新的文档:
+  - function-checking.txt
+    将 "Rytov/S4 未实现、selector 不存在" 修正为:
+      "模块已存在，但未统一接入 3-D 主流程"
+
+  - tutor2.txt
+    修正或标注:
+      1. SS1 当前目标公式为 tau = integral(ds/(n*c))。
+      2. SS2 group_path_km 定义为 P'，geom_path_km 单独表示几何路径。
+      3. SS3 模式分类阈值与代码 config.MODE 对齐。
+      4. SS4 发射功率说明与 config.PT_W=1000 W 对齐，或另行修改配置。
+      5. SS6 Es 阈值说明使用 foEs/f 还是 f/foEs，必须统一。
+      6. SS10/SS11 标注为已有模块、待主流程接入。
+      7. SS12 标注当前第一阶段沿用项目已有吸收公式。
+
+建议新增/更新测试:
+  - tests/_verify_group_path.py
+  - tests/_verify_phase6.py
+  - tests/_verify_absorption.py
+  - tests/_verify_scatter_coupling.py
+
+推荐执行顺序:
+  1. conda run -n pytorch_cpu python tests/_verify_part0.py
+  2. conda run -n pytorch_cpu python tests/_verify_part2.py
+  3. conda run -n pytorch_cpu python tests/_verify_phase6.py
+  4. conda run -n pytorch_cpu python tests/_verify_absorption.py
+  5. conda run -n pytorch_cpu python tests/_verify_phase7.py
+
+
+================================================================================
+十、实施阶段拆分与验收
+================================================================================
+
+阶段 A: 群路径核心修复
+  修改:
+    - ray_tracer.py
+    - ray_tracer_3d.py
+    - main.py::_apply_OX_split_3d
+    - 新增/更新群路径验证
+
+  验收:
+    - group_path_km >= geom_path_km
+    - tau_ms = group_path_km / C_KMS * 1e3
+    - 2-D / 3-D noflat 一致性保持
+    - O/X 直接积分字段正确
+
+阶段 B: 3-D 功率后处理补齐
+  修改:
+    - main.py::_add_power_3d
+    - D 层吸收字段
+    - path_loss_dB 字段
+
+  验收:
+    - ABSORPTION off 时结果不额外衰减
+    - ABSORPTION on 时 Pr_dBW 降低
+    - 输出 abs_dB / abs_total_dB
+
+阶段 C: 散射统一接入
+  修改:
+    - 新增 scatter_coupler.py 或 main.py helper
+    - main.py 对应场景调用
+    - tests/_verify_scatter_coupling.py
+
+  验收:
+    - mode dict 写回 scatter_method
+    - Born/Rytov/MPS 阈值选择正确
+    - Rytov 输出 S4/sigma_tau_ms
+    - MPS 默认不拖慢主流程
+
+阶段 D: P2P 精度增强
+  修改:
+    - config.P2P_3D
+    - point_to_point_3d.py
+
+  验收:
+    - forward 默认通过
+    - central 可选通过
+    - 注释与实现一致
+
+阶段 E: 文档闭环
+  修改:
+    - function-checking.txt
+    - tutor2.txt
+    - README.md 如有必要
+
+  验收:
+    - 文档不再与代码字段/公式冲突
+    - 新增说明保持 ASCII console 输出约束
+
+
+================================================================================
+十一、暂缓项
+================================================================================
+
+暂缓 1: 完整 Ne_3d 背景网格
+  原因: 当前 y_land 范围内 2-D 背景近似可接受。完整 Ne_3d 会显著增加
+        IRI 调用、内存和插值复杂度。
+
+暂缓 2: 全场景 Coleman 聚焦修正
+  原因: 普通 P2P 模式缺少射线管面积，需单独确认 F_focus 符号和功率口径。
+
+暂缓 3: Sen-Wyller 替代 Martyn/Pederick-Cervera 吸收公式
+  原因: 先完成 3-D 吸收接入，公式替换作为独立物理模型升级。
+
+暂缓 4: 完整 3-D Appleton-Hartree 射线追踪
+  原因: 当前 O/X 为 isotropic path 后处理近似。完整 AH 3-D tracing 改动大，
+        可作为后续独立阶段。
+
+
+================================================================================
+十二、下一步建议
+================================================================================
+
+建议从阶段 A 开始:
+  1. 修复 2-D / 3-D group_path_km。
+  2. 修复 O/X 后处理 tau/group_path。
+  3. 增加群路径验证脚本。
+  4. 运行最小验证集。
+
+完成阶段 A 并确认后，再进入阶段 B。
+
+================================================================================
+文档结束
+================================================================================
+

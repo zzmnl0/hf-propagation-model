@@ -68,6 +68,28 @@ def optical_path(points: np.ndarray, n_model: RefractiveIndex) -> float:
     return float(np.dot(n_model.n_batch(mids), segs))
 
 
+def group_path(points: np.ndarray, n_model: RefractiveIndex) -> float:
+    """
+    Cold-plasma group path P' = sum_i |seg_i| / n(mid_i) [km].
+
+    The variational solver minimizes optical_path() for ray geometry, but the
+    HF group delay uses group refractive index n_g ~= 1/n.
+    """
+    pts  = np.asarray(points, dtype=float)
+    mids = 0.5 * (pts[:-1] + pts[1:])
+    segs = np.linalg.norm(pts[1:] - pts[:-1], axis=1)
+    n_mid = np.maximum(n_model.n_batch(mids), 1e-4)
+    return float(np.sum(segs / n_mid))
+
+
+def _path_n_stats(points: np.ndarray, n_model: RefractiveIndex) -> tuple[float, float]:
+    """Return min(n) and fraction of path segments with n < 0.01."""
+    pts  = np.asarray(points, dtype=float)
+    mids = 0.5 * (pts[:-1] + pts[1:])
+    n_mid = np.maximum(n_model.n_batch(mids), 1e-6)
+    return float(np.min(n_mid)), float(np.mean(n_mid < 1e-2))
+
+
 def optical_path_gradient(points: np.ndarray,
                            n_model: RefractiveIndex,
                            fd_step: float = 0.2
@@ -189,7 +211,7 @@ def variational_find_ray(tx: tuple,
         if np.max(np.linalg.norm(grad_perp, axis=1)) < tol:
             break
 
-    gp = optical_path(pts, n_model)
+    gp = group_path(pts, n_model)
     return pts, gp
 
 
@@ -222,9 +244,16 @@ def _ray_worker(args: tuple) -> dict | None:
                                     p2p_params=p2p_params)
     tau_ms = gp / C_KMS * 1e3
     h_max  = float(np.max(pts[:, 1]))
+    n_min, low_n_frac = _path_n_stats(pts, n_model)
 
     if h_max > RT['z_stop_km'] or tau_ms < 0.1:
         return None
+    if isinstance(n_model, RefractiveIndexAH):
+        # AH candidates with extended near-zero n are evanescent/near-cutoff
+        # paths, not valid propagating O/X modes.
+        if (n_min <= p2p_params.get('ah_n_min_valid', 2.0e-3) or
+                low_n_frac > p2p_params.get('ah_max_low_n_frac', 0.05)):
+            return None
 
     return {
         'beta_deg'      : float(beta),
@@ -238,6 +267,8 @@ def _ray_worker(args: tuple) -> dict | None:
         'at_bubble'     : None,
         'L_bg_dB'       : 0.0,
         'is_high'       : is_high,
+        'n_min_path'    : n_min,
+        'low_n_frac'    : low_n_frac,
         'label'         : '',
     }
 

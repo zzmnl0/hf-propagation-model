@@ -7,7 +7,8 @@ Each ray dict returned by trace_single_ray / shoot_rays_fan:
     {
       'beta_deg'       : launch elevation [deg]
       'trajectory'     : list of np.array([x, z, kx, kz]) along path
-      'group_path_km'  : accumulated group path [km]
+      'geom_path_km'   : geometric ray path length [km]
+      'group_path_km'  : accumulated group path integral(ds/n) [km]
       'tau_ms'         : group delay [ms]
       'h_reflect_km'   : maximum height reached [km]
       'beta_recv_deg'  : arrival elevation at ground [deg]
@@ -89,12 +90,12 @@ def haselgrove_deriv(state: np.ndarray,
 
     State : [x, z, kx, kz]  (km, km, km^-1, km^-1)
     k0    : free-space wavenumber [km^-1]
-    Returns d(state)/dP  (P = group path [km]).
+    Returns d(state)/ds, where s is geometric ray path length [km].
 
-        dx/dP  = kx / |k|
-        dz/dP  = kz / |k|
-        dkx/dP = (k0^2 / 2|k|) * dn^2/dx
-        dkz/dP = (k0^2 / 2|k|) * dn^2/dz
+        dx/ds  = kx / |k|
+        dz/ds  = kz / |k|
+        dkx/ds = (k0^2 / 2|k|) * dn^2/dx
+        dkz/ds = (k0^2 / 2|k|) * dn^2/dz
     """
     x, z, kx, kz = state
     dn2_dx, dn2_dz = n_model.grad_n2(x, z)
@@ -121,6 +122,20 @@ def rk4_step(state: np.ndarray,
 
 
 # ── Single-ray tracer ─────────────────────────────────────────────────────────
+
+def _renorm_k(state: np.ndarray, n_model: RefractiveIndex, k0: float) -> np.ndarray:
+    """Renormalize wave vector to the local on-shell condition |k| = n*k0."""
+    x, z, kx, kz = state
+    n_eff = n_model.n(x, z)
+    kmag = np.hypot(kx, kz)
+    target = n_eff * k0
+    if kmag > 1e-30:
+        state = state.copy()
+        scale = target / kmag
+        state[2] *= scale
+        state[3] *= scale
+    return state
+
 
 def _martyn_absorption_dB(group_path_km: float,
                           freq_MHz: float) -> float:
@@ -201,6 +216,7 @@ def trace_single_ray(tx_pos:          tuple,
                       k_mag * np.sin(beta_rad)], dtype=float)
 
     trajectory  = [state.copy()]
+    geom_path   = 0.0
     group_path  = 0.0
     h_reflect   = z0
     at_es       = None
@@ -220,8 +236,18 @@ def trace_single_ray(tx_pos:          tuple,
         else:
             ds = ds_nom
 
+        state_prev = state
         state      = rk4_step(state, n_model, k0, ds)
-        group_path += ds
+        state      = _renorm_k(state, n_model, k0)
+
+        dx_seg = float(state[0] - state_prev[0])
+        dz_seg = float(state[1] - state_prev[1])
+        ds_geom = (dx_seg*dx_seg + dz_seg*dz_seg) ** 0.5
+        x_mid = float(0.5 * (state[0] + state_prev[0]))
+        z_mid = float(0.5 * (state[1] + state_prev[1]))
+        n_mid = max(n_model.n(x_mid, z_mid), 1e-4)
+        geom_path  += ds_geom
+        group_path += ds_geom / n_mid
 
         x, z, kx, kz = state
         trajectory.append(state.copy())
@@ -269,6 +295,7 @@ def trace_single_ray(tx_pos:          tuple,
     return {
         'beta_deg'      : float(beta_deg),
         'trajectory'    : trajectory,
+        'geom_path_km'  : float(geom_path),
         'group_path_km' : group_path,
         'tau_ms'        : group_delay_ms(group_path),
         'h_reflect_km'  : h_reflect,
@@ -310,10 +337,10 @@ class RefractiveIndexAH(RefractiveIndex):
     Used by the P2P variational solver to compute O-mode and X-mode paths.
     Only n_batch() is overridden; grad_n2 / n2 / n use the isotropic base.
 
-    n^2_{O,X} = 1 - X / (1 - half -/+ disc)
+    n^2_{O,X} = 1 - X / (1 - half +/- disc)
         half = Y_T^2 / [2(1-X)]
         disc = sqrt(Y_T^4 / [4(1-X)^2] + Y_L^2)
-        O-mode: minus sign;  X-mode: plus sign    (Budden 1961, Eq. 4.13)
+        O-mode: plus sign;  X-mode: minus sign    (Budden 1961, Eq. 4.13)
 
     Angle approximation: alpha = pi/2 - dip_deg (ray vertical at F-layer apex).
     Phase 5: fH_MHz and dip_deg may be position-dependent via GeomagnField2D.
@@ -371,9 +398,9 @@ class RefractiveIndexAH(RefractiveIndex):
         disc = np.sqrt(np.maximum(YT ** 4 / (4.0 * safe_db ** 2) + YL ** 2, 0.0))
 
         if self.wave_mode == 'O':
-            denom = 1.0 - half - disc      # Budden 1961: O-mode minus sign
+            denom = 1.0 - half + disc      # Ordinary mode
         else:
-            denom = 1.0 - half + disc      # Budden 1961: X-mode plus sign
+            denom = 1.0 - half - disc      # Extraordinary mode
 
         safe_den = np.where(np.abs(denom) < 1e-10,
                             np.sign(denom + 1e-30) * 1e-10,
