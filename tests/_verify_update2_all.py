@@ -18,13 +18,15 @@ from models.ray_tracer_3d import RefractiveIndex3D
 def _check_update2_defaults() -> int:
     u2 = cfg.UPDATE2
     checks = [
-        ("AH3D_ENABLE", u2["AH3D_ENABLE"] is True),
-        ("OX_MODE", u2["OX_MODE"] == "ah3d"),
+        ("AH3D_ENABLE", u2["AH3D_ENABLE"] is False),
+        ("OX_MODE", u2["OX_MODE"] == "postproc"),
         ("EXTERNAL_NE_PROVIDER", u2["EXTERNAL_NE_PROVIDER"]["enable"] is False),
-        ("PE_COUPLING.enable", u2["PE_COUPLING"]["enable"] is True),
-        ("PE_COUPLING.apply_to_power", u2["PE_COUPLING"]["apply_to_power"] is True),
-        ("SCATTER_PD.apply_to_pd", u2["SCATTER_PD"]["apply_to_pd"] is True),
-        ("ABSORPTION_COMPLEX.enable", u2["ABSORPTION_COMPLEX"]["enable"] is True),
+        ("PE_COUPLING.enable", u2["PE_COUPLING"]["enable"] is False),
+        ("PE_COUPLING.apply_to_power", u2["PE_COUPLING"]["apply_to_power"] is False),
+        ("SCATTER_PD.apply_to_pd", u2["SCATTER_PD"]["apply_to_pd"] is False),
+        ("ABSORPTION_COMPLEX.enable", u2["ABSORPTION_COMPLEX"]["enable"] is False),
+        ("RADAR_CLUTTER.enable", u2["RADAR_CLUTTER"]["enable"] is False),
+        ("RADAR_CLUTTER.apply_to_power", u2["RADAR_CLUTTER"]["apply_to_power"] is False),
     ]
     n_fail = 0
     for name, ok in checks:
@@ -112,5 +114,6 @@ def run() -> int:
 
 if __name__ == "__main__":
     sys.exit(run())
+
 
 

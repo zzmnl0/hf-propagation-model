@@ -12,12 +12,17 @@ WORD_DIR = ROOT / "word"
 ROWS = [
     ("U10", "Traceability baseline", "analysis/build_traceability_matrix.py", "tests/_verify_update2_all.py", "implemented"),
     ("U10", "Minimal NeProvider API", "models/ne_provider.py", "tests/_verify_update2_all.py", "implemented"),
+    ("P0-2", "3-D NeProvider and parameterized ionosphere", "models/ne_provider.py; models/parameterized_ionosphere_3d.py", "tests/_verify_ne_provider_3d.py", "implemented"),
     ("U10", "RefractiveIndex3D provider hook", "models/ray_tracer_3d.py", "tests/_verify_update2_all.py", "implemented"),
     ("U1", "Full 3-D Appleton-Hartree tracing", "models/ray_tracer_ah_3d.py; models/point_to_point_ah_3d.py", "tests/_verify_AH3D.py", "implemented"),
+    ("P0-3", "AH3D Hamiltonian residual and group-index diagnostics", "models/ray_tracer_ah_3d.py", "tests/_verify_AH3D_physics.py", "implemented"),
     ("IF3", "Local ray-frame and 2.5-D Ne cross-section", "models/local_frame.py", "tests/_verify_local_frame.py", "implemented"),
-    ("U5", "2.5-D Ray-PE/SSF coupling", "models/hybrid_ray_pe.py", "tests/_verify_ray_pe_energy.py", "planned"),
-    ("U4", "Scatter coupling to P-D spectrum", "models/pd_scatter_kernel.py", "tests/_verify_pd_scatter_kernel.py", "planned"),
-    ("U2", "Complex absorption path integral", "models/absorption_collision.py", "tests/_verify_complex_absorption.py", "planned"),
+    ("P1-1", "Complex AH absorption consistency", "models/absorption_collision.py", "tests/_verify_absorption_consistency.py; tests/_verify_complex_absorption.py", "implemented"),
+    ("P1-2", "Ray-PE/SSF physical boundary field", "models/local_frame.py; models/hybrid_ray_pe.py", "tests/_verify_ray_pe_physics.py; tests/_verify_ray_pe_energy.py", "implemented"),
+    ("P1-3", "Scatter outputs to conserved P-D kernels", "models/pd_scatter_kernel.py", "tests/_verify_pd_scatter_physics.py; tests/_verify_pd_scatter_kernel.py", "implemented"),
+    ("P1-4", "3-D irregularity physics diagnostics", "models/irregularity_3d.py", "tests/_verify_irregularity_3d_physics.py", "implemented"),
+    ("P0-4", "Compact reproducible 3-D parameter sweep", "analysis/parameter_sweep_3d.py", "tests/_verify_sweep_3d_reproducibility.py", "implemented"),
+    ("P2-2", "Single-station OTH radar clutter and Bragg-Doppler diagnostics", "models/radar_clutter.py; models/hybrid_model.py", "tests/_verify_radar_clutter_physics.py", "implemented"),
 ]
 
 
@@ -51,7 +56,7 @@ def build_validation() -> str:
         "phase1_status=implemented\n"
         "phase2_status=implemented\n"
         "phase3_status=implemented\n"
-        "latest_completed=IF3_local_frame\n"
+        "latest_completed=P2-2_single_station_radar_clutter\n"
     ).format(len(implemented), len(planned))
 
 

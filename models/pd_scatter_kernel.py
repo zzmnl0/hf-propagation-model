@@ -21,22 +21,44 @@ def _normalized_gaussian(tau_axis: np.ndarray, tau0: float, sigma_ms: float) -> 
     return k / s
 
 
+def _delta_kernel(tau_axis: np.ndarray, tau0: float) -> np.ndarray:
+    out = np.zeros_like(tau_axis, dtype=float)
+    if out.size:
+        out[int(np.argmin(np.abs(tau_axis - float(tau0))))] = 1.0
+    return out
+
+
 def make_delay_kernel(mode: dict, tau_axis: np.ndarray, tau_res_ms: float | None = None) -> np.ndarray:
     method = str(mode.get('scatter_method', '') or '').lower()
     if tau_res_ms is None:
         tau_res_ms = float(np.median(np.diff(tau_axis))) if len(tau_axis) > 1 else 0.02
     tau0 = float(mode.get('tau_ms', 0.0))
     base_sigma = max(float(mode.get('delta_tau_ms', 0.0)), float(tau_res_ms))
+    if float(mode.get('S4', mode.get('s4', -1.0))) == 0.0:
+        return _delta_kernel(tau_axis, tau0)
     if method == 'mps_required':
         return _normalized_gaussian(tau_axis, tau0, base_sigma)
     if method == 'born':
-        sigma = max(base_sigma, float(mode.get('sigma_tau_ms', 0.0)), float(tau_res_ms))
+        sigma_phi = max(float(mode.get('sigma_phi_sq', 0.0)), 0.0) ** 0.5
+        phys_sigma = float(mode.get('sigma_tau_ms', 0.0))
+        if phys_sigma <= 0.0:
+            phys_sigma = sigma_phi * float(mode.get('scatter_DeltaL_km', 0.0)) / 2.998e5 * 1e3
+        sigma = max(base_sigma, phys_sigma, float(tau_res_ms))
         return _normalized_gaussian(tau_axis, tau0, sigma)
     if method == 'rytov':
-        sigma = max(base_sigma, float(mode.get('sigma_tau_ms', 0.0)), float(tau_res_ms))
+        sigma_phi = max(float(mode.get('sigma_phi_sq', 0.0)), 0.0) ** 0.5
+        s4 = max(float(mode.get('S4', mode.get('s4', 0.0))), 0.0)
+        phys_sigma = float(mode.get('sigma_tau_ms', 0.0))
+        if phys_sigma <= 0.0:
+            phys_sigma = max(sigma_phi, s4) * float(mode.get('scatter_DeltaL_km', 0.0)) / 2.998e5 * 1e3
+        sigma = max(base_sigma, phys_sigma, float(tau_res_ms))
         return _normalized_gaussian(tau_axis, tau0, sigma)
     if method == 'mps' and 'mps_delay_kernel' in mode:
         vals = np.asarray(mode['mps_delay_kernel'], dtype=float)
+        if vals.shape == tau_axis.shape and float(np.sum(vals)) > 0.0:
+            return vals / float(np.sum(vals))
+    if method == 'pe' and 'pe_delay_kernel' in mode:
+        vals = np.asarray(mode['pe_delay_kernel'], dtype=float)
         if vals.shape == tau_axis.shape and float(np.sum(vals)) > 0.0:
             return vals / float(np.sum(vals))
     return _normalized_gaussian(tau_axis, tau0, base_sigma)

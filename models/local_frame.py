@@ -68,6 +68,63 @@ def make_ray_local_frame(ray: dict, sample_index: int | None = None) -> dict:
     }
 
 
+def estimate_ray_curvature_km_inv(ray: dict, sample_index: int | None = None) -> float:
+    """Estimate local ray curvature |dt/ds| in km^-1 from trajectory points."""
+    pts = _trajectory_positions(ray)
+    n_pts = pts.shape[0]
+    if n_pts < 3:
+        return 0.0
+    if sample_index is None:
+        sample_index = n_pts // 2
+    i = int(np.clip(sample_index, 1, n_pts - 2))
+    ds1 = max(float(np.linalg.norm(pts[i] - pts[i - 1])), 1e-12)
+    ds2 = max(float(np.linalg.norm(pts[i + 1] - pts[i])), 1e-12)
+    t1 = _unit(pts[i] - pts[i - 1], np.array([1.0, 0.0, 0.0]))
+    t2 = _unit(pts[i + 1] - pts[i], t1)
+    return float(np.linalg.norm(t2 - t1) / (0.5 * (ds1 + ds2)))
+
+
+def make_boundary_field_descriptor(ray: dict,
+                                   frame: dict | None = None,
+                                   sample_index: int | None = None,
+                                   Pr_W: float | None = None,
+                                   k0_per_km: float | None = None) -> dict:
+    """Describe the local ray field used to launch a PE/SSF section.
+
+    The descriptor carries geometry and phase information only. Callers decide
+    whether the PE result is diagnostic or applied to power.
+    """
+    pts = _trajectory_positions(ray)
+    if frame is None:
+        frame = make_ray_local_frame(ray, sample_index=sample_index)
+    idx = int(frame.get("sample_index", pts.shape[0] // 2))
+    if idx == 0:
+        tangent = pts[1] - pts[0]
+    elif idx >= pts.shape[0] - 1:
+        tangent = pts[-1] - pts[-2]
+    else:
+        tangent = pts[idx + 1] - pts[idx - 1]
+    k_hat = _unit(tangent, np.array([1.0, 0.0, 0.0]))
+    beta = float(np.degrees(np.arctan2(k_hat[2], max(np.hypot(k_hat[0], k_hat[1]), 1e-12))))
+    amp = float(np.sqrt(max(float(Pr_W if Pr_W is not None else ray.get("Pr_W", 0.0)), 0.0)))
+    s_ref = 0.0
+    geom = ray.get("geom_path_km")
+    if geom is not None:
+        s_ref = float(geom)
+    elif idx > 0:
+        s_ref = float(np.sum(np.linalg.norm(np.diff(pts[:idx + 1], axis=0), axis=1)))
+    phase = float((k0_per_km or 0.0) * s_ref)
+    return {
+        "amplitude_sqrt_W": amp,
+        "phase_rad": phase,
+        "k_hat": k_hat,
+        "beta_inc_deg": beta,
+        "curvature_km_inv": estimate_ray_curvature_km_inv(ray, idx),
+        "polarization": str(ray.get("wave_mode", ray.get("polarization", "scalar"))),
+        "sample_index": idx,
+    }
+
+
 def local_to_global(frame: dict, s_km: float = 0.0, u_km: float = 0.0, v_km: float = 0.0) -> np.ndarray:
     """Map local ``(s,u,v)`` offsets in km to global ``(x,y,z)`` km."""
     return (
@@ -177,6 +234,8 @@ def extract_irregularity_entry(ray: dict,
         tangent = pts[idx] - pts[idx - 1]
     beta = float(np.degrees(np.arctan2(tangent[2], max(np.hypot(tangent[0], tangent[1]), 1e-12))))
     frame = make_ray_local_frame(ray, sample_index=idx)
+    descriptor = make_boundary_field_descriptor(ray, frame=frame, sample_index=idx,
+                                                Pr_W=ray.get('Pr_W'), k0_per_km=ray.get('k0_per_km'))
     return {
         'index': idx,
         'x_km': float(pts[idx, 0]),
@@ -185,4 +244,5 @@ def extract_irregularity_entry(ray: dict,
         'q': float(q_vals[idx]),
         'beta_inc_deg': beta,
         'frame': frame,
+        'boundary_field': descriptor,
     }

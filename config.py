@@ -307,31 +307,40 @@ ABSORPTION = {
 
 # ── update2.1 feature gates (default off for backward compatibility) ──────────
 UPDATE2 = {
-    'AH3D_ENABLE': True,
-    'OX_MODE': 'ah3d',
+    'AH3D_ENABLE': False,
+    'OX_MODE': 'postproc',
     'EXTERNAL_NE_PROVIDER': {
         'enable': False,
         'source': 'internal_grid',
     },
     'PE_COUPLING': {
-        'enable': True,
-        'apply_to_power': True,
+        'enable': False,
+        'apply_to_power': False,
         'mode': 'local_2p5d',
         'q_boundary': 1.0,
     },
     'SCATTER_PD': {
-        'apply_to_pd': True,
-        'kernel': 'scatter_coupled',
+        'apply_to_pd': False,
+        'kernel': 'diagnostic',
     },
     'ABSORPTION_COMPLEX': {
-        'enable': True,
-        'mode': 'appleton_hartree_collision_path',
+        'enable': False,
+        'mode': 'legacy',
         'collision_model': 'd_region_exponential',
         'nu_ref_s': 5.0e6,
         'h_ref_km': 80.0,
         'scale_height_km': 8.0,
         'h_min_km': 50.0,
         'h_max_km': 140.0,
+    },
+    'RADAR_CLUTTER': {
+        'enable': False,
+        'apply_to_power': False,
+        'surface_type': 'sea',
+        'sigma0_dB': None,
+        'radial_velocity_ms': 0.0,
+        'grazing_angle_deg': None,
+        'clutter_class': 'surface_bragg',
     },
 }
 
@@ -353,5 +362,6 @@ GEOMAG = {
     'decl_deg':  -5.5,    # Magnetic declination [deg] (negative = westward)
     'enable_OX': False,   # Master switch: True -> O/X mode splitting via AH equation
 }
+
 
 

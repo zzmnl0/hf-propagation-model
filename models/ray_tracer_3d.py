@@ -319,7 +319,12 @@ class RefractiveIndex3D:
         tid_on    = self.tid       is not None and self.tid.get('enable', False)
         bubble_on = self.bubble_3d is not None and self.bubble_3d.get('enable', False)
 
-        if tid_on or bubble_on:
+        if self.ne_provider is not None and not tid_on and not bubble_on:
+            freq_Hz = self.freq_MHz * 1e6
+            Ne_tot = max(float(self.ne_provider.get_Ne((x_km, y_km, z_phys), t=t)), 0.0)
+            fp2_tot = (K_FP**2) * Ne_tot
+            n2_base = max(1.0 - fp2_tot / freq_Hz**2, 1e-6)
+        elif tid_on or bubble_on:
             freq_Hz = self.freq_MHz * 1e6
             Ne_bg   = self._bilin2(self._Ne_arr, x_km, z_phys)
             Ne_tot  = Ne_bg
@@ -352,7 +357,7 @@ class RefractiveIndex3D:
         """
         tid_on    = self.tid       is not None and self.tid.get('enable', False)
         bubble_on = self.bubble_3d is not None and self.bubble_3d.get('enable', False)
-        if not tid_on and not bubble_on:
+        if self.ne_provider is None and not tid_on and not bubble_on:
             return (self._bilin2(self._dn2_dx_arr, x_km, z_cart_km),
                     0.0,
                     self._bilin2(self._dn2_dz_arr, x_km, z_cart_km))

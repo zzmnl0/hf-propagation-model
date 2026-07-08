@@ -1,4 +1,4 @@
-"""Verify update2.1 Ray-PE/SSF energy coupling.
+﻿"""Verify update2.1 Ray-PE/SSF energy coupling.
 
 Run:
     conda run -n pytorch_cpu python tests/_verify_ray_pe_energy.py
@@ -93,9 +93,9 @@ def run() -> int:
     print("=" * 60)
     n_fail = 0
 
-    default_ok = (cfg.UPDATE2["PE_COUPLING"].get("enable") is True and
-                  cfg.UPDATE2["PE_COUPLING"].get("apply_to_power") is True)
-    print("default PE_COUPLING hybrid_on {}".format("OK" if default_ok else "FAIL"))
+    default_ok = (cfg.UPDATE2["PE_COUPLING"].get("enable") is False and
+                  cfg.UPDATE2["PE_COUPLING"].get("apply_to_power") is False)
+    print("default PE_COUPLING hybrid_off {}".format("OK" if default_ok else "FAIL"))
     n_fail += 0 if default_ok else 1
 
     n_fail += _run_case("diagnostic_only", False, n_pml=0, expect_loss=False)
@@ -108,3 +108,5 @@ def run() -> int:
 
 if __name__ == "__main__":
     sys.exit(run())
+
+

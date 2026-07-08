@@ -110,6 +110,23 @@ def hamiltonian_ah3d(state: np.ndarray, n_ah: RefractiveIndexAH3D, k0: float, t:
     return float(np.dot(k_vec, k_vec) - k0 * k0 * n_ah.n2(x, y, z, k_vec=k_vec, t=t))
 
 
+def hamiltonian_residual_ah3d(state: np.ndarray, n_ah: RefractiveIndexAH3D, k0: float, t: float = 0.0) -> float:
+    denom = max(k0 * k0, 1e-30)
+    return abs(hamiltonian_ah3d(state, n_ah, k0, t=t)) / denom
+
+
+def group_index_ah3d(x_km: float, y_km: float, z_km: float, k_vec, n_ah: RefractiveIndexAH3D, t: float = 0.0) -> float:
+    f0 = float(n_ah.freq_MHz)
+    df = max(1e-3, 1e-4 * f0)
+    n0 = np.sqrt(max(n_ah.n2(x_km, y_km, z_km, k_vec=k_vec, t=t), n_ah.n2_floor))
+    n_hi = RefractiveIndexAH3D(n_ah.n3d, f0 + df, n_ah.wave_mode, geomag=n_ah.geomag, n2_floor=n_ah.n2_floor)
+    n_lo = RefractiveIndexAH3D(n_ah.n3d, max(f0 - df, df), n_ah.wave_mode, geomag=n_ah.geomag, n2_floor=n_ah.n2_floor)
+    nhi = np.sqrt(max(n_hi.n2(x_km, y_km, z_km, k_vec=k_vec, t=t), n_ah.n2_floor))
+    nlo = np.sqrt(max(n_lo.n2(x_km, y_km, z_km, k_vec=k_vec, t=t), n_ah.n2_floor))
+    ng = n0 + f0 * (nhi - nlo) / (2.0 * df)
+    return max(float(ng), 1e-4)
+
+
 def ah3d_deriv(state: np.ndarray, n_ah: RefractiveIndexAH3D, k0: float, t: float = 0.0) -> np.ndarray:
     """Hamiltonian finite-difference RHS normalized to geometric path length."""
     h_r = 0.5
@@ -191,6 +208,7 @@ def trace_single_ray_ah_3d(
     y_reflect = y0
     has_risen = False
     statuses = set()
+    max_hamiltonian_residual = hamiltonian_residual_ah3d(state, n_ah, k0, t=t)
 
     for _ in range(max_st):
         x, y, z, kx, ky, kz = state
@@ -213,9 +231,10 @@ def trace_single_ray_ah_3d(
         y_mid = float(0.5 * (state[1] + prev[1]))
         z_mid = float(0.5 * (state[2] + prev[2]))
         k_mid = 0.5 * (state[3:6] + prev[3:6])
-        n_mid = max(np.sqrt(n_ah.n2(x_mid, y_mid, z_mid, k_vec=k_mid, t=t)), 1e-4)
+        ng_mid = group_index_ah3d(x_mid, y_mid, z_mid, k_mid, n_ah, t=t)
         geom_path += ds_geom
-        group_path += ds_geom / n_mid
+        group_path += ds_geom * ng_mid
+        max_hamiltonian_residual = max(max_hamiltonian_residual, hamiltonian_residual_ah3d(state, n_ah, k0, t=t))
 
         x, y, z, kx, ky, kz = state
         traj.append(state.copy())
@@ -266,7 +285,8 @@ def trace_single_ray_ah_3d(
         "trajectory_3d": traj,
         "wave_mode": n_ah.wave_mode,
         "branch_status": branch_status,
-        "group_index_model": "cold_plasma_ng_approx",
+        "group_index_model": "frequency_derivative_appleton_hartree",
+        "hamiltonian_residual_max": float(max_hamiltonian_residual),
         "ox_solver": "ah3d",
     }
 

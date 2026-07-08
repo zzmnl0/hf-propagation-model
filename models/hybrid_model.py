@@ -26,6 +26,7 @@ from .es_model import EsLayerModel
 from .pe_propagator import PEPropagator, construct_incident_field
 from .hybrid_ray_pe import apply_ray_pe_coupling
 from .tube_tracer import TubeRayTracer
+from .radar_clutter import apply_clutter_to_mode
 from utils import (free_space_loss_dB, to_dBW, freq_to_k0,
                    radar_equation_W, d_layer_absorption_dB)
 
@@ -483,6 +484,23 @@ class HybridPropagationModel:
 
             m['Pr_W']   = Pr_W
             m['Pr_dBW'] = to_dBW(Pr_W)
+
+            clutter_cfg = (UPDATE2.get('RADAR_CLUTTER', {})
+                           if isinstance(UPDATE2, dict) else {})
+            if clutter_cfg.get('enable', False):
+                params = {k: v for k, v in clutter_cfg.items()
+                          if k not in ('enable', 'apply_to_power')}
+                updated = apply_clutter_to_mode(
+                    m,
+                    freq_MHz=self.freq,
+                    params=params,
+                    Pt_W=Pt,
+                    Gt=Gt,
+                    Gr=Gr,
+                    apply_to_power=bool(clutter_cfg.get('apply_to_power', False)),
+                )
+                m.clear()
+                m.update(updated)
 
         return tube_modes
 

@@ -13,7 +13,7 @@ import numpy as np
 
 from config import BUBBLE, PE
 from .pe_propagator import PEPropagator, construct_incident_field
-from .local_frame import extract_irregularity_entry
+from .local_frame import extract_irregularity_entry, make_boundary_field_descriptor
 
 
 def _power_ratio_to_db(ratio: float) -> float:
@@ -107,6 +107,10 @@ def apply_ray_pe_coupling(
         "pe_x_entry_km": float(x_entry_km),
         "pe_z_entry_km": float(z_entry_km),
         "pe_dx_total_km": dx_total_km,
+        "pe_boundary_amplitude_sqrt_W": A_inc,
+        "pe_boundary_phase_rad": 0.0,
+        "pe_boundary_curvature_km_inv": 0.0,
+        "pe_boundary_polarization": "scalar",
     }
     return Pr_out, diag
 
@@ -148,9 +152,17 @@ def apply_ray_pe_coupling_3d(
         'Lz_km': float(irregularity_params.get('Lz_km', irregularity_params.get('sigma_perp_km', 30.0))),
         'Lx_km': float(irregularity_params.get('Lx_km', irregularity_params.get('sigma_perp_km', 50.0))),
     }
+    mode_for_field = dict(mode)
+    mode_for_field['Pr_W'] = Pr_W
+    mode_for_field['k0_per_km'] = k0_per_km
+    field = make_boundary_field_descriptor(
+        mode_for_field, frame=entry['frame'], sample_index=entry['index'],
+        Pr_W=Pr_W, k0_per_km=k0_per_km)
+
     Pr_out, diag = apply_ray_pe_coupling(
         pe, Ne_2d, x_array, z_array, Pr_W, k0_per_km,
-        entry['x_km'], entry['z_km'], entry['beta_inc_deg'], bubble_like, params)
+        entry['x_km'], entry['z_km'], field.get('beta_inc_deg', entry['beta_inc_deg']),
+        bubble_like, params)
     frame = entry['frame']
     diag.update({
         'pe_x_entry_km': float(entry['x_km']),
@@ -161,6 +173,13 @@ def apply_ray_pe_coupling_3d(
         'pe_frame_sx': float(frame['s_hat'][0]),
         'pe_frame_sy': float(frame['s_hat'][1]),
         'pe_frame_sz': float(frame['s_hat'][2]),
+        'pe_boundary_amplitude_sqrt_W': float(field.get('amplitude_sqrt_W', 0.0)),
+        'pe_boundary_phase_rad': float(field.get('phase_rad', 0.0)),
+        'pe_boundary_curvature_km_inv': float(field.get('curvature_km_inv', 0.0)),
+        'pe_boundary_kx': float(np.asarray(field.get('k_hat', [1.0, 0.0, 0.0]), dtype=float)[0]),
+        'pe_boundary_ky': float(np.asarray(field.get('k_hat', [1.0, 0.0, 0.0]), dtype=float)[1]),
+        'pe_boundary_kz': float(np.asarray(field.get('k_hat', [1.0, 0.0, 0.0]), dtype=float)[2]),
+        'pe_boundary_polarization': str(field.get('polarization', mode.get('wave_mode', 'scalar'))),
     })
     if 'pe_angle_spread_deg' not in diag:
         diag['pe_angle_spread_deg'] = float(diag.get('pe_mean_aoa_deg', 0.0))

@@ -1,0 +1,137 @@
+﻿阶段1三维参数化复杂电离层短波反射/散射混合传播实施计划
+生成日期：2026-07-08
+文件目的：供后续 Codex 按阶段实施。本文面向最终目标：在外部输入的三维电子密度 Ne(x,y,z,t) 分布中，不预设不规则体是否存在及类型，计算 HF 三维传播路径、传播参数、P-D 功率谱、信号强度和传播模式。阶段1先在不同三维参数化电离层模型中建立物理闭合的反射/散射混合传播模型。
+
+一、总原则
+
+1. 默认开关策略必须统一关闭。任何会改变 Pr_W、Pr_dBW、tau_ms、group_path_km、传播模式排序或 P-D 谱的模块，必须通过显式配置开启。默认配置只允许复现既有基线结果。当前要求的默认值为：UPDATE2.AH3D_ENABLE=False，UPDATE2.OX_MODE='postproc'，UPDATE2.PE_COUPLING.enable=False，UPDATE2.PE_COUPLING.apply_to_power=False，UPDATE2.SCATTER_PD.apply_to_pd=False，UPDATE2.ABSORPTION_COMPLEX.enable=False，UPDATE2.EXTERNAL_NE_PROVIDER.enable=False。
+
+2. 复杂环境的默认研究对象必须是三维参数化模型，而不是二维背景上附加局部修正。阶段1应至少包含 IRI/NeProvider 背景、三维 TID、三维场向耗空泡、三维 Es/场向不规则体、Spread-F/幂律随机场和可控碰撞吸收。所有参数化模型必须可输出 Ne(x,y,z,t)、梯度、地磁场投影、随机种子、谱参数和元数据。
+
+3. 禁止简化实现。后续代码不得以“首版简化”“诊断近似”“经验核代替物理闭合”作为最终实现。允许分阶段落地，但每一阶段的目标实现必须遵循完整物理方程、守恒检查、极限退化检查和网格/步长收敛检查；若暂时只能保留旧近似，必须标记为 legacy/diagnostic，不得写成已完成物理闭合。
+
+4. 反射与散射必须在同一三维介质中耦合。大尺度折射/反射由三维磁离子 Hamiltonian 射线追踪处理；小尺度前向散射、多径展宽和强闪烁由全波、广角 PE/SSF 或多相位屏处理；二者通过局部射线坐标、边界场、能量通量、角谱和延迟谱互相交换。
+
+5. 所有输出必须具有可追踪性。每个物理公式应对应 module/function、输出字段、测试脚本、报告图表和参考文献。所有随机或参数扫描结果必须记录 seed、网格、步长、频率、时间、地磁模型、背景 Ne 来源和不规则体参数。
+
+二、理论支撑基线
+
+1. 背景电离层：IRI 是 COSPAR/URSI 国际参考电离层模型，适合作为气候态背景，但不能代表实况扰动。阶段1使用 IRI/NeProvider 作为参数化背景入口；最终阶段必须允许外部三维 Ne 分布直接接入。参考：Bilitza et al. IRI-2016/IRI-2020 系列；IRI 官方站点 https://irimodel.org/ 。
+
+2. 地磁场：O/X 分支、场向不规则体、Es 各向异性和吸收均必须使用统一 IGRF 地磁场接口。IGRF-14 已在 2024 年发布，NOAA/NCEI 说明其为 IAGA 维护的国际主磁场标准模型。参考：https://www.ncei.noaa.gov/products/international-geomagnetic-reference-field 。
+
+3. 磁离子射线：HF 在电离层中的三维传播必须由 Appleton-Hartree 磁离子色散关系和 Hamiltonian 射线方程控制。核心形式为 D(r,k,omega)=0，dr/dlambda=partial D/partial k，dk/dlambda=-partial D/partial r。O/X 分支必须拥有独立轨迹、反射高度、横向偏移、群延迟和吸收，不得只在同一各向同性轨迹上后处理。参考：Budden, Radio Waves in the Ionosphere；Haselgrove ray theory；Jones and Stephenson 3D ray tracing；IONORT/PHaRLAP 类三维射线追踪传统。
+
+4. 群延迟与吸收：群路径不得用几何路径代替。磁离子介质中应由 dispersion relation 对频率的导数计算群速度或群折射率。碰撞吸收必须来自复折射率虚部路径积分，L_abs_dB=8.686*2*k0*integral Im(n) ds，并区分单程通信和双程雷达。
+
+5. 散射与全波传播：弱散射可用 Born/Rytov 的适用性边界判据；中强散射应使用多相位屏、广角 PE/SSF 或全波方法，输出能量守恒的角谱、延迟谱、S4、sigma_tau 和功率再分配。参考：Rino 1979 power-law phase screen；Yeh and Liu 1982 scintillation；Knepp 1983 multiple phase-screen；Carrano 类广角 PE/SSF HF 传播。
+
+6. 三维不规则体：TID 应来自内重力波扰动理论；bubble/Spread-F 应采用场向各向异性、漂移、外尺度/内尺度和谱指数一致的三维随机介质；Es 散射应包含 Booker-Gordon/Bragg 匹配和 aspect sensitivity。参数化模型必须能被外部 NeProvider 替换。
+
+三、实施顺序
+
+P0-1 默认开关与基线可复现
+
+目标：统一默认关闭策略，恢复旧结果可复现性。当前必须先完成配置和测试口径修正，再进入任何物理升级。
+
+实施内容：检查 config.UPDATE2，确保所有实验性模块默认关闭；将默认验证脚本改为 default-off；新增或更新 update_validation_baseline.txt，记录默认关闭项和旧结果不变项。所有开启实验功能的测试必须在测试内部显式改配置，测试结束后恢复原配置。
+
+验收：tests/_verify_update2_all.py、tests/_verify_hybrid_default_on.py、tests/_verify_pd_scatter_kernel.py、tests/_verify_ray_pe_energy.py 均通过；默认运行 build_pd_spectrum 不触发 scatter_coupled；默认 run_with_OX 使用 postproc 而非 AH3D。
+
+P0-2 三维 NeProvider 与参数化复杂环境统一接口
+
+目标：建立阶段1默认三维参数化复杂电离层模型，并为最终外部三维 Ne 输入做同一接口。
+
+实施内容：重构或扩展 models/ne_provider.py，定义 BaseNeProvider3D，至少支持 get_Ne(x,y,z,t)、get_grad_Ne(x,y,z,t)、get_metadata()、sample_grid3d()、sample_ray_path()。新增 ParameterizedIonosphere3DProvider，统一 IRI 背景、三维 TID、场向 bubble、Es、Spread-F、随机谱扰动和吸收参数。所有不规则体组件必须以真实三维坐标和 IGRF 磁场方向定义，不得只对 x-z 截面插值后伪三维复制。
+
+验收：给定同一参数和 seed，Ne 三维场可复现；Ne>=0；关闭所有扰动时退化到背景 IRI/网格；开启单一扰动时能输出扰动体积、最大相对扰动、谱参数和地磁方向。新增 tests/_verify_ne_provider_3d.py。
+
+P0-3 三维磁离子 Hamiltonian O/X 射线追踪
+
+目标：以完整 Appleton-Hartree 色散关系计算 O/X 独立反射路径，这是短波反射模型的物理主干。
+
+实施内容：升级 models/ray_tracer_ah_3d.py。Hamiltonian 必须直接使用 D(r,k,omega)=0，而不是只用 clamped n2。实现无碰撞和含碰撞两套色散计算；实部控制轨迹，虚部进入吸收。实现群折射率 n_g 或群速度 v_g=partial omega/partial k，group_path_km 和 tau_ms 必须来自群速度积分。near-cutoff、evanescent、mode conversion、invalid branch 必须显式状态化，不得用 n2_floor 掩盖物理问题。
+
+验收：fH=0 退化到各向同性冷等离子体；O/X 分支在平行/垂直传播极限符号正确；步长减半时 x_land、tau、h_reflect 收敛；group_path 不等于 geom_path 时能解释差异；新增 tests/_verify_AH3D_physics.py。
+
+P0-4 参数扫描与不确定性框架
+
+目标：阶段1不能只给单场景示例，必须证明模型在不同三维参数化环境中的稳定性和物理趋势。
+
+实施内容：新增 analysis/parameter_sweep_3d.py，扫描频率、时间、季节、TID 振幅/波长/方向、bubble 耗空深度/尺度/漂移、Es 峰值/厚度/aspect、Spread-F 谱强度、碰撞频率尺度。采用 Latin Hypercube 或 Sobol 采样；输出模式失锁率、主模切换、tau/Pr/P-D 分位数和灵敏度指数。
+
+验收：固定 seed 完全复现；无模式切换区间内结果随参数连续；出现模式切换时显式标注；输出 update_stage1_sweep_summary.csv 和图件。新增 tests/_verify_sweep_3d_reproducibility.py。
+
+P1-1 复折射率吸收与功率链一致化
+
+目标：替代经验 D 层 dB 修正，使吸收与 Ne、碰撞频率、O/X 分支和路径一致。
+
+实施内容：完善 models/absorption_collision.py。碰撞频率模型必须可接收 D/E 区剖面或经验模型，复 Appleton-Hartree 折射率必须与 AH3D 共用同一公式和地磁场。功率链只允许一个吸收入口，避免 legacy absorption、complex absorption 和 PE loss 重复扣减。
+
+验收：nu=0 时吸收为 0；双程吸收约为单程两倍；频率升高吸收降低；同一路径 O/X 吸收差异可解释；新增 tests/_verify_absorption_consistency.py。
+
+P1-2 射线-PE/SSF 物理闭合耦合
+
+目标：建立反射主射线与局部全波/PE 散射计算的能量闭合接口。
+
+实施内容：新增或重构 models/local_frame.py 和 models/hybrid_ray_pe.py。由三维射线轨迹构造 Frenet/射线局部坐标，输入 PE 的边界场必须包含振幅、相位、局部波矢、曲率和极化信息。PE/SSF 输出角谱、延迟谱、能量通量、散射损耗和回写核。禁止用单一 Gaussian delay kernel 代替 PE 输出；Gaussian 只能作为可验证的入射束形。
+
+验收：均匀介质能量守恒；弱扰动下 PE 主瓣方向与射线方向一致；网格 dx/dz 减半收敛；PE 回写不重复计算自由空间损耗和吸收。新增 tests/_verify_ray_pe_physics.py。
+
+P1-3 散射 P-D 谱闭环
+
+目标：让 Born/Rytov/MPS/PE 的散射结果真正进入 P-D 谱，而不是只输出诊断字段。
+
+实施内容：重构 models/pd_scatter_kernel.py。弱散射使用 Rytov/Born 推导的相位/幅度统计；强散射必须使用 MPS 或 PE 输出的实际延迟-角谱。P-D 总功率必须守恒或按明确物理损耗减少。每个 mode 需记录 scatter_method、validity_range、energy_before、energy_after。
+
+验收：scatter_apply_to_pd=False 时旧谱完全一致；S4=0 时退化为 delta；MPS/PE 输出核归一化；强散射下不会误用弱散射公式。新增 tests/_verify_pd_scatter_physics.py。
+
+P1-4 三维不规则体物理一致性
+
+目标：统一 TID、bubble、Spread-F、Es 的三维参数化模型，使其既能作为阶段1默认复杂环境，也能被外部 Ne 数据替换。
+
+实施内容：新增 models/irregularity_3d.py。TID 采用重力波极化关系；bubble 采用场向耗空、漂移和背景梯度约束；Spread-F 采用各向异性三维谱场；Es 采用薄层加场向不规则体和 Bragg/aspect 判据。所有模型必须支持时间演化和 seed 复现。
+
+验收：随机场谱斜率、方差、相关长度符合输入；冻结漂移峰位移动等于 V*dt；Es aspect 偏离时散射截面下降；Ne 不出现负值。新增 tests/_verify_irregularity_3d_physics.py。
+
+P2-1 外部三维 Ne 分布接入
+
+目标：服务最终目标，使模型可在未知不规则体类型的外部 Ne(x,y,z,t) 中自动计算传播。
+
+实施内容：扩展 NeProvider 支持 npz/netCDF/HDF5/GeoTIFF 或用户自定义回调，读取三维 Ne、坐标系、时间、单位和元数据。新增 irregularity_detector.py，仅从 Ne 场诊断梯度、谱、各向异性和候选不规则体类型，但传播计算不得依赖预设类型。
+
+验收：外部 Ne 单位自动检查；坐标变换明确；缺测区插值/掩膜有状态；未知不规则体不影响射线/PE 读取 Ne。新增 tests/_verify_external_ne_provider.py。
+
+P2-2 雷达/OTH clutter 与多站扩展
+
+目标：在完成传播主链后，扩展到 OTH 雷达 range-Doppler、Bragg clutter 和多接收点模式识别。
+
+实施内容：新增 models/radar_clutter.py，sigma0 由地/海面类型、grazing angle、Bragg 条件和径向速度决定。Tube/射线模式输出 range、Doppler、clutter_class 和 mode confidence。
+
+验收：sigma0=0 时回波为 0；速度为 0 时 Doppler 为 0；同一路径 tau_2way=2*tau_oneway；功率随路径四次方衰减。新增 tests/_verify_radar_clutter_physics.py。
+
+四、建议新增或重构文件
+
+1. code/models/ne_provider.py：升级为三维 NeProvider 总入口。
+2. code/models/parameterized_ionosphere_3d.py：阶段1默认三维参数化复杂环境。
+3. code/models/ray_tracer_ah_3d.py：完整三维磁离子 Hamiltonian 射线追踪。
+4. code/models/absorption_collision.py：与 AH3D 共享的复折射率吸收。
+5. code/models/local_frame.py：射线局部坐标和边界场构造。
+6. code/models/hybrid_ray_pe.py：射线-PE/SSF 物理闭合接口。
+7. code/models/pd_scatter_kernel.py：由物理散射输出构造 P-D 谱。
+8. code/models/irregularity_3d.py：TID/bubble/Spread-F/Es 三维参数化模型。
+9. code/models/irregularity_detector.py：外部 Ne 场不规则体诊断，不作为传播前提。
+10. code/analysis/parameter_sweep_3d.py：三维参数扫描与不确定性。
+11. code/analysis/build_traceability_matrix.py：理论-代码-测试-报告追踪矩阵。
+
+五、最低验收标准
+
+1. 默认配置下旧输出可复现；开启任何新物理模块必须在 CSV 中标记 solver、feature_gate 和 applied 标志。
+2. 所有新物理模块至少包含三个测试：极限退化、守恒/单调性、网格或步长收敛。
+3. 所有功率改写必须记录能量来源和扣减项，避免自由空间损耗、吸收、散射损耗重复计算。
+4. 所有传播模式输出必须包含 x/y/z 轨迹、O/X 分支、反射高度、群延迟、几何路径、群路径、吸收、散射状态和模式置信度。
+5. 所有论文或报告表述必须与功能状态一致。legacy、diagnostic、postproc 不得写成完整物理闭合。
+
+六、当前已执行的基础修正
+
+已将 UPDATE2 默认开关调整为关闭策略：AH3D_ENABLE=False，OX_MODE='postproc'，PE_COUPLING.enable=False，PE_COUPLING.apply_to_power=False，SCATTER_PD.apply_to_pd=False，SCATTER_PD.kernel='diagnostic'，ABSORPTION_COMPLEX.enable=False，ABSORPTION_COMPLEX.mode='legacy'。同时应保持相关验证脚本按 default-off 口径检查。
