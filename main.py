@@ -13,8 +13,9 @@ Scenarios save tx_fan_*.png, p2p_modes_*.png, and pd_*.png to output/:
     run_with_es()         IRI + Es, 3-D RT + Hao 2017 power
     run_with_bubble()     IRI + 3-D field-aligned bubble
     run_full()            3-dir TID + Es + 3-D bubble (mode paths overlay)
-    run_with_OX()         3-dir TID, 3-D fan; OX power via 2-D AH (pending 3-D port)
-    run_radar_baseline()  OTH radar, 3-D RT
+    run_with_OX()         3-dir TID; AH3D if enabled, otherwise diagnostic post-proc
+    run_radar_point_target() monostatic point-target radar, two-way observables
+    run_radar_clutter()   single-station OTH surface clutter, two-way observables
     run_with_spreadf()    3-dir TID + spread-F, 3-D RT
     run_tube_radar()      OTH radar, 3-D flux-tube tracer (Coleman 1997/1998)
 
@@ -69,6 +70,96 @@ def _rays3d_to_fan(rays3d):
         r2['trajectory'] = [(float(s[0]), float(s[2])) for s in r['trajectory_3d']]
         out.append(r2)
     return out
+
+
+def _tag_communication_modes(modes):
+    """Mark one-way communication observables explicitly."""
+    for m in modes:
+        m['tau_oneway_ms'] = float(m.get('tau_ms', 0.0))
+        m['tau_2way_ms'] = None
+        m['range_km'] = float(m.get('group_path_km', 0.0))
+        m['radar_observable'] = 'none'
+        m.setdefault('physics_basis', '3d_haselgrove_friis')
+    return modes
+
+
+def _tag_point_target_radar_modes(modes):
+    """Mark monostatic point-target radar observables explicitly."""
+    for m in modes:
+        tau_oneway = float(m.get('tau_ms', 0.0))
+        m['tau_oneway_ms'] = tau_oneway
+        m['tau_2way_ms'] = 2.0 * tau_oneway
+        m['range_km'] = float(m.get('group_path_km', 0.0))
+        m['radar_observable'] = 'two_way_point_target'
+        m['radar_equation'] = 'monostatic_point_target_R4'
+        m['physics_basis'] = 'Skolnik_2008_point_target_radar_equation'
+    return modes
+
+
+def _tag_clutter_radar_modes(modes):
+    """Mark monostatic surface-clutter radar observables explicitly."""
+    for m in modes:
+        tau_oneway = float(m.get('tau_oneway_ms', m.get('tau_ms', 0.0)))
+        m['tau_oneway_ms'] = tau_oneway
+        m['tau_2way_ms'] = float(m.get('tau_2way_ms', 2.0 * tau_oneway))
+        m['range_km'] = float(m.get('range_km', m.get('group_path_km', 0.0)))
+        m['radar_observable'] = 'two_way_surface_clutter'
+        m['radar_equation'] = 'monostatic_sigma0_area_R4'
+        m['physics_basis'] = 'Coleman_1997_1998_flux_tube_Barrick_1972_Bragg'
+    return modes
+
+
+def _build_pd(modes, method='gaussian', delay_key='tau_ms'):
+    """Build P-D spectrum; radar callers pass delay_key='tau_2way_ms'."""
+    if delay_key == 'tau_ms':
+        return build_pd_spectrum(modes, method=method)
+    shifted = []
+    for m in modes:
+        mm = dict(m)
+        mm['tau_ms'] = float(m.get(delay_key, m.get('tau_ms', 0.0)))
+        if delay_key == 'tau_2way_ms':
+            if 'tau_spread_ms' in mm:
+                mm['tau_spread_ms'] = 2.0 * float(mm.get('tau_spread_ms', 0.0))
+            if 'delta_tau_ms' in mm:
+                mm['delta_tau_ms'] = 2.0 * float(mm.get('delta_tau_ms', 0.0))
+        shifted.append(mm)
+    return build_pd_spectrum(shifted, method=method)
+
+
+def _identify_main(tau_ax, pd, modes, delay_key='tau_ms'):
+    """Identify main mode on the same delay axis used by the plotted P-D spectrum."""
+    if delay_key == 'tau_ms':
+        return identify_main_mode(tau_ax, pd, modes)
+    shifted = []
+    for m in modes:
+        mm = dict(m)
+        mm['tau_ms'] = float(m.get(delay_key, m.get('tau_ms', 0.0)))
+        shifted.append(mm)
+    main_s, ranked_s, summary = identify_main_mode(tau_ax, pd, shifted)
+    if main_s is None:
+        return None, [], summary
+    main = min(modes, key=lambda m: abs(float(m.get(delay_key, m.get('tau_ms', 0.0))) - main_s['tau_ms']))
+    ranked = [
+        min(modes, key=lambda m: abs(float(m.get(delay_key, m.get('tau_ms', 0.0))) - r['tau_ms']))
+        for r in ranked_s
+    ]
+    summary['main_tau_ms'] = float(main.get(delay_key, main.get('tau_ms', 0.0)))
+    summary['main_label'] = main.get('label', '')
+    summary['main_Pr_dBW'] = main.get('Pr_dBW', -999.0)
+    return main, ranked, summary
+
+
+def _save_modes_csv(scenario, modes, tau_ax, pd, pd_delay_key='tau_ms'):
+    return save_modes_csv(
+        scenario, modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT,
+        pd_delay_key=pd_delay_key)
+
+
+def _plot_pd(tau_ax, pd, modes, title, filename, delay_key='tau_ms'):
+    xlabel = 'Two-way Group Delay  (ms)' if delay_key == 'tau_2way_ms' else 'One-way Group Delay  (ms)'
+    fig, _ = plot_pd_spectrum(
+        tau_ax, pd, modes, title=title, delay_key=delay_key, xlabel=xlabel)
+    _save(fig, filename)
 
 
 def _add_power_3d(modes, n3d=None, radar_mode=False, sigma_rcs=1.0):
@@ -126,6 +217,10 @@ def _add_power_3d(modes, n3d=None, radar_mode=False, sigma_rcs=1.0):
         m['abs_index_model'] = abs_diag.get('abs_index_model', '')
         m['Pr_dBW']       = to_dBW(m['Pr_W'])
         m['delta_tau_ms'] = 0.0
+    if radar_mode:
+        _tag_point_target_radar_modes(modes)
+    else:
+        _tag_communication_modes(modes)
 
 def _add_ray_pe_3d(modes, Ne_2d, irregularity_params):
     pe_cfg = cfg.UPDATE2.get('PE_COUPLING', {})
@@ -255,8 +350,12 @@ def _print_main(main):
     if main:
         pr_str = ("{:.1f} dBW".format(main['Pr_dBW'])
                   if 'Pr_dBW' in main else "n/a")
-        print("  Main mode: {}  tau = {:.3f} ms  Pr = {}".format(
-            main['label'], main['tau_ms'], pr_str))
+        if main.get('radar_observable', 'none') != 'none' and main.get('tau_2way_ms') is not None:
+            print("  Main mode: {}  tau2 = {:.3f} ms  Pr = {}".format(
+                main['label'], main['tau_2way_ms'], pr_str))
+        else:
+            print("  Main mode: {}  tau = {:.3f} ms  Pr = {}".format(
+                main['label'], main['tau_ms'], pr_str))
     else:
         print("  Main mode: None")
 
@@ -751,7 +850,9 @@ def run_with_OX():
 
     n_comp = cfg.TID_3D['n_components']
     print("=" * 55)
-    print("  Scenario OX: {}-dir TID + O/X (3-D RT + AH post-proc)".format(n_comp))
+    use_ah3d = bool(cfg.UPDATE2.get('AH3D_ENABLE', False)) and cfg.UPDATE2.get('OX_MODE', 'postproc') == 'ah3d'
+    ox_basis = 'AH3D' if use_ah3d else 'AH post-proc diagnostic'
+    print("  Scenario OX: {}-dir TID + O/X ({})".format(n_comp, ox_basis))
     print("=" * 55)
     print("  fH = {} MHz   dip = {} deg   decl = {} deg".format(
         cfg.GEOMAG['fH_MHz'], cfg.GEOMAG['dip_deg'], cfg.GEOMAG['decl_deg']))
@@ -763,12 +864,11 @@ def run_with_OX():
     rays3d = shoot_rays_fan_3d(cfg.TX_POS, n3d, cfg.FREQ_MHZ, cfg.RT_3D)
     print("  Ray fan : {} rays".format(len(rays3d)))
     fig, _ = plot_tx_ray_fan(_rays3d_to_fan(rays3d), Ne_2d, cfg.BG_X, cfg.BG_Z,
-                          title='Ray Fan - O/X (3-D + {}-dir TID)'.format(n_comp),
+                          title='Ray Fan - O/X {} (3-D + {}-dir TID)'.format(ox_basis, n_comp),
                           link_info=_make_link_info(),
                           pert_info=_make_pert_info(enable_tid=True))
     _save(fig, 'tx_fan_OX.png')
 
-    use_ah3d = bool(cfg.UPDATE2.get('AH3D_ENABLE', False)) and cfg.UPDATE2.get('OX_MODE', 'postproc') == 'ah3d'
     if use_ah3d:
         from models.point_to_point_ah_3d import find_all_rays_ah_3d
         modes = find_all_rays_ah_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D,
@@ -779,35 +879,45 @@ def run_with_OX():
 
         # Appleton-Hartree O/X post-processing on 3-D trajectories
         modes = _apply_OX_split_3d(modes_iso, Ne_2d, n3d)
+    for m in modes:
+        m['ox_solver'] = 'ah3d_hamiltonian' if use_ah3d else 'postproc_diagnostic'
+        m['physics_basis'] = (
+            '3d_appleton_hartree_hamiltonian'
+            if use_ah3d else
+            'diagnostic_only_isotropic_path_appleton_hartree_group_integral')
     _add_power_3d(modes, n3d=n3d)
     _add_scatter_3d(modes, n3d)
     _annotate_p2p_causes(modes, 'OX')
 
-    print("  P2P modes: {} ({})".format(len(modes), 'AH3D' if use_ah3d else 'AH post-proc'))
+    print("  P2P modes: {} ({})".format(len(modes), ox_basis))
     print_mode_table(modes)
     tau_ax, pd = build_pd_spectrum(modes)
     main, _, _ = identify_main_mode(tau_ax, pd, modes)
     _print_main(main)
-    csv_path = save_modes_csv('OX_ah3d' if use_ah3d else 'OX', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
+    csv_path = _save_modes_csv('OX_ah3d' if use_ah3d else 'OX_diagnostic', modes, tau_ax, pd)
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
-    _save_p2p_modes_plot('OX', modes, Ne_2d, _make_pert_info(enable_tid=True))
+    _save_p2p_modes_plot('OX_ah3d' if use_ah3d else 'OX_diagnostic', modes, Ne_2d, _make_pert_info(enable_tid=True))
     fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
-                               title='P-D - O/X (3-D + {}, {}-dir TID)'.format(
-                                   'AH3D' if use_ah3d else 'AH post-proc', n_comp))
-    _save(fig2, 'pd_OX.png')
+                               title='P-D - O/X {} ({}-dir TID)'.format(
+                                   ox_basis, n_comp))
+    _save(fig2, 'pd_OX_ah3d.png' if use_ah3d else 'pd_OX_diagnostic.png')
 
 
-# -- Scenario R: OTH radar baseline -------------------------------------------
+# -- Scenario R1/R2: OTH radar observables ------------------------------------
 
-def run_radar_baseline():
-    """OTH radar monostatic, IRI background, 3-D RT.
-    Saves tx_fan_radar.png, pd_radar.png."""
+def run_radar_point_target():
+    """Monostatic point-target radar, IRI background, 3-D RT.
+
+    This is not surface clutter. It uses the standard monostatic point-target
+    R^-4 radar equation (Skolnik, Radar Handbook, 3rd ed., 2008).
+    Saves tx_fan_radar_point.png, pd_radar_point.png.
+    """
     from models.ionosphere_model import IonosphereModel
     from models.ray_tracer_3d import shoot_rays_fan_3d
     from models.point_to_point_3d import find_all_rays_3d
 
     print("=" * 55)
-    print("  Scenario R: OTH Radar baseline (3-D RT)")
+    print("  Scenario R1: Monostatic point-target radar (3-D RT)")
     print("=" * 55)
     print("  sigma_rcs = {} m^2   bearing = {} deg".format(
         cfg.RADAR['sigma_rcs_m2'], cfg.LINK_BEARING_DEG))
@@ -818,28 +928,113 @@ def run_radar_baseline():
     rays3d = shoot_rays_fan_3d(cfg.TX_POS, n3d, cfg.FREQ_MHZ, cfg.RT_3D)
     print("  Ray fan : {} rays".format(len(rays3d)))
     fig, _ = plot_tx_ray_fan(_rays3d_to_fan(rays3d), Ne_2d, cfg.BG_X, cfg.BG_Z,
-                          title='Ray Fan - OTH Radar (3-D)',
+                          title='Ray Fan - Monostatic Point-Target Radar (3-D)',
                           link_info=_make_link_info(),
                           pert_info=_make_pert_info())
-    _save(fig, 'tx_fan_radar.png')
+    _save(fig, 'tx_fan_radar_point.png')
 
     modes = find_all_rays_3d(cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ, cfg.P2P_3D)
     _add_power_3d(modes, n3d=n3d, radar_mode=True,
                   sigma_rcs=float(cfg.RADAR['sigma_rcs_m2']))
     _add_scatter_3d(modes, n3d)
-    _annotate_p2p_causes(modes, 'radar')
+    _annotate_p2p_causes(modes, 'radar_point_target')
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
 
-    tau_ax, pd = build_pd_spectrum(modes)
-    main, _, _ = identify_main_mode(tau_ax, pd, modes)
+    tau_ax, pd = _build_pd(modes, delay_key='tau_2way_ms')
+    main, _, _ = _identify_main(tau_ax, pd, modes, delay_key='tau_2way_ms')
     _print_main(main)
-    csv_path = save_modes_csv('radar', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
+    csv_path = _save_modes_csv('radar_point_target', modes, tau_ax, pd,
+                               pd_delay_key='tau_2way_ms')
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
-    _save_p2p_modes_plot('radar', modes, Ne_2d)
-    fig2, _ = plot_pd_spectrum(tau_ax, pd, modes,
-                               title='P-D - OTH Radar (3-D)')
-    _save(fig2, 'pd_radar.png')
+    _save_p2p_modes_plot('radar_point_target', modes, Ne_2d,
+                         title='P2P Modes - Monostatic Point-Target Radar')
+    _plot_pd(tau_ax, pd, modes,
+             title='P-D - Monostatic Point-Target Radar (two-way delay)',
+             filename='pd_radar_point.png', delay_key='tau_2way_ms')
+
+
+def run_radar_clutter():
+    """Single-station OTH surface clutter using 3-D flux tubes.
+
+    The propagation/tube geometry follows Coleman-style OTH flux-tube
+    backscatter. Surface return uses sigma0 times illuminated tube area, with
+    Bragg/Doppler diagnostics following the HF sea-clutter convention of
+    Barrick (1972). No multi-station assumption is made here.
+    Saves pd_radar_clutter.png, modes_radar_clutter.csv.
+    """
+    from models.ionosphere_model import IonosphereModel
+    from models.tube_tracer_3d import TubeRayTracer3D
+    from models.point_to_point_3d import classify_mode_3d
+    from models.radar_clutter import apply_clutter_to_mode
+
+    print("=" * 55)
+    print("  Scenario R2: Single-station OTH surface clutter")
+    print("=" * 55)
+    print("  target_range={} km  surface={}  sigma0={} dB".format(
+        cfg.RADAR['target_range_km'],
+        cfg.UPDATE2.get('RADAR_CLUTTER', {}).get('surface_type', 'sea'),
+        cfg.RADAR['sigma0_ground_dB']))
+
+    iono = IonosphereModel()
+    Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
+    n3d = _make_n3d(Ne_2d)
+
+    tracer = TubeRayTracer3D(n3d, cfg.FREQ_MHZ,
+                              tube_params=cfg.TUBE_3D, rt_params=cfg.RT_3D)
+    # Initial sigma0 only seeds the tube power; the explicit clutter model below
+    # overwrites Pr_W from sigma0, grazing angle, and illuminated area.
+    modes = tracer.compute(
+        cfg.TX_POS, float(cfg.RADAR['target_range_km']),
+        Pt_W=cfg.PT_W, Gt=cfg.GT, Gr=cfg.GR, sigma0=1.0)
+
+    clutter_gate = cfg.UPDATE2.get('RADAR_CLUTTER', {})
+    clutter_params = {
+        'surface_type': clutter_gate.get('surface_type', 'sea'),
+        'sigma0_dB': (clutter_gate.get('sigma0_dB')
+                      if clutter_gate.get('sigma0_dB') is not None
+                      else cfg.RADAR.get('sigma0_ground_dB', -20.0)),
+        'radial_velocity_ms': clutter_gate.get('radial_velocity_ms', 0.0),
+        'grazing_angle_deg': clutter_gate.get('grazing_angle_deg'),
+        'clutter_class': clutter_gate.get('clutter_class', 'surface_bragg'),
+    }
+
+    updated_modes = []
+    for m in modes:
+        if 'label' not in m:
+            m['label'] = classify_mode_3d(m)
+        m['delta_tau_ms'] = float(m.get('tau_spread_ms', 0.0))
+        updated = apply_clutter_to_mode(
+            m, freq_MHz=cfg.FREQ_MHZ, params=clutter_params,
+            Pt_W=cfg.PT_W, Gt=cfg.GT, Gr=cfg.GR, apply_to_power=True)
+        updated_modes.append(updated)
+    modes = _tag_clutter_radar_modes(updated_modes)
+
+    print("  Clutter tube modes: {}".format(len(modes)))
+    print_mode_table(modes)
+    if modes:
+        best = modes[0]
+        print("  Best: tau2={:.3f}ms  Doppler={:.3f}Hz  sigma_eff={:.3e}m2".format(
+            best.get('tau_2way_ms', 0.0), best.get('doppler_hz', 0.0),
+            best.get('sigma_eff_m2', 0.0)))
+
+    tau_ax, pd = _build_pd(modes, method='tube', delay_key='tau_2way_ms')
+    main, _, ms = _identify_main(tau_ax, pd, modes, delay_key='tau_2way_ms')
+    _print_main(main)
+    if ms:
+        _print_summary(ms)
+
+    csv_path = _save_modes_csv('radar_clutter', modes, tau_ax, pd,
+                               pd_delay_key='tau_2way_ms')
+    print("  Saved: output/{}".format(os.path.basename(csv_path)))
+    _plot_pd(tau_ax, pd, modes,
+             title='P-D - Single-Station OTH Surface Clutter (two-way delay)',
+             filename='pd_radar_clutter.png', delay_key='tau_2way_ms')
+
+
+def run_radar_baseline():
+    """Backward-compatible alias for the point-target radar scenario."""
+    return run_radar_point_target()
 
 
 # -- Scenario SF: Spread-F ------------------------------------------------------
@@ -899,6 +1094,7 @@ def run_tube_radar():
     from models.ionosphere_model import IonosphereModel
     from models.tube_tracer_3d import TubeRayTracer3D
     from models.point_to_point_3d import classify_mode_3d
+    from models.radar_clutter import apply_clutter_to_mode
 
     print("=" * 55)
     print("  Scenario TR: OTH Radar 3-D Tube Tracer")
@@ -910,18 +1106,35 @@ def run_tube_radar():
     Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
     n3d    = _make_n3d(Ne_2d)
 
-    sigma0 = 10.0**(float(cfg.RADAR['sigma0_ground_dB']) / 10.0)
     tracer = TubeRayTracer3D(n3d, cfg.FREQ_MHZ,
                               tube_params=cfg.TUBE_3D, rt_params=cfg.RT_3D)
+    sigma0 = 10.0**(float(cfg.RADAR['sigma0_ground_dB']) / 10.0)
     modes  = tracer.compute(cfg.TX_POS,
                              float(cfg.RADAR['target_range_km']),
                              Pt_W=cfg.PT_W, Gt=cfg.GT, Gr=cfg.GR, sigma0=sigma0)
 
+    clutter_gate = cfg.UPDATE2.get('RADAR_CLUTTER', {})
+    clutter_params = {
+        'surface_type': clutter_gate.get('surface_type', 'sea'),
+        'sigma0_dB': (clutter_gate.get('sigma0_dB')
+                      if clutter_gate.get('sigma0_dB') is not None
+                      else cfg.RADAR.get('sigma0_ground_dB', -20.0)),
+        'radial_velocity_ms': clutter_gate.get('radial_velocity_ms', 0.0),
+        'grazing_angle_deg': clutter_gate.get('grazing_angle_deg'),
+        'clutter_class': clutter_gate.get('clutter_class', 'surface_bragg'),
+    }
+
     # Add label and delta_tau_ms for table / CSV compatibility
+    updated_modes = []
     for m in modes:
         if 'label' not in m:
             m['label'] = classify_mode_3d(m)
         m['delta_tau_ms'] = float(m.get('tau_spread_ms', 0.0))
+        updated_modes.append(apply_clutter_to_mode(
+            m, freq_MHz=cfg.FREQ_MHZ, params=clutter_params,
+            Pt_W=cfg.PT_W, Gt=cfg.GT, Gr=cfg.GR,
+            apply_to_power=True))
+    modes = _tag_clutter_radar_modes(updated_modes)
 
     print("  Tube modes: {}".format(len(modes)))
     print_mode_table(modes)
@@ -930,17 +1143,18 @@ def run_tube_radar():
         print("  Best: tau={:.3f}ms  F_focus_3d={:.3f}  A_tube={:.1f} km^2".format(
             best['tau_ms'], best.get('F_focus_3d', 0.0), best.get('A_tube_km2', 0.0)))
 
-    tau_ax, pd = build_pd_spectrum(modes, method='tube')
-    main, _, ms = identify_main_mode(tau_ax, pd, modes)
+    tau_ax, pd = _build_pd(modes, method='tube', delay_key='tau_2way_ms')
+    main, _, ms = _identify_main(tau_ax, pd, modes, delay_key='tau_2way_ms')
     _print_main(main)
     if ms:
         _print_summary(ms)
 
-    csv_path = save_modes_csv('tube_radar', modes, tau_ax, pd, cfg.FREQ_MHZ, _OUT)
+    csv_path = _save_modes_csv('tube_radar', modes, tau_ax, pd,
+                               pd_delay_key='tau_2way_ms')
     print("  Saved: output/{}".format(os.path.basename(csv_path)))
-    fig, _ = plot_pd_spectrum(tau_ax, pd, modes,
-                               title='P-D - OTH Radar 3-D Tube Tracer')
-    _save(fig, 'pd_tube_radar.png')
+    _plot_pd(tau_ax, pd, modes,
+             title='P-D - OTH Radar 3-D Tube Clutter (two-way delay)',
+             filename='pd_tube_radar.png', delay_key='tau_2way_ms')
 
 
 # -- Entry point ---------------------------------------------------------------
@@ -955,7 +1169,8 @@ if __name__ == '__main__':
     run_with_bubble()
     run_full()
     run_with_OX()
-    run_radar_baseline()
+    run_radar_point_target()
+    run_radar_clutter()
     run_with_spreadf()
     run_tube_radar()
 

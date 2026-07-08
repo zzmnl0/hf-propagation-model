@@ -80,7 +80,8 @@ def save_modes_csv(scenario: str,
                    tau_axis: np.ndarray,
                    pd_W: np.ndarray,
                    freq_MHz: float,
-                   out_dir: str = 'output') -> str:
+                   out_dir: str = 'output',
+                   pd_delay_key: str = 'tau_ms') -> str:
     """
     Save per-mode propagation parameters to a CSV file.
 
@@ -100,9 +101,11 @@ def save_modes_csv(scenario: str,
     os.makedirs(out_dir, exist_ok=True)
     fields = [
         'scenario', 'label', 'freq_MHz',
-        'tau_ms', 'tau_2way_ms', 'delta_tau_ms',
+        'tau_ms', 'tau_oneway_ms', 'tau_2way_ms', 'pd_delay_key',
+        'pd_delay_ms', 'delta_tau_ms',
         'Pr_W', 'Pr_dBW', 'pd_power_W',
         'h_reflect_km', 'group_path_km',
+        'range_km', 'radar_observable', 'radar_equation',
         'beta_deg', 'phi_deg',
         'geom_path_km', 'x_land_km', 'y_land_km', 'z_land_km',
         'az_deg_tx', 'az_deg_rx', 'azimuth_deflect_deg', 'az_deflect_deg',
@@ -120,6 +123,11 @@ def save_modes_csv(scenario: str,
         'pe_x_entry_km', 'pe_y_entry_km', 'pe_z_entry_km', 'pe_entry_q',
         'F_focus', 'F_focus_el', 'F_focus_az', 'F_focus_3d',
         'A_tube_km2', 'A_tube_3d_km2', 'tau_spread_ms',
+        'surface_type', 'clutter_class', 'sigma0_linear', 'sigma0_dB',
+        'sigma_eff_m2', 'grazing_angle_deg', 'bragg_wavenumber_rad_m',
+        'bragg_wavelength_m', 'radial_velocity_ms', 'doppler_hz',
+        'clutter_Pr_W', 'clutter_Pr_dBW', 'mode_confidence',
+        'physics_basis',
     ]
     path = os.path.join(out_dir, 'modes_{}.csv'.format(scenario))
     with open(path, 'w', newline='', encoding='utf-8') as f:
@@ -132,7 +140,10 @@ def save_modes_csv(scenario: str,
             row['phi_deg']     = float(m.get('phi_deg', 0.0))
             row['Pr_dBW']      = m.get('Pr_dBW',
                                         to_dBW(m.get('Pr_W', 1e-30)))
-            row['pd_power_W']  = float(np.interp(m['tau_ms'], tau_axis, pd_W))
+            pd_delay = float(m.get(pd_delay_key, m.get('tau_ms', 0.0)))
+            row['pd_delay_key'] = pd_delay_key
+            row['pd_delay_ms'] = pd_delay
+            row['pd_power_W']  = float(np.interp(pd_delay, tau_axis, pd_W))
             if row.get('az_deflect_deg', '') == '' and 'azimuth_deflect_deg' in m:
                 row['az_deflect_deg'] = m.get('azimuth_deflect_deg', '')
             tau2 = m.get('tau_2way_ms')
@@ -303,7 +314,9 @@ def plot_p2p_modes(modes: list,
 def plot_pd_spectrum(tau_axis: np.ndarray, pd_W: np.ndarray,
                      mode_results: list | None = None,
                      title: str = 'P-D Spectrum',
-                     save_path: str | None = None):
+                     save_path: str | None = None,
+                     delay_key: str = 'tau_ms',
+                     xlabel: str = 'Group Delay  (ms)'):
     """Power-delay spectrum with optional mode markers."""
     fig, ax = plt.subplots(figsize=(10, 4))
     pd_dBW = 10.0 * np.log10(np.maximum(pd_W, 1e-30))
@@ -311,10 +324,11 @@ def plot_pd_spectrum(tau_axis: np.ndarray, pd_W: np.ndarray,
     if mode_results:
         ymin = pd_dBW.min()
         for m in mode_results:
-            ax.axvline(m['tau_ms'], color='r', ls='--', alpha=0.55, lw=0.9)
-            ax.text(m['tau_ms'] + 0.03, ymin + 1,
+            delay = float(m.get(delay_key, m.get('tau_ms', 0.0)))
+            ax.axvline(delay, color='r', ls='--', alpha=0.55, lw=0.9)
+            ax.text(delay + 0.03, ymin + 1,
                     m.get('label', ''), rotation=90, fontsize=7, color='r')
-    ax.set_xlabel('Group Delay  (ms)')
+    ax.set_xlabel(xlabel)
     ax.set_ylabel('Power  (dBW)')
     ax.set_title(title)
     ax.grid(True, alpha=0.3)
