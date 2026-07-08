@@ -32,6 +32,7 @@ from scipy.interpolate import RegularGridInterpolator
 from config import (C_KMS, FREQ_MHZ, RT, RE_KM, K_FP,
                     IRI_DT, IRI_LAT, IRI_LON, LINK_BEARING_DEG,
                     TX_LAT, TX_LON, GEOMAG)
+from .ne_provider import BaseNeProvider
 from utils import freq_to_k0, group_delay_ms, destination_point
 
 
@@ -65,8 +66,12 @@ class RefractiveIndex3D:
                  freq_MHz:         float = FREQ_MHZ,
                  tid_params:       dict | None = None,
                  bubble_3d_params: dict | None = None,
-                 earth_flat:       bool = True):
+                 earth_flat:       bool = True,
+                 ne_provider:      BaseNeProvider | None = None):
         self.freq_MHz   = freq_MHz
+        self.ne_provider = ne_provider
+        if ne_provider is not None:
+            Ne_2d = ne_provider.get_Ne_grid(x_km, z_km)
         self.Ne_2d      = Ne_2d
         self.x_km       = x_km
         self.z_km       = z_km
@@ -367,6 +372,8 @@ class RefractiveIndex3D:
         else:
             z_phys = z_cart_km
         z_phys = max(z_phys, float(self.z_km[0]))
+        if self.ne_provider is not None:
+            return max(float(self.ne_provider.get_Ne((x_km, y_km, z_phys), t=t)), 0.0)
         pt = np.array([[x_km, z_phys]])
         return max(float(self._Ne_interp(pt)[0]), 0.0)
 

@@ -59,3 +59,26 @@ conda run -n pytorch_cpu python viz/plot_ne_background.py
 | 4 | `models/es_model.py` | **Done** |
 | 5 | `models/pe_propagator.py` | **Done** |
 | 6 | `models/hybrid_model.py` | **Done** |
+
+## Current Memory - Update2.1 Upgrade Roadmap
+
+The active implementation roadmap is `code/word/update2.1.txt`. It is a plan only; do not start code upgrades until the user confirms.
+
+Confirmed decisions:
+
+- Full 3-D Appleton-Hartree O/X ray tracing will use a numerical Hamiltonian finite-difference first implementation. Prioritize physical correctness, clear formulas, and regression to the isotropic limit over runtime performance.
+- Ray-PE/SSF bidirectional coupling will first use a 2.5-D local ray cross-section. Full 3-D PE/SSF is a future upgrade item for the next phase.
+- New capabilities must be disabled by default to preserve existing scenario outputs: `AH3D_ENABLE=False`, `PE_COUPLING.apply_to_power=False`, `SCATTER.apply_to_pd=False`, `ABSORPTION_COMPLEX.enable=False`, `EXTERNAL_NE_PROVIDER.enable=False`.
+- A unified `NeProvider` interface may be added, but U3 assimilation and U8 3-D stochastic irregularity generation are not part of this implementation pass. External electron-density distribution data will be connected later through `NeProvider`.
+
+Implementation sequence after confirmation:
+
+1. Add U10 traceability matrix support and minimal `NeProvider`.
+2. Implement U1 AH3D O/X tracing and `tests/_verify_AH3D.py`.
+3. Clean up 2-D/3-D mode fields and add local ray-frame utilities.
+4. Implement U5 2.5-D Ray-PE/SSF coupling and `tests/_verify_ray_pe_energy.py`.
+5. Implement U4 optional scatter-to-P-D coupling and `tests/_verify_pd_scatter_kernel.py`.
+6. Implement U2 complex absorption path integral and `tests/_verify_complex_absorption.py`.
+7. Implement secondary extensions only after core upgrades stabilize: U6 parameter sweeps, U7 Es aspect sensitivity, U9 OTH clutter/Bragg Doppler.
+
+Do not implement U3 or U8 in this pass. Do not make AH3D, PE power coupling, scatter P-D coupling, or complex absorption default-on.

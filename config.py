@@ -1,4 +1,4 @@
-"""
+﻿"""
 Shared configuration for the HF shortwave propagation hybrid model.
 Test link : TX @ 30°N 120°E, RX @ 1169 km, 10 MHz
 Coordinates: 2-D Cartesian  x = horizontal distance from TX [km]
@@ -221,6 +221,7 @@ RT_3D = {
 
 # P2P_3D: parameters for 3-D P2P Newton shooter
 P2P_3D = {
+    'seed_source': 'internal_scan',  # internal_scan | fan_warm_start | explicit_list
     'n_init':      6,      # number of seed elevations (fan-seeded: top-6 by proximity to RX)
     'tol_km':      5.0,    # Newton convergence tolerance [km] (looser than 2-D)
     'd_beta':      0.05,   # Jacobian step: elevation [deg]
@@ -229,6 +230,9 @@ P2P_3D = {
     'max_iter':    12,     # Newton max iterations (early-exit if diverging)
     'clust_h_km':  10.0,   # deduplication height tolerance
     'clust_tau_ms': 0.05,  # deduplication delay tolerance
+    'launch_low_max_deg': 25.0,   # cause_launch low/medium threshold
+    'launch_high_min_deg': 55.0,  # cause_launch medium/high threshold
+    'seed_betas_deg': [],         # used only when seed_source='explicit_list'
 }
 
 # ── Phase 7 upgrades: 3-D flux-tube, field-aligned bubble, BG Es, phase screen
@@ -301,6 +305,36 @@ ABSORPTION = {
     'chi_deg':  60.0,    # solar zenith angle [deg]  (60 = daytime mid-latitude)
 }
 
+# ── update2.1 feature gates (default off for backward compatibility) ──────────
+UPDATE2 = {
+    'AH3D_ENABLE': True,
+    'OX_MODE': 'ah3d',
+    'EXTERNAL_NE_PROVIDER': {
+        'enable': False,
+        'source': 'internal_grid',
+    },
+    'PE_COUPLING': {
+        'enable': True,
+        'apply_to_power': True,
+        'mode': 'local_2p5d',
+        'q_boundary': 1.0,
+    },
+    'SCATTER_PD': {
+        'apply_to_pd': True,
+        'kernel': 'scatter_coupled',
+    },
+    'ABSORPTION_COMPLEX': {
+        'enable': True,
+        'mode': 'appleton_hartree_collision_path',
+        'collision_model': 'd_region_exponential',
+        'nu_ref_s': 5.0e6,
+        'h_ref_km': 80.0,
+        'scale_height_km': 8.0,
+        'h_min_km': 50.0,
+        'h_max_km': 140.0,
+    },
+}
+
 # ── Spread-F parameters (Phase 3, Rino 1979) ─────────────────────────────────
 SPREAD_F = {
     'enable':       False,
@@ -319,3 +353,5 @@ GEOMAG = {
     'decl_deg':  -5.5,    # Magnetic declination [deg] (negative = westward)
     'enable_OX': False,   # Master switch: True -> O/X mode splitting via AH equation
 }
+
+

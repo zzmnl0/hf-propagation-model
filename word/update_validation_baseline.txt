@@ -1,0 +1,38 @@
+﻿P0 validation baseline for reflection/scatter hybrid propagation upgrade
+Date: 2026-07-05
+Workspace: D:\code11\IRI01\IRI03\TID
+Scope: P0 only. No P1 ray fan/P2P plotting refactor implemented.
+
+1. Git/worktree state
+- git rev-parse --short HEAD: failed with "Needed a single revision"; no resolvable HEAD was available from this workspace at validation time.
+- Edited/new files in this P0 pass:
+  - code/models/ray_tracer.py
+  - code/models/hybrid_model.py
+  - code/tests/_verify_pe_default_off.py
+  - code/word/update_validation_baseline.txt
+
+2. Configuration gates checked
+- UPDATE2.PE_COUPLING = {enable: False, apply_to_power: False, mode: local_2p5d}
+- UPDATE2.SCATTER_PD = {apply_to_pd: False, kernel: diagnostic}
+- UPDATE2.ABSORPTION_COMPLEX = {enable: False, mode: legacy}
+- UPDATE2.AH3D_ENABLE = False
+- UPDATE2.OX_MODE = postproc
+
+3. P0 corrections implemented
+- RefractiveIndex.n2 now extracts the scalar RegularGridInterpolator result explicitly with [0], preventing array-to-float TypeError in group-path verification.
+- HybridPropagationModel.compute no longer runs the legacy PE/SSF branch when UPDATE2.PE_COUPLING.enable is False. PE/SSF execution is now gated by enable=True; power mutation remains controlled by apply_to_power inside apply_ray_pe_coupling.
+- Added tests/_verify_pe_default_off.py to prove a bubble-crossing mode does not call PE/SSF, does not add pe_* diagnostics, does not change Pr_W, and does not change delta_tau_ms when PE_COUPLING is disabled.
+
+4. Verification commands and results
+- conda run -n pytorch_cpu rtk test python code\tests\_verify_group_path.py -> 0 fail(s)
+- conda run -n pytorch_cpu rtk test python code\tests\_verify_pe_default_off.py -> 0 fail(s)
+- conda run -n pytorch_cpu rtk test python code\tests\_verify_ray_pe_energy.py -> 0 fail(s)
+- conda run -n pytorch_cpu rtk test python code\tests\_verify_scatter_coupling.py -> 0 fail(s)
+- conda run -n pytorch_cpu rtk test python code\tests\_verify_p2p_jacobian.py -> 0 fail(s)
+
+5. Full scenario run status
+- main.py was not run in this P0 pass. Reason: P0 acceptance targets correctness gates and fast regression checks; full scenario regeneration is better kept for P1 plotting separation after output naming and ray fan/P2P semantics are changed.
+
+6. Notes for next stage
+- P1 should start from the now-stable P0 baseline and separate TX ray fan from TX/RX P2P modes.
+- Do not reintroduce any PE/SSF power correction outside UPDATE2.PE_COUPLING.enable=True and apply_to_power=True.

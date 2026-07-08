@@ -6,6 +6,8 @@
 
 **已完成阶段**：Phase 1–7 全部完成，全部 9 个场景测试通过，无卡顿
 
+**当前公式修复状态（2026-07-01）**：已修正群路径/群延迟为 `integral(ds/n)`、Appleton-Hartree O/X 分支、3D D 层吸收、3D Born/Rytov/MPS 诊断耦合，以及 P2P_3D forward/central Jacobian 选项。
+
 ---
 
 ## 目录
@@ -43,6 +45,10 @@ conda run -n pytorch_cpu python viz/plot_ne_background.py
 # 验证各阶段（全部应输出 0 fail(s)）
 conda run -n pytorch_cpu python tests/_verify_part1.py
 conda run -n pytorch_cpu python tests/_verify_part6.py
+conda run -n pytorch_cpu python tests/_verify_group_path.py
+conda run -n pytorch_cpu python tests/_verify_absorption_3d.py
+conda run -n pytorch_cpu python tests/_verify_scatter_coupling.py
+conda run -n pytorch_cpu python tests/_verify_p2p_jacobian.py
 conda run -n pytorch_cpu python tests/_verify_tube.py
 conda run -n pytorch_cpu python tests/_verify_phase5.py
 conda run -n pytorch_cpu python tests/_verify_phase6.py
@@ -78,6 +84,7 @@ code/
 │   ├── scatter_selector.py       # C0:  Born/Rytov/MPS 方法选择器（Phase 6）
 │   ├── scatter_born.py           # C1:  Born 弱散射体散射截面（Phase 6）
 │   ├── scatter_rytov.py          # C2:  Rytov 闪烁理论（Phase 6）
+│   ├── scatter_coupler.py        # C6:  三维模式 Born/Rytov/MPS 统一诊断耦合
 │   ├── scatter_phase_screen.py   # C3/C5: Rino 二维相位屏 + Knepp MPS（Phase 7）
 │   └── hybrid_model.py           # M5-M7: 完整 pipeline（P-D 谱 + 主模式）
 │
@@ -100,6 +107,10 @@ code/
 │   ├── _verify_radar.py          # OTH 雷达几何验证
 │   ├── _verify_OX.py             # O/X 磁离子分裂验证
 │   ├── _verify_absorption.py     # D 层吸收验证
+│   ├── _verify_absorption_3d.py  # 三维功率链 D 层吸收验证
+│   ├── _verify_group_path.py     # 几何路径/群路径/群延迟公式验证
+│   ├── _verify_p2p_jacobian.py   # 三维 P2P forward/central Jacobian 验证
+│   ├── _verify_scatter_coupling.py # 三维 Born/Rytov/MPS 耦合验证
 │   ├── _verify_spreadf.py        # Spread-F 相位屏验证
 │   ├── _verify_tube.py           # 二维流管追踪验证
 │   ├── _verify_phase5.py         # Phase 5：三维背景 + 多方向 TID 验证
@@ -172,7 +183,7 @@ RefractiveIndex3D(Ne_2d, BG_X, BG_Z, FREQ_MHZ,
     |
     ├──[P2P]────────────────────────────────────────────────────────────
     |   find_all_rays_3d(tx, rx, n3d, freq, p2p_params=P2P_3D) [M2e]
-    |       Newton(beta,az)，2x2 Jacobian 中心差分
+    |       Newton(beta,az)，2x2 Jacobian 可选 forward / central 差分
     |
     └──[流管]───────────────────────────────────────────────────────────
         TubeRayTracer3D.compute(tx, x_tgt, Pt, Gt, Gr, sigma0) [A3b]
@@ -185,6 +196,8 @@ RefractiveIndex3D(Ne_2d, BG_X, BG_Z, FREQ_MHZ,
         < 0.1   -> Born  (scatter_born.py)
         0.1-10  -> Rytov (scatter_rytov.py)
         >= 10   -> MPS   (scatter_phase_screen.py)
+    scatter_coupler.apply_scatter_regime_3d()
+        给三维 mode dict 添加 scatter_method / sigma_phi / Born 或 Rytov 诊断字段
 
 Es 各向异性散射（Phase 7）:
     booker_gordon_sigma_v(freq, Cs, Ne, L_perp, L_para, p_es, aspect)
@@ -246,7 +259,7 @@ nm_X = RefractiveIndexAH(Ne_2d, BG_X, BG_Z, FREQ_MHZ, wave_mode='X', geomag=cfg.
 
 # 单条射线
 ray = trace_single_ray(TX_POS, beta_deg=25.0, n_model=nm, freq_MHz=FREQ_MHZ)
-# ray 字典键: beta_deg, trajectory [(x,z),...], group_path_km, tau_ms,
+# ray 字典键: beta_deg, trajectory [(x,z),...], geom_path_km, group_path_km, tau_ms,
 #             h_reflect_km, beta_recv_deg, wave_mode, label
 
 # 扇形扫射
@@ -261,6 +274,12 @@ dpx/ds = (k0^2/2|p|) * dn^2/dx
 dpz/ds = (k0^2/2|p|) * dn^2/dz
 |p| = n * k0 (on-shell 约束)
 ```
+
+**路径/时延约定**：
+
+- `geom_path_km = integral(ds)`：射线几何弧长。
+- `group_path_km = integral(ds/n)`：冷等离子体近似下的群路径（`n_g ~= 1/n`）。
+- `tau_ms = group_path_km / c`，所有功率链中的群路径字段均按此口径使用。
 
 ---
 
@@ -393,7 +412,7 @@ modes_3d = find_all_rays_3d(
 #   y_land_km, azimuth_deflect_deg, beta_deg_tx, az_deg_tx
 ```
 
-**Newton 迭代（2×2 Jacobian 中心差分）**：
+**Newton 迭代（2×2 Jacobian，可选 forward / central 差分）**：
 
 ```
 F1(beta, az) = x_land - x_tgt = 0
@@ -402,6 +421,8 @@ J = [[dF1/dbeta, dF1/daz],      # 2x2 Jacobian，步长 d_beta=0.05°, d_az=0.10
      [dF2/dbeta, dF2/daz]]
 [beta, az] -= J^{-1} * F
 ```
+
+`P2P_3D['jacobian']` 默认 `'forward'`（每轮 3 条射线，速度快），可改为 `'central'`（每轮 5 条射线，精度更高）。
 
 ---
 
@@ -764,6 +785,7 @@ summary = model.mode_summary   # 见 §6
 | `tol_km` | 0.05 | 5.0 | 收敛准则 [km] |
 | `d_beta` | — | 0.05 | Jacobian 仰角步 [°]（P2P_3D 仅） |
 | `d_az` | — | 0.10 | Jacobian 方位步 [°]（P2P_3D 仅） |
+| `jacobian` | — | `forward` | 三维 P2P Jacobian 差分方式：`forward` 或 `central` |
 | `clust_h_km` | 10.0 | 10.0 | 去重高度容差 [km] |
 | `clust_tau_ms` | 0.05 | 0.05 | 去重时延容差 [ms] |
 | `n_workers` | 1 | — | 并行进程（0=自动；脚本需 `__main__`） |
@@ -862,6 +884,7 @@ summary = model.mode_summary   # 见 §6
 | `Pr_dBW` | dBW | 接收功率（对数） | 全部 |
 | `h_reflect_km` | km | 反射点高度 | 全部 |
 | `group_path_km` | km | 单程群路径 | 全部 |
+| `geom_path_km` | km | 几何射线路径（区别于群路径） | 射线追踪 |
 | `beta_deg` | ° | 出发仰角 | 全部 |
 | `phi_deg` | ° | 链路方位角 | 全部 |
 | `wave_mode` | — | `'O'`/`'X'`/`'iso'` | 全部 |
@@ -870,6 +893,8 @@ summary = model.mode_summary   # 见 §6
 | `F_focus_az` | — | 方位平面聚焦因子 | 三维流管 |
 | `F_focus_3d` | — | 三维几何平均聚焦因子 | 三维流管 |
 | `A_tube_km2` | km² | 流管地面投影面积 | 流管 |
+| `abs_dB` | dB | D 层单程吸收诊断 | 吸收开启时/3D 功率链 |
+| `abs_total_dB` | dB | D 层总吸收（通信 1x，雷达 2x） | 吸收开启时/3D 功率链 |
 | `y_land_km` | km | 落地横向偏移 | 三维 |
 | `azimuth_deflect_deg` | ° | 方位偏转角 arctan(y/x) | 三维 |
 | `points` | km | 控制点数组 (n_ctrl+2,2) | P2P |
@@ -900,11 +925,28 @@ summary = model.mode_summary   # 见 §6
     'beta_deg_rx'        : float,    # 到达仰角 [°]
     'az_deg_rx'          : float,    # 到达方位偏转 [°]
     'h_reflect_km'       : float,    # 反射点物理高度（含展平修正）[km]
+    'geom_path_km'        : float,    # 几何路径 integral(ds) [km]
+    'group_path_km'       : float,    # 群路径 integral(ds/n) [km]
     'trajectory_3d'      : list,     # [(x,y,z,kx,ky,kz), ...] 全轨迹
 }
 ```
 
 ### 6.4 Born/Rytov 额外输出（Phase 6）
+
+三维主流程通过 `models/scatter_coupler.py` 将散射 regime 诊断挂到 mode dict 上，默认不直接改写 `Pr_W`：
+
+```python
+{
+    'scatter_method'    : str,    # 'Born' / 'Rytov' / 'MPS_required'
+    'sigma_phi_sq'      : float,  # 相位方差 [rad^2]
+    'sigma_phi_rad'     : float,  # RMS 相位 [rad]
+    'scatter_Ne0_m3'    : float,  # 沿三维轨迹估计的代表背景 Ne
+    'scatter_Cs_rel'    : float,
+    'scatter_L_outer_km': float,
+    'scatter_DeltaL_km' : float,
+    'mps_required'      : bool,
+}
+```
 
 ```python
 # scatter_rytov.rytov_full() 返回
@@ -1023,6 +1065,10 @@ conda run -n pytorch_cpu python tests/_verify_part6.py
 conda run -n pytorch_cpu python tests/_verify_radar.py
 conda run -n pytorch_cpu python tests/_verify_OX.py
 conda run -n pytorch_cpu python tests/_verify_absorption.py
+conda run -n pytorch_cpu python tests/_verify_absorption_3d.py
+conda run -n pytorch_cpu python tests/_verify_group_path.py
+conda run -n pytorch_cpu python tests/_verify_p2p_jacobian.py
+conda run -n pytorch_cpu python tests/_verify_scatter_coupling.py
 conda run -n pytorch_cpu python tests/_verify_spreadf.py
 conda run -n pytorch_cpu python tests/_verify_tube.py
 
@@ -1037,6 +1083,10 @@ conda run -n pytorch_cpu python tests/_verify_phase7.py
 | 脚本 | 关键指标 | 期望值 |
 |------|---------|--------|
 | `_verify_part1.py` | IRI Ne 峰值，TID 振幅，泡耗散 | 定量断言通过 |
+| `_verify_group_path.py` | `group_path=integral(ds/n)`，`tau=group_path/c` | 0 fail(s) |
+| `_verify_absorption_3d.py` | 三维通信 1x / 雷达 2x D 层吸收 | 0 fail(s) |
+| `_verify_scatter_coupling.py` | Born/Rytov/MPS regime 选择与字段输出 | 0 fail(s) |
+| `_verify_p2p_jacobian.py` | forward vs central Jacobian 主模式一致性 | dtau < 0.2 ms |
 | `_verify_tube.py` | 流管 tau vs P2P tau 差值 | < 0.05 ms |
 | `_verify_tube.py` | F_focus 范围 | (0.1, 10.0) |
 | `_verify_phase5.py` | 三维 TID az=30° 横向偏移 | > 0.05 km |

@@ -1,0 +1,560 @@
+复杂电离层环境短波反射/散射混合传播模型升级实施计划
+生成日期: 2026-07-05
+状态: 待用户确认后实施
+适用范围: D:\code11\IRI01\IRI03\TID\code
+
+一、总原则
+
+本计划服务于“复杂电离层环境短波反射/散射混合传播机理及建模”的后续升级。目标不是增加演示性功能，而是把射线追踪、点到点多径、局部 PE/全波散射、吸收、各向异性不规则体散射和 P-D 谱闭合成可验证的物理模型。
+
+所有新增功能必须满足以下约束。
+
+1. 禁止使用无理论来源的简化公式、经验替代项或占位实现。若某一物理过程尚不能完整实现，应作为“未实现/未来升级”记录，不允许用简化功能冒充完整功能。
+2. 任何会改变 Pr_W、Pr_dBW、tau_ms、group_path_km、P-D 谱或模式标签的功能，必须由显式配置开关控制，默认关闭或诊断-only。
+3. group_path_km 必须始终表示群路径积分，不得与 geom_path_km 混用。tau_ms 必须由 group_path_km 与光速一致计算。
+4. ray fan 与 P2P 必须在概念、计算和绘图上分离。ray fan 表示 TX 发射路径族；P2P 表示 TX-RX 命中多径。
+5. 每个阶段必须先完成自查和测试，再进入下一阶段。若测试失败，不得继续堆叠新功能。
+
+二、理论与文献支撑
+
+2.1 射线追踪与 O/X 磁离子分支
+
+理论依据:
+- Haselgrove ray theory / Hamiltonian ray tracing: 用几何光学和 Hamilton 方程描述缓变电离层中的射线传播。
+- Jones and Stephenson (1975), A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere, U.S. Department of Commerce OT Report 75-76.
+- Budden, K. G. (1961, 1985), Radio Waves in the Ionosphere / The Propagation of Radio Waves.
+- Appleton-Hartree magnetoionic theory: 冷磁化等离子体中 O/X 分支折射率、碰撞项和传播角依赖。
+- Bianchi et al. (2010), IONORT: IONOsphere Ray-Tracing - Ray-tracing program in ionospheric magnetoplasma.
+
+实施要求:
+- AH3D 必须使用完整 Appleton-Hartree 分支关系和波矢-磁场夹角，不能用“沿旧 isotropic 路径后处理”替代完整 3D O/X 追踪。
+- 后处理 O/X 只可作为 legacy 对照，不可作为最终升级目标。
+- Hamiltonian 求导可采用数值有限差分第一版，但 Hamiltonian、分支选择、cutoff/evanescent 状态必须明确记录。
+
+2.2 P2P 多径和 ray fan 分离
+
+理论依据:
+- 射线扇形搜索用于展示发射仰角族和传播可达区域。
+- P2P shooting/variational 求解用于给定 TX/RX 的多径命中解。
+- Cervera and Harris / PHaRLAP 类 3D ionospheric ray tracing 思路可作为 3D shooting 与命中误差校正参考。
+
+实施要求:
+- ray fan 不得作为 P2P 结果图。
+- P2P 的种子可选择独立扫描或 fan warm-start，但 warm-start 只能作为数值加速选项，不得让展示 fan 配置决定 P2P 物理搜索空间。
+- 每条 P2P 模式必须记录成因分类: 分层反射成因、低/高仰角成因、O/X 成因、Es 成因、不规则体散射成因。
+
+2.3 PE/SSF 与局部散射传播
+
+理论依据:
+- Parabolic equation / split-step Fourier 方法用于窄角或局部坐标下的波场传播，可描述不规则体引起的衍射、相位畸变、角谱和功率再分配。
+- Knepp (1983), Multiple phase-screen calculation of the temporal behavior of stochastic waves, Proceedings of the IEEE, 71(6), 722-737.
+- Rino (1979), A power law phase screen model for ionospheric scintillation, Radio Science, 14(6), 1135-1145 and 1147-1155.
+- Yeh and Liu (1982), Radio wave scintillations in the ionosphere, Proceedings of the IEEE, 70(4), 324-360.
+
+实施要求:
+- 局部 Ray-PE/SSF 必须建立射线局部坐标系，由入射方向、不规则体几何边界和电子密度局部截面定义初始边界条件。
+- 不允许只用固定高斯波束和全局 x-z 截面作为最终实现。该方式只能作为第一阶段可诊断接口，必须标记为 local_2p5d。
+- 若实现全波解，应明确 Maxwell 方程、边界条件、网格色散、PML 和能量守恒检查；否则不得称为全波。
+
+2.4 Born/Rytov/MPS 散射理论
+
+理论依据:
+- Booker and Gordon (1950), A theory of radio scattering in the ionosphere, Proceedings of the IRE, 38, 401-412.
+- Tatarski (1961), Wave Propagation in a Turbulent Medium.
+- Rino (1979) phase screen / scintillation theory.
+- Yeh and Liu (1982) weak-to-moderate scintillation理论。
+- Knepp (1983) multi-phase-screen 强散射传播。
+
+实施要求:
+- Born 仅用于弱散射条件；Rytov 用于弱到中等散射；强散射必须进入 MPS 或明确标记 MPS_required。
+- 不允许在 MPS_required 情况下继续用 Born 结果修改 P-D 谱或功率。
+- scatter_method、sigma_phi_sq、S4、sigma_tau_ms、MPS_required 必须写入模式和 CSV。
+
+2.5 吸收与碰撞
+
+理论依据:
+- Appleton-Hartree 含碰撞项的复折射率。
+- D/E 区碰撞吸收与频率、太阳天顶角、路径仰角和电子碰撞频率有关。
+- Pederick and Cervera 类 HF 吸收经验模型可作为 legacy 对照，但升级版应向路径积分和复折射率一致化发展。
+
+实施要求:
+- legacy absorption 可保留，但 complex absorption 必须显式标记模型来源、碰撞频率模型和积分路径。
+- 雷达双程吸收必须显式 two_way=True，不得简单隐藏在经验倍乘里。
+
+三、当前模型自查结果
+
+3.1 已通过的自查
+
+1. tests/_verify_scatter_coupling.py: 0 fail(s)。
+   说明 Born/Rytov/MPS regime 选择和诊断字段基础可用。
+
+2. tests/_verify_ray_pe_energy.py: 0 fail(s)。
+   说明当前 hybrid_ray_pe.apply_ray_pe_coupling 在单元测试条件下可保持 diagnostic_only 和 apply_to_power 两种行为。
+
+3. tests/_verify_p2p_jacobian.py: 0 fail(s)。
+   说明当前 3D P2P forward/central Jacobian 在测试场景下结果一致性可接受。
+
+3.2 当前发现的必须修复问题
+
+P0-1: tests/_verify_group_path.py 当前失败。
+
+现象:
+- 失败位置在 code/models/ray_tracer.py 的 RefractiveIndex.n2。
+- 当前代码使用 float(self._n2_interp([[x, z]]))，在当前 numpy/scipy 返回数组时触发 TypeError: only 0-dimensional arrays can be converted to Python scalars。
+
+影响:
+- group_path_km 与 tau_ms 是所有模式、P-D 谱、功率路径损耗和 O/X 对比的基础字段。
+- 在该测试未恢复前，不得实施会依赖 group_path_km 的 AH3D、PE 耦合、散射 P-D 或复杂吸收。
+
+修复要求:
+- 使用明确标量提取，例如 self._n2_interp([[x, z]])[0] 或 np.asarray(...).item()。
+- 修复后必须重新通过 tests/_verify_group_path.py。
+- 同时检查 ray_tracer_3d.py 中所有 RegularGridInterpolator 标量调用，避免同类问题。
+
+3.3 当前结构性不足
+
+S1: 3D 主流程中的 scatter_coupler 仍是诊断-only。
+- main.py 中 _add_scatter_3d 只调用 apply_scatter_regime_3d，不改变 Pr_W。
+- 这符合默认安全原则，但还没有形成散射损耗与 P-D 谱闭合。
+
+S2: PE/SSF 接口存在，但未接入当前 3D 主场景。
+- hybrid_ray_pe.py 已有 apply_ray_pe_coupling。
+- main.py 的 run_with_bubble、run_full、run_with_spreadf 未调用 3D Ray-PE 局部耦合。
+
+S3: 旧 2D HybridModel.compute 的 PE 开关语义不一致。
+- 当 PE_COUPLING.enable=False 时，旧分支仍可能运行 PE 并用 P_out/P_in 修改 Pr_W。
+- 这与“新增功能默认关闭、不改变功率”的原则冲突，必须优先修正。
+
+S4: P2P 与 ray fan 在 main.py 中耦合。
+- 多个场景先生成 rays3d，再把 rays_fan=rays3d 传给 find_all_rays_3d。
+- 这会使展示用 fan 的密度和范围影响 P2P 模式搜索，不利于物理解释。
+
+S5: 当前图命名和语义混合。
+- ray_fan_full.png、ray_fan_spreadf.png 实际可能画的是 mode paths。
+- 需要改为 tx_fan_*.png 与 p2p_modes_*.png 两类输出。
+
+四、实施优先级总表
+
+P0: 正确性修复与基线自查
+- 目标: 恢复 group path 测试，统一开关语义，冻结基线。
+- 原因: 若基础路径量错误，后续所有功率、时延、P-D 谱都不可解释。
+
+P1: P2P 与 ray fan 分离、图输出重构
+- 目标: 先把展示和物理求解分离，保证后续升级图件可对照。
+- 原因: 这是当前任务第二部分的核心，风险低、收益高。
+
+P2: 反射/散射混合闭环最小物理实现
+- 目标: 将 3D 射线与局部 PE/SSF、Born/Rytov/MPS 诊断和 P-D 谱耦合起来。
+- 原因: 这是模型总任务的核心。
+
+P3: 完整 AH3D O/X 与复杂吸收
+- 目标: 建立磁离子分支、碰撞吸收和群路径一致化。
+- 原因: 对 O/X、雷达、吸收损耗和传播主路径正确性至关重要。
+
+P4: 参数扫描、Es aspect、OTH clutter/Doppler 等扩展
+- 目标: 形成科研分析工具链。
+- 原因: 应在核心物理闭环稳定后实施。
+
+五、P0 实施计划: 正确性修复与基线自查
+
+P0.1 修复 RefractiveIndex.n2 标量插值
+
+涉及文件:
+- code/models/ray_tracer.py
+- code/models/ray_tracer_3d.py
+- code/tests/_verify_group_path.py
+
+实施内容:
+- 修复 RegularGridInterpolator 标量返回处理。
+- 搜索并统一所有 float(interp([[...]])) 形式。
+- 保持 n2 下限、边界外 fill_value 和现有物理逻辑不变。
+
+验收:
+- tests/_verify_group_path.py 通过。
+- tests/_verify_part0.py 或最小 2D ray tracing 验证通过。
+
+P0.2 修正 PE_COUPLING 默认关闭语义
+
+涉及文件:
+- code/models/hybrid_model.py
+- code/models/hybrid_ray_pe.py
+- code/tests/_verify_ray_pe_energy.py
+- 新增或扩展 tests/_verify_pe_default_off.py
+
+实施内容:
+- 当 UPDATE2["PE_COUPLING"]["enable"] 为 False 时，不运行 PE/SSF，不改变 Pr_W。
+- 当 enable=True 且 apply_to_power=False 时，只写诊断，不改变 Pr_W。
+- 当 enable=True 且 apply_to_power=True 时，才将 pe_Pr_correction_dB 施加到 Pr_W。
+
+验收:
+- 默认配置下 bubble 场景 Pr_W 与修复前 legacy baseline 可追溯对比。
+- 新测试证明 PE 默认关闭时 pe_coupled=False 或不出现 PE 字段，且 Pr_W 不被 PE 修改。
+
+P0.3 建立升级前基线记录
+
+涉及文件:
+- code/word/update_validation_baseline.txt
+- code/output 或独立 baseline 目录
+
+实施内容:
+- 记录当前 git commit、配置开关、主要测试结果。
+- 记录 main.py 是否可运行；若不运行全场景，说明原因。
+
+验收:
+- 有一份可对照的 baseline 文档，供后续每阶段比对。
+
+六、P1 实施计划: P2P 与 ray fan 分离及绘图重构
+
+P1.1 修改 P2P seed 策略
+
+涉及文件:
+- code/models/point_to_point_3d.py
+- code/config.py
+- code/main.py
+- tests/_verify_p2p_jacobian.py
+- 新增 tests/_verify_p2p_fan_separation.py
+
+实施内容:
+- 在 P2P_3D 中新增 seed_source，允许:
+  internal_scan: 默认，P2P 独立仰角扫描。
+  fan_warm_start: 仅作为加速选项。
+  explicit_list: 用显式 beta/az 种子列表。
+- main.py 默认不再把展示用 rays3d 传给 find_all_rays_3d。
+- 如需 warm-start，必须在图注或 CSV 中写入 p2p_seed_source。
+
+禁止事项:
+- 不得减少 P2P 搜索范围来追求速度。
+- 不得用 ray fan 落点接近 RX 的路径直接冒充 P2P 模式。
+
+验收:
+- 改变 RT_3D["n_fan"] 不应改变默认 P2P 结果。
+- 改变 P2P_3D["n_init"] 才允许改变 P2P 搜索密度。
+
+P1.2 新增两类绘图函数
+
+涉及文件:
+- code/viz/plot_utils.py
+- code/main.py
+
+新增函数:
+- plot_tx_ray_fan(rays, Ne_2d, x_km, z_km, ...)
+- plot_p2p_modes(modes, Ne_2d, x_km, z_km, ...)
+
+输出命名:
+- tx_fan_baseline.png
+- p2p_modes_baseline.png
+- tx_fan_tid.png
+- p2p_modes_tid.png
+- tx_fan_es.png
+- p2p_modes_es.png
+- tx_fan_bubble.png
+- p2p_modes_bubble.png
+- tx_fan_full.png
+- p2p_modes_full.png
+- tx_fan_OX.png
+- p2p_modes_OX.png
+- tx_fan_spreadf.png
+- p2p_modes_spreadf.png
+
+图件语义:
+- TX fan 图: 只展示 TX 发射路径族、落点、最高反射高度，可用淡色，不标成命中 RX 的模式。
+- P2P modes 图: 只展示命中 RX 的多径，必须标 TX、RX、模式 label、tau_ms、h_reflect_km、beta_deg_tx。
+
+验收:
+- 每个环境至少输出一张 tx_fan 和一张 p2p_modes。
+- 不再用 ray_fan_full.png 命名 mode paths。
+
+P1.3 P2P 模式成因分类
+
+涉及文件:
+- code/models/point_to_point_3d.py
+- code/models/point_to_point_ah_3d.py 或未来 AH3D 模块
+- code/viz/plot_utils.py
+- code/viz CSV 输出
+
+新增字段:
+- cause_layer: Es, E, F1, F2, OX, bubble, spreadf, mixed
+- cause_launch: low_elevation, medium_elevation, high_elevation
+- cause_mechanism: layered_reflection, elevation_branch, magnetoionic_split, irregularity_scatter, ray_pe_coupled
+- cause_summary: 可读字符串，例如 "F2 high-elevation branch"
+- p2p_seed_source
+
+分类依据:
+- cause_layer 由 h_reflect_km 与 Es/E/F 阈值、wave_mode、散射耦合字段联合判定。
+- cause_launch 由 beta_deg_tx 分段，但分段阈值必须写入 config，不能硬编码在绘图函数。
+- cause_mechanism 由 ray family、O/X、PE/Scatter 字段判定。
+
+验收:
+- CSV 中有 cause_* 字段。
+- P2P 图例可区分“电离层分层造成的多径”和“发射高低仰角造成的多径”。
+
+七、P2 实施计划: 3D 反射/散射混合闭环
+
+P2.1 局部射线坐标与不规则体入射提取
+
+理论依据:
+- PE/SSF 或 MPS 必须在波传播局部坐标中定义传播轴和横向坐标。
+
+涉及文件:
+- 新增 code/models/local_frame.py
+- code/models/ray_tracer_3d.py
+- code/models/hybrid_ray_pe.py
+- tests/_verify_local_frame.py
+
+实施内容:
+- make_ray_local_frame(ray, target="bubble_entry" 或 s_index)
+- sample_Ne_local_cross_section(n3d, frame, s_range, u_range)
+- extract_irregularity_entry(ray, irregularity_params)
+
+禁止事项:
+- 不得固定使用全局 x-z 截面作为最终耦合截面。
+- 不得忽略 y 方向偏折后仍假定入射面为 x-z。
+
+验收:
+- y=0 情况下局部截面退化到原 x-z 几何。
+- y != 0 情况下局部 frame 正交、归一，且传播轴与 ray tangent 一致。
+
+P2.2 3D 主流程接入 Ray-PE/SSF diagnostic
+
+涉及文件:
+- code/main.py
+- code/models/hybrid_ray_pe.py
+- code/config.py
+- tests/_verify_ray_pe_energy.py
+- 新增 tests/_verify_ray_pe_3d_interface.py
+
+实施内容:
+- 对 bubble/spreadf/full 场景，在每条 P2P 模式经过不规则体时调用局部 Ray-PE/SSF。
+- 默认 PE_COUPLING.enable=False，不运行 PE。
+- enable=True 且 apply_to_power=False 时，只输出 pe_* 诊断。
+- enable=True 且 apply_to_power=True 时，才叠加 pe_Pr_correction_dB。
+
+必要输出字段:
+- pe_coupled
+- pe_apply_to_power
+- pe_status
+- pe_Pr_correction_dB
+- pe_power_ratio
+- pe_delta_tau_ms
+- pe_mean_aoa_deg
+- pe_angle_spread_deg
+- pe_x_entry_km
+- pe_y_entry_km
+- pe_z_entry_km
+- pe_frame_status
+
+验收:
+- 默认配置下 main.py 结果不因 PE 改变。
+- 开启 diagnostic 后，Pr_W 不变但 CSV 出现 pe_*。
+- 开启 apply_to_power 后，Pr_W 按能量比变化，且变化量可由 pe_Pr_correction_dB 重算。
+
+P2.3 散射理论到 P-D 谱闭合
+
+理论依据:
+- Born/Rytov/MPS 的输出应影响散射功率、延迟扩展或角扩展；仅写 scatter_method 不能构成混合传播模型。
+
+涉及文件:
+- 新增 code/models/pd_scatter_kernel.py
+- code/models/hybrid_model.py
+- code/main.py
+- code/viz/plot_utils.py
+- code/tests/_verify_pd_scatter_kernel.py
+
+实施内容:
+- make_delay_kernel(mode, tau_axis)
+- apply_scatter_kernel(mode_results, tau_axis, cfg)
+- build_pd_spectrum 支持 method="scatter_coupled"
+
+映射原则:
+- Born: 只在弱散射条件下加入可解释的散射功率或窄核。
+- Rytov: 使用 Rytov 输出的 S4、sigma_tau_ms 构造延迟展宽。
+- MPS_required: 不允许用 Born/Rytov 替代；若未实现 MPS，则只标记强散射待求解，不改变 P-D。
+- MPS: 只有实际运行多相屏后，才允许将其输出写入 P-D。
+
+禁止事项:
+- 不得把 sigma_phi_sq 直接当成功率损耗。
+- 不得把 S4 直接线性乘到 Pr_W，除非有明确理论推导和测试。
+
+验收:
+- SCATTER_PD.apply_to_pd=False 时 P-D 与旧结果数值一致。
+- apply_to_pd=True 时总功率守恒或损耗来源可解释。
+- MPS_required 未实现时不伪造强散射 P-D。
+
+八、P3 实施计划: 完整 AH3D O/X 与复杂吸收
+
+P3.1 完整 3D Appleton-Hartree O/X ray tracing
+
+涉及文件:
+- 新增 code/models/ray_tracer_ah_3d.py
+- 新增 code/models/point_to_point_ah_3d.py
+- code/main.py
+- code/config.py
+- tests/_verify_AH3D.py
+
+实施内容:
+- 使用完整 Appleton-Hartree 分支折射率。
+- 使用数值 Hamiltonian 有限差分求 dr/ds 和 dk/ds。
+- 支持 wave_mode="O", "X", "both"。
+- OX_MODE 支持 "postproc" 和 "ah3d"，默认 postproc。
+
+必要字段:
+- ox_solver
+- wave_mode
+- branch_status
+- group_index_model
+- geom_path_km
+- group_path_km
+- tau_ms
+- h_reflect_km
+- y_land_km
+- azimuth_deflect_deg
+
+验收:
+- fH_MHz=0 时 O/X 退化到 isotropic 结果。
+- AH3D_ENABLE=False 时旧 O/X 输出保持可复现。
+- near-cutoff 状态不崩溃，写 branch_status。
+
+P3.2 复杂吸收路径积分
+
+涉及文件:
+- 新增 code/models/absorption_collision.py
+- code/main.py
+- code/models/hybrid_model.py
+- code/config.py
+- tests/_verify_complex_absorption.py
+
+实施内容:
+- 基于复折射率或碰撞频率模型做路径积分。
+- legacy absorption 保留作为对照。
+- ABSORPTION_COMPLEX.enable=False 默认关闭。
+
+验收:
+- nu=0 时 complex absorption 为 0。
+- 雷达双程吸收约为通信单程同路径两倍，差异需可解释。
+- 默认关闭时现有吸收测试通过。
+
+九、P4 实施计划: 科研扩展能力
+
+P4.1 参数扫描与不确定性
+
+涉及文件:
+- 新增 code/analysis/parameter_sweep.py
+- 新增 code/analysis/uncertainty_report.py
+
+内容:
+- 扫描 freq_MHz、TID amplitude、Es 参数、bubble 几何、Cs_rel、D 层吸收参数。
+- 输出模式切换、主路径变化、P-D 谱统计和不确定性区间。
+
+P4.2 Es aspect sensitivity
+
+理论依据:
+- Booker-Gordon 类各向异性散射和磁场对齐不规则体散射。
+
+涉及文件:
+- code/models/es_model.py
+- 新增 code/analysis/es_aspect_scan.py
+
+内容:
+- 输出 aspect_deg、Bragg mismatch、sigma_v、Pr_dBW。
+- 与 O/X 和磁场方向耦合。
+
+P4.3 OTH clutter / Bragg Doppler
+
+涉及文件:
+- 新增 code/models/radar_clutter.py
+- code/models/tube_tracer_3d.py
+- code/main.py
+
+内容:
+- 地/海杂波 sigma0、grazing angle、Doppler、Bragg 条件。
+- 仅在核心传播闭环稳定后实施。
+
+十、推荐实施顺序
+
+第 0 阶段: P0 正确性修复
+1. 修复 group_path 测试失败。
+2. 修正 PE_COUPLING 默认关闭语义。
+3. 建立 baseline 验证记录。
+
+第 1 阶段: P1 绘图与 P2P/ray fan 分离
+1. 新增 seed_source。
+2. 新增 tx_fan 与 p2p_modes 绘图。
+3. 新增 cause_* 分类字段。
+4. 输出各环境分离图。
+
+第 2 阶段: P2 局部 Ray-PE/SSF 与散射 P-D 闭合
+1. 新增 local_frame。
+2. 3D 主场景接入 Ray-PE diagnostic。
+3. 实现可选 apply_to_power。
+4. 实现 scatter P-D kernel，默认关闭。
+
+第 3 阶段: P3 AH3D 与复杂吸收
+1. AH3D O/X ray tracing。
+2. AH3D P2P。
+3. 复杂吸收路径积分。
+
+第 4 阶段: P4 扩展科研工具
+1. 参数扫描。
+2. Es aspect sensitivity。
+3. OTH clutter / Doppler。
+
+十一、每阶段验收命令
+
+基础命令:
+conda run -n pytorch_cpu python tests/_verify_group_path.py
+conda run -n pytorch_cpu python tests/_verify_scatter_coupling.py
+conda run -n pytorch_cpu python tests/_verify_ray_pe_energy.py
+conda run -n pytorch_cpu python tests/_verify_p2p_jacobian.py
+
+P1 新增:
+conda run -n pytorch_cpu python tests/_verify_p2p_fan_separation.py
+
+P2 新增:
+conda run -n pytorch_cpu python tests/_verify_local_frame.py
+conda run -n pytorch_cpu python tests/_verify_ray_pe_3d_interface.py
+conda run -n pytorch_cpu python tests/_verify_pd_scatter_kernel.py
+
+P3 新增:
+conda run -n pytorch_cpu python tests/_verify_AH3D.py
+conda run -n pytorch_cpu python tests/_verify_complex_absorption.py
+
+全流程回归:
+conda run -n pytorch_cpu python tests/_verify_update2_all.py
+conda run -n pytorch_cpu python main.py
+
+十二、参考文献清单
+
+Appleton, E. V. Magneto-ionic theory and ionospheric radio propagation foundational works.
+
+Booker, H. G., and Gordon, W. E. (1950). A theory of radio scattering in the ionosphere. Proceedings of the IRE, 38, 401-412.
+
+Budden, K. G. (1961). Radio Waves in the Ionosphere. Cambridge University Press.
+
+Budden, K. G. (1985). The Propagation of Radio Waves. Cambridge University Press.
+
+Haselgrove, J. (1955). Ray Theory and a New Method for Ray Tracing. Report of the Conference on the Physics of the Ionosphere, Physical Society, London.
+
+Jones, R. M., and Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. U.S. Department of Commerce, OT Report 75-76.
+
+Bianchi, C., Settimi, A., and Azzarone, A. (2010). IONORT: IONOsphere Ray-Tracing - Ray-tracing program in ionospheric magnetoplasma. arXiv:1009.1837.
+
+Rino, C. L. (1979). A power law phase screen model for ionospheric scintillation. 1. Weak scatter. Radio Science, 14(6), 1135-1145.
+
+Rino, C. L. (1979). A power law phase screen model for ionospheric scintillation. 2. Strong scatter. Radio Science, 14(6), 1147-1155.
+
+Yeh, K. C., and Liu, C. H. (1982). Radio wave scintillations in the ionosphere. Proceedings of the IEEE, 70(4), 324-360.
+
+Knepp, D. L. (1983). Multiple phase-screen calculation of the temporal behavior of stochastic waves. Proceedings of the IEEE, 71(6), 722-737.
+
+Tatarski, V. I. (1961). Wave Propagation in a Turbulent Medium. McGraw-Hill.
+
+Pederick, L. H., and Cervera, M. A. HF ionospheric absorption and ray-tracing related works, for legacy absorption-model comparison.
+
+十三、待用户确认的问题
+
+1. 是否同意先执行 P0，尤其是修复 group_path 测试失败和 PE_COUPLING 默认关闭语义。
+2. 是否同意 P1 中默认 P2P 不再使用展示 ray fan 作为 seed，仅保留 fan_warm_start 作为显式加速选项。
+3. 是否同意图输出改名为 tx_fan_*.png 与 p2p_modes_*.png，并保留旧文件名兼容一轮或直接替换。
+4. 是否同意 P2 的第一版 Ray-PE/SSF 标记为 local_2p5d，不称为 full 3D PE/SSF。
+5. 是否同意 MPS_required 在 MPS 未实际运行前不得改变 Pr_W 或 P-D 谱。
+

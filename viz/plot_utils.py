@@ -1,4 +1,4 @@
-"""
+﻿"""
 Shared visualization utilities.
 Imported by main.py and viz scripts.
 """
@@ -104,6 +104,22 @@ def save_modes_csv(scenario: str,
         'Pr_W', 'Pr_dBW', 'pd_power_W',
         'h_reflect_km', 'group_path_km',
         'beta_deg', 'phi_deg',
+        'geom_path_km', 'x_land_km', 'y_land_km', 'z_land_km',
+        'az_deg_tx', 'az_deg_rx', 'azimuth_deflect_deg', 'az_deflect_deg',
+        'abs_dB', 'abs_total_dB', 'abs_model', 'abs_complex_dB',
+        'abs_status', 'collision_model', 'abs_index_model',
+        'wave_mode', 'cause_layer', 'cause_launch', 'cause_mechanism',
+        'cause_summary', 'p2p_seed_source',
+        'OX_gp_ratio', 'ox_solver', 'branch_status', 'group_index_model',
+        'es_mode', 'theta_Es_deg', 'aspect_Es_deg', 'es_loss_dB',
+        'scatter_method', 'sigma_phi_sq', 'sigma_phi_rad',
+        'S4', 'sigma_tau_ms', 'MPS_required',
+        'pe_coupled', 'pe_apply_to_power', 'pe_status', 'pe_frame_status',
+        'pe_Pr_correction_dB', 'pe_power_ratio', 'pe_delta_tau_ms',
+        'pe_mean_aoa_deg', 'pe_angle_spread_deg',
+        'pe_x_entry_km', 'pe_y_entry_km', 'pe_z_entry_km', 'pe_entry_q',
+        'F_focus', 'F_focus_el', 'F_focus_az', 'F_focus_3d',
+        'A_tube_km2', 'A_tube_3d_km2', 'tau_spread_ms',
     ]
     path = os.path.join(out_dir, 'modes_{}.csv'.format(scenario))
     with open(path, 'w', newline='', encoding='utf-8') as f:
@@ -117,6 +133,8 @@ def save_modes_csv(scenario: str,
             row['Pr_dBW']      = m.get('Pr_dBW',
                                         to_dBW(m.get('Pr_W', 1e-30)))
             row['pd_power_W']  = float(np.interp(m['tau_ms'], tau_axis, pd_W))
+            if row.get('az_deflect_deg', '') == '' and 'azimuth_deflect_deg' in m:
+                row['az_deflect_deg'] = m.get('azimuth_deflect_deg', '')
             tau2 = m.get('tau_2way_ms')
             row['tau_2way_ms'] = '' if tau2 is None else float(tau2)
             writer.writerow(row)
@@ -204,6 +222,82 @@ def plot_ray_fan(rays: list,
     return fig, ax
 
 
+def plot_tx_ray_fan(rays: list,
+                    ne_2d: np.ndarray | None = None,
+                    x_km: np.ndarray | None = None,
+                    z_km: np.ndarray | None = None,
+                    tx_pos=(0.0, 0.0), rx_pos=(1169.0, 0.0),
+                    title: str = 'TX Ray Fan',
+                    link_info: dict | None = None,
+                    pert_info: dict | None = None,
+                    save_path: str | None = None):
+    """Plot only the TX-launched ray fan; it is not a P2P mode plot."""
+    return plot_ray_fan(rays, ne_2d, x_km, z_km, tx_pos, rx_pos,
+                        title, link_info, pert_info, save_path)
+
+
+def _mode_xz(mode: dict):
+    if 'trajectory_3d' in mode:
+        xs = [float(s[0]) for s in mode['trajectory_3d']]
+        zs = [float(s[2]) for s in mode['trajectory_3d']]
+        return xs, zs
+    if 'points' in mode:
+        pts = np.asarray(mode['points'], dtype=float)
+        if pts.ndim == 2 and pts.shape[1] >= 2:
+            return pts[:, 0].tolist(), pts[:, 1].tolist()
+    if 'trajectory' in mode:
+        pts = np.asarray(mode['trajectory'], dtype=float)
+        if pts.ndim == 2 and pts.shape[1] >= 2:
+            return pts[:, 0].tolist(), pts[:, 1].tolist()
+    return [], []
+
+
+def plot_p2p_modes(modes: list,
+                   ne_2d: np.ndarray | None = None,
+                   x_km: np.ndarray | None = None,
+                   z_km: np.ndarray | None = None,
+                   tx_pos=(0.0, 0.0), rx_pos=(1169.0, 0.0),
+                   title: str = 'P2P Modes',
+                   link_info: dict | None = None,
+                   pert_info: dict | None = None,
+                   save_path: str | None = None):
+    """Plot only TX/RX-hitting P2P modes with mode labels and cause fields."""
+    fig, ax = plt.subplots(figsize=(12, 6))
+    if ne_2d is not None and x_km is not None and z_km is not None:
+        pcm = ax.pcolormesh(x_km, z_km, ne_2d.T / 1e10,
+                            cmap='Blues', shading='auto', alpha=0.6)
+        plt.colorbar(pcm, ax=ax, label='Ne  [x10^10 m^-3]',
+                     fraction=0.046, pad=0.04)
+    colors = plt.cm.tab10(np.linspace(0, 1, max(len(modes), 1)))
+    for m, c in zip(modes, colors):
+        xs, zs = _mode_xz(m)
+        if not xs:
+            continue
+        beta = float(m.get('beta_deg_tx', m.get('elevation_tx_deg', m.get('beta_deg', 0.0))))
+        label = '{} tau={:.3f}ms h={:.0f}km beta={:.1f}deg'.format(
+            m.get('label', '?'), float(m.get('tau_ms', 0.0)),
+            float(m.get('h_reflect_km', 0.0)), beta)
+        ax.plot(xs, zs, lw=1.8, color=c, label=label)
+    ax.axvline(tx_pos[0], color='g', lw=1.2, ls='--', label='TX')
+    ax.axvline(rx_pos[0], color='b', lw=1.2, ls='--', label='RX')
+    ax.set_xlabel('Distance  (km)')
+    ax.set_ylabel('Height  (km)')
+    ax.set_ylim([0, 500])
+    ax.set_title(title)
+    ax.grid(True, alpha=0.25)
+    ax.legend(fontsize=7, loc='upper left', ncol=1)
+    if link_info is not None:
+        info_text = build_ray_info_text(link_info, ne_2d, z_km, pert_info)
+        ax.text(0.99, 0.97, info_text, transform=ax.transAxes,
+                fontsize=6.5, va='top', ha='right', family='monospace',
+                bbox=dict(boxstyle='round,pad=0.4', facecolor='white',
+                          alpha=0.88, edgecolor='gray', lw=0.8))
+    plt.tight_layout()
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    return fig, ax
+
+
 # ── P-D spectrum plot ─────────────────────────────────────────────────────────
 
 def plot_pd_spectrum(tau_axis: np.ndarray, pd_W: np.ndarray,
@@ -247,3 +341,5 @@ def print_mode_table(mode_results: list) -> None:
         path   = m.get('group_path_km', float('nan'))
         print(f"{label:<16} {tau:>8.3f} {dtau:>9.4f} "
               f"{Pr_dBW:>10.1f} {h_r:>10.1f} {path:>11.1f}")
+
+

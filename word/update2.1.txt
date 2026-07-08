@@ -1,0 +1,530 @@
+复杂电离层 HF 混合传播模型 update2.1 实施方案与技术路线
+生成日期：2026-07-02
+状态：待用户确认后实施
+适用对象：code/word/update2.txt、当前 code/ 模型实现、后续 Codex 升级任务
+
+一、确认后的实施原则
+
+本方案基于 update2.txt 中的优先级，并结合用户已确认的四项决策制定。后续 Codex 对照实施前，必须先等待用户明确确认，不得直接进入代码修改。
+
+已确认决策如下：
+
+1. 完整三维 Appleton-Hartree O/X 射线追踪首版接受“数值 Hamiltonian 有限差分”实现。该方案优先保证公式清晰、可验证和可退化到各向同性模型；性能优化放在后续版本。
+
+2. Ray-PE/SSF 双向混合接口首版接受 2.5D 局部截面方案。完整 3D PE/SSF 记录为下一期升级项，不在 update2.1 首轮实现中展开。
+
+3. 新功能默认关闭，保持旧场景数值可复现。推荐默认配置为：
+AH3D_ENABLE = False
+PE_COUPLING.apply_to_power = False
+SCATTER.apply_to_pd = False
+ABSORPTION_COMPLEX.enable = False
+EXTERNAL_NE_PROVIDER.enable = False
+
+4. 允许新增统一外部电子密度接口 NeProvider，但不实施 U3 同化和 U8 三维随机不规则体。后续外部电子密度分布数据可通过 NeProvider 接入折射率计算。
+
+二、总体排序
+
+update2.1 以“功能升级优先，功能扩展次级”为准则排序。排序不完全等同于 update2.txt 的 P0/P1/P2，而是按依赖关系和功能闭环重排。
+
+第一阶段是接口和正确性底座。该阶段对应 U10，并补充 NeProvider 最小接口。目标是建立公式、代码、字段、测试和报告之间的追踪矩阵，确保后续 O/X、PE/SSF、散射闭环和吸收模块的改动不会破坏旧结果。
+
+第二阶段是完整三维 O/X 射线追踪。该阶段对应 U1，是核心功能升级。目标是用真正的三维 Appleton-Hartree 分支射线替代当前沿各向同性轨迹的 O/X 后处理近似，同时保留旧后处理作为对照模式。
+
+第三阶段是 2D 到 3D 混合传播能力收口。该阶段不是单独的 update2 条目，而是为 Ray-PE/SSF 双向耦合做准备。目标是统一 2D/3D mode 字段、局部坐标、轨迹投影和功率/时延接口。
+
+第四阶段是 Ray-PE/SSF 双向混合接口。该阶段对应 U5。首版采用 2.5D 局部截面，由 3D 射线提供局部传播方向、截面坐标和入射场，由 PE/SSF 返回损耗、角谱和延迟展宽诊断。
+
+第五阶段是散射诊断到 P-D 谱闭环。该阶段对应 U4。目标是把 Born/Rytov/MPS 的 S4、sigma_tau_ms 和 scatter_method 转换为 P-D 谱展宽核，但默认不改变旧 P-D 谱。
+
+第六阶段是复折射率吸收与功率链一致化。该阶段对应 U2。目标是新增碰撞频率和复折射率吸收路径积分，先作为功率链模块接入，后续再与 AH3D 的复折射率统一。
+
+第七阶段是功能扩展。该阶段包括 U6 参数扫描与不确定性、U7 Es 方位敏感性、U9 OTH clutter/Bragg Doppler。它们应在核心功能稳定后实施。U3 和 U8 本轮不实施。
+
+三、阶段 0：实施前准备
+
+Codex 实施前应完成以下只读检查：
+
+1. 读取 code/README.md、AGENTS.md、code/word/update2.txt、code/word/update2.1.txt。
+
+2. 读取关键模块：
+code/main.py
+code/config.py
+code/models/ray_tracer_3d.py
+code/models/point_to_point_3d.py
+code/models/ray_tracer.py
+code/models/hybrid_model.py
+code/models/pe_propagator.py
+code/models/scatter_coupler.py
+code/models/scatter_selector.py
+code/models/scatter_phase_screen.py
+code/viz/plot_utils.py
+
+3. 运行或至少检查现有验证脚本：
+tests/_verify_group_path.py
+tests/_verify_OX.py
+tests/_verify_absorption_3d.py
+tests/_verify_scatter_coupling.py
+tests/_verify_p2p_jacobian.py
+tests/_verify_phase6.py
+tests/_verify_phase7.py
+
+4. 记录实施前基准输出。若重新运行 main.py 成本可接受，应保存当前 modes_*.csv、report_*.csv 和 Word 结果文件时间戳。若不重跑，也应说明采用现有 output 作为基准。
+
+四、阶段 1：正确性底座与 NeProvider 预留接口
+
+目标：
+建立后续升级的统一输入、输出和验证体系，并为外部电子密度分布数据接入预留接口。
+
+新增或修改文件：
+code/models/ne_provider.py
+code/analysis/build_traceability_matrix.py
+code/tests/_verify_update2_all.py
+code/word/model_traceability_update2.md
+code/word/update2_validation.txt
+
+技术路线：
+
+1. 新增 NeProvider 抽象接口，但不实现同化算法。建议提供以下最小类：
+BaseNeProvider
+GridNeProvider
+IriNeProvider 或 ExistingGridProvider
+
+接口应至少包含：
+get_Ne(x_km, y_km, z_km, t=0.0) -> Ne_m3
+get_Ne_grid(x_km, z_km, t=0.0) -> Ne_2d
+metadata -> dict
+
+2. RefractiveIndex3D 首轮不强制改写为完全依赖 NeProvider，但应允许从 NeProvider 构造背景 Ne_2d 或提供兼容入口。这样后续外部同化数据可直接替代 IRI 背景。
+
+3. build_traceability_matrix.py 生成追踪矩阵，至少包含以下列：
+feature_id
+formula
+module
+function_or_class
+output_fields
+test_script
+default_enabled
+report_section
+reference_status
+
+4. _verify_update2_all.py 不替代已有测试，而是汇总调用关键验证脚本。Windows 环境中注意避免中文或 Unicode 数学符号直接 print，输出保持 ASCII。
+
+正确性要求：
+
+1. 默认配置下，旧场景输出字段含义不变。
+2. NeProvider 关闭或未传入时，RefractiveIndex3D 行为与当前版本一致。
+3. update2_validation.txt 明确记录哪些新功能默认关闭。
+
+完成标准：
+
+1. 新增文件可被 python 编译。
+2. 旧验证脚本仍通过。
+3. 生成 model_traceability_update2.md 和 update2_validation.txt。
+
+五、阶段 2：完整三维 Appleton-Hartree O/X 射线追踪
+
+目标：
+用完整三维 O/X 分支射线追踪替代当前 O/X 后处理近似，同时保留后处理作为诊断对照。
+
+新增或修改文件：
+code/models/ray_tracer_ah_3d.py
+code/models/point_to_point_ah_3d.py 或扩展 code/models/point_to_point_3d.py
+code/main.py
+code/config.py
+code/tests/_verify_AH3D.py
+code/viz/plot_utils.py
+
+核心公式：
+
+Appleton-Hartree 分支折射率使用 X、Y、Z 和 theta 表示：
+X = wp^2 / w^2
+Y = wH / w
+Z = nu / w
+theta = arccos((k dot B) / (|k| |B|))
+
+首版可采用无碰撞或弱碰撞实折射率：
+n2_AH = f_AH(X, Y, Z, theta, branch)
+
+数值 Hamiltonian 首版可采用：
+H(r, k) = |k|^2 - k0^2 * n2_AH(r, k_hat, branch)
+
+射线方程用有限差分求偏导：
+dr/ds = partial H / partial k
+dk/ds = -partial H / partial r
+
+关键实现要求：
+
+1. ray_tracer_ah_3d.py 应与 ray_tracer_3d.py 保持相似输出字段：
+trajectory_3d
+geom_path_km
+group_path_km
+tau_ms
+h_reflect_km
+x_land_km
+y_land_km
+azimuth_deflect_deg
+beta_deg_tx
+az_deg_tx
+wave_mode
+branch_status
+
+2. group_path_km 仍必须保持 integral(ds / n_group_equiv)。首版若暂用 n_group ~= 1/n_r，应在字段中显式记录：
+group_index_model = "cold_plasma_ng_approx"
+禁止把几何路程误写为群路径。
+
+3. point_to_point_ah_3d.py 或 find_all_rays_ah_3d 应支持：
+wave_mode='O'
+wave_mode='X'
+wave_mode='both'
+
+4. main.py 中 run_with_OX 应支持配置选择：
+OX_MODE = "postproc" 或 "ah3d"
+默认仍为 "postproc" 或 AH3D_ENABLE=False，以保持旧结果复现。
+
+5. 若开启 AH3D，应额外导出 modes_OX_ah3d.csv 或在 modes_OX.csv 中写入 ox_solver="ah3d" 字段，避免与旧后处理结果混淆。
+
+正确性验证：
+
+1. fH_MHz = 0 时，O/X 结果应退化到各向同性 RefractiveIndex3D，tau_ms 和 group_path_km 误差应在设定容差内。
+
+2. 在弱磁化、低扰动场景下，AH3D 的 O/X tau 差应与 _apply_OX_split_3d 后处理结果同阶。
+
+3. near-cutoff 或 n2 很小处不得产生非物理负 n2 传播。应使用 branch_status 标记 cutoff、evanescent、invalid_step 等情况。
+
+4. O/X 分支应分别输出独立 y_land_km、h_reflect_km 和 azimuth_deflect_deg。
+
+需要开启 AH3D 的情况举例：
+
+1. 研究高精度 TDOA、相位差或 O/X 到达时间分裂。
+2. 研究 O/X 分支反射点、横向偏移和焦散是否不同。
+3. 研究磁倾角、磁偏角变化对三维传播路径的影响。
+4. 论文中需要声称“完整三维 O/X 射线追踪”，而不是“AH 后处理近似”。
+
+六、阶段 3：2D 到 3D 混合传播接口收口
+
+目标：
+在进入 PE/SSF 双向耦合之前，统一 2D/3D 模式字段和局部坐标约定。
+
+修改范围：
+code/models/ray_tracer_3d.py
+code/models/point_to_point_3d.py
+code/models/hybrid_model.py
+code/viz/plot_utils.py
+
+技术路线：
+
+1. 所有 3D mode 必须包含可投影到 2D 的 trajectory 字段，或由通用函数从 trajectory_3d 生成。
+
+2. 新增局部射线坐标工具函数，建议放在 code/models/local_frame.py：
+make_ray_local_frame(ray, s_index or h_reflect)
+project_to_ray_plane(points, frame)
+sample_Ne_local_cross_section(n3d, frame, width_km, height_km)
+
+3. 局部坐标应明确：
+s：沿射线传播方向
+u：局部垂直/高度方向
+v：横向方向
+
+4. PE/SSF 首版只使用 s-u 截面，v 方向作为 2.5D 诊断保留，不做完整 3D 场传播。
+
+完成标准：
+
+1. 不启用 PE_COUPLING 时，所有旧图和 CSV 字段不变。
+2. 新增 local frame 工具可对任意 3D ray 输出稳定局部坐标。
+3. 对 y=0 的二维场景，局部截面与原 x-z 截面一致或近似一致。
+
+七、阶段 4：Ray-PE/SSF 双向混合接口
+
+目标：
+让 3D 主射线为 PE/SSF 提供局部传播背景，PE/SSF 返回对功率、角谱和延迟展宽的修正诊断。
+
+新增或修改文件：
+code/models/hybrid_ray_pe.py
+code/models/pe_propagator.py
+code/models/hybrid_model.py
+code/main.py
+code/config.py
+code/tests/_verify_ray_pe_energy.py
+
+首版 2.5D 技术路线：
+
+1. 从 3D ray 中选择局部耦合段，例如反射区附近或不规则体附近。
+
+2. 使用 local_frame 抽取 Ne(s,u) 局部截面，生成 PE/SSF 输入网格。
+
+3. 用射线 mode 的 Pr_W、传播方向和局部相位曲率构造 PE 初始场。首版可用 Gaussian beam 近似，避免复杂波束重构。
+
+4. PE/SSF 输出：
+pe_loss_dB
+pe_sigma_tau_ms
+pe_angle_spread_deg
+pe_Pr_correction_dB
+pe_coupling_applied
+pe_grid_dx_m
+pe_grid_dz_m
+
+5. 默认只附加诊断，不改写 Pr_W。只有 PE_COUPLING.apply_to_power=True 时才把 pe_Pr_correction_dB 施加到功率链。
+
+正确性验证：
+
+1. 均匀介质中 PE 传播功率守恒。
+2. 弱扰动下 PE 主瓣方向与主射线方向一致。
+3. 网格 dx、dz 减半时 pe_loss_dB 和 pe_sigma_tau_ms 收敛。
+4. PE 回写不得重复计算 D 层吸收或自由空间损耗。
+
+需要开启 PE_COUPLING.apply_to_power 的情况举例：
+
+1. 研究 bubble 或 Spread-F 引起的实际功率衰落，而不仅是诊断指标。
+2. 需要让 P-D 谱反映 PE/SSF 计算出的散射损耗和延迟展宽。
+3. 与实测功率-时延谱对比，且射线几何损耗明显不足以解释观测衰落。
+
+待升级项：
+
+完整 3D PE/SSF 不在 update2.1 首轮实施。下一期可升级为 s-u-v 三维波场传播，支持横向散射、方位角扩展和三维能量守恒检查。
+
+八、阶段 5：散射诊断到 P-D 谱闭环
+
+目标：
+把 Born/Rytov/MPS 散射诊断从 mode 附加字段升级为可选的 P-D 谱展宽机制。
+
+新增或修改文件：
+code/models/pd_scatter_kernel.py
+code/models/hybrid_model.py
+code/main.py
+code/config.py
+code/tests/_verify_pd_scatter_kernel.py
+
+技术路线：
+
+1. pd_scatter_kernel.py 提供：
+make_delay_kernel(mode, tau_axis, method)
+apply_scatter_kernel(mode_results, tau_axis)
+
+2. 支持 regime 映射：
+Born：弱展宽或近 delta kernel
+Rytov：Gaussian/lognormal-like delay spread
+MPS_required：使用 sigma_tau_ms 或 MPS 输出构造更宽 kernel
+
+3. build_pd_spectrum 新增 method="scatter_coupled"。
+
+4. 默认 SCATTER.apply_to_pd=False。此时旧 P-D 谱完全不变。
+
+5. 开启 apply_to_pd 时，输出文件名或 CSV 字段必须标记：
+pd_method="scatter_coupled"
+scatter_apply_to_pd=True
+
+正确性验证：
+
+1. S4=0 或 sigma_tau_ms=0 时退化到旧谱。
+2. scatter_apply_to_pd=False 时与旧 build_pd_spectrum 数值一致。
+3. 卷积前后总功率守恒，或按配置显式损耗单调下降。
+4. MPS_required 不得错误使用 Born 弱散射核。
+
+需要开启 SCATTER.apply_to_pd 的情况举例：
+
+1. 研究强散射导致的 P-D 谱展宽。
+2. 与实测 delay spread、S4 或功率时延尾部对比。
+3. 论文中需要从“散射诊断”升级为“散射改变传播结果”的定量结论。
+
+九、阶段 6：复折射率吸收与功率链一致化
+
+目标：
+把 D/E 区吸收从经验附加 dB 修正升级为路径积分形式，并为后续 AH3D 复折射率打基础。
+
+新增或修改文件：
+code/models/absorption_collision.py
+code/main.py
+code/models/hybrid_model.py
+code/config.py
+code/tests/_verify_complex_absorption.py
+
+技术路线：
+
+1. absorption_collision.py 提供：
+electron_collision_frequency(z_km, Ne_m3, params)
+complex_refractive_index_simple(Ne_m3, freq_MHz, nu_Hz)
+absorption_integral(ray, n_complex_samples, two_way=False)
+
+2. 首版路径积分公式：
+L_abs_dB = 8.686 * 2 * k0 * integral n_i ds
+
+3. 与现有 ABSORPTION 兼容：
+ABSORPTION.mode = "legacy" 或 "complex_integral"
+默认 legacy，保证旧结果不变。
+
+4. 雷达模式使用 two_way=True 或显式 inbound/outbound 两段积分。
+
+正确性验证：
+
+1. nu=0 时 abs_total_dB=0。
+2. 同一路径雷达双程吸收约等于通信单程两倍。
+3. 频率升高时吸收下降。
+4. 默认 legacy 模式下旧验证脚本通过。
+
+需要开启 ABSORPTION.mode="complex_integral" 的情况举例：
+
+1. 研究 D/E 区碰撞吸收对功率链的贡献。
+2. 研究低频 HF、低仰角、长路径或雷达双程链路。
+3. 需要与太阳耀斑、D 区增强或实测吸收事件对比。
+
+十、阶段 7：功能扩展
+
+U6 参数扫描与不确定性评估：
+在核心功能稳定后新增 analysis/parameter_sweep.py。扫描维度包括 freq_MHz、local_time、season、TID amplitude、Es density/thickness、scatter Cs_rel、absorption scale。输出均值、标准差、5/50/95 分位数和模式切换标志。该阶段属于次级功能扩展，不应阻塞 AH3D 和 PE/SSF。
+
+U7 Es 方位敏感性：
+扩展 es_model.py 或新增 analysis/es_aspect_scan.py。输出 aspect_deg、sigma_v、valid_BG、Bragg_mismatch、Pr_dBW。该项适合在 AH3D 和散射闭环稳定后实施。
+
+U9 OTH clutter / Bragg Doppler：
+新增 models/radar_clutter.py。输出 grazing_angle、doppler_Hz、clutter_class、sigma0_model。该项服务雷达应用扩展，优先级低于传播主链路升级。
+
+U3 和 U8：
+本轮不实施。外部电子密度分布数据后续通过 NeProvider 接入，用于计算折射率。Codex 不应在 update2.1 中实现 GNSS-TEC、电离图同化、IRTAM 接入、三维随机不规则体生成或 NetCDF 随机场存储。
+
+十一、配置建议
+
+建议在 code/config.py 中新增 update2 配置块，字段名可按项目风格调整：
+
+UPDATE2 = {
+    "AH3D_ENABLE": False,
+    "OX_MODE": "postproc",
+    "EXTERNAL_NE_PROVIDER": {
+        "enable": False,
+        "source": "internal_grid",
+    },
+    "PE_COUPLING": {
+        "enable": False,
+        "apply_to_power": False,
+        "mode": "local_2p5d",
+    },
+    "SCATTER_PD": {
+        "apply_to_pd": False,
+        "kernel": "diagnostic",
+    },
+    "ABSORPTION_COMPLEX": {
+        "enable": False,
+        "mode": "legacy",
+    },
+}
+
+默认值必须保持旧结果可复现。任何新增功能若会改变 Pr_W、Pr_dBW、tau_ms、group_path_km 或 P-D 谱，必须通过显式开关开启。
+
+十二、输出字段建议
+
+AH3D 字段：
+ox_solver
+branch_status
+group_index_model
+wave_mode
+x_land_km
+y_land_km
+azimuth_deflect_deg
+h_reflect_km
+geom_path_km
+group_path_km
+tau_ms
+
+PE/SSF 耦合字段：
+pe_coupling_enabled
+pe_coupling_applied
+pe_loss_dB
+pe_Pr_correction_dB
+pe_sigma_tau_ms
+pe_angle_spread_deg
+pe_grid_dx_m
+pe_grid_dz_m
+
+散射 P-D 字段：
+scatter_apply_to_pd
+pd_method
+scatter_kernel
+sigma_tau_ms
+S4
+scatter_method
+
+复吸收字段：
+abs_model
+abs_complex_dB
+abs_total_dB
+collision_model
+two_way_absorption
+
+NeProvider 字段：
+ne_provider
+ne_source
+ne_metadata
+external_ne_enabled
+
+十三、实施时必须遵守的正确性约束
+
+1. group_path_km 始终表示 integral(ds/n) 或明确记录的 group index 近似，不得用 geom_path_km 替代。
+
+2. geom_path_km 始终表示 integral(ds)。
+
+3. tau_ms 必须由 group_path_km / c 得到，除非 AH3D 明确实现了更高阶群折射率公式，并在 group_index_model 字段中记录。
+
+4. scatter_coupler 默认只附加诊断，不直接改写 Pr_W。
+
+5. PE/SSF 默认只附加诊断，不直接改写 Pr_W。
+
+6. 新功能默认关闭时，旧 main.py 场景结果应保持可复现。
+
+7. 所有随机或扫描功能必须记录 seed 和参数。
+
+8. 所有新增 CSV 字段缺失时允许为空，不得破坏旧场景运行。
+
+十四、建议验证命令
+
+从 code/ 目录运行：
+
+conda run -n pytorch_cpu python tests/_verify_group_path.py
+conda run -n pytorch_cpu python tests/_verify_OX.py
+conda run -n pytorch_cpu python tests/_verify_absorption_3d.py
+conda run -n pytorch_cpu python tests/_verify_scatter_coupling.py
+conda run -n pytorch_cpu python tests/_verify_p2p_jacobian.py
+conda run -n pytorch_cpu python tests/_verify_phase6.py
+conda run -n pytorch_cpu python tests/_verify_phase7.py
+
+新增后应运行：
+
+conda run -n pytorch_cpu python tests/_verify_update2_all.py
+conda run -n pytorch_cpu python tests/_verify_AH3D.py
+conda run -n pytorch_cpu python tests/_verify_ray_pe_energy.py
+conda run -n pytorch_cpu python tests/_verify_pd_scatter_kernel.py
+conda run -n pytorch_cpu python tests/_verify_complex_absorption.py
+
+若用户确认进入完整回归，再运行：
+
+conda run -n pytorch_cpu python main.py
+conda run -n pytorch_cpu python analysis/report_results.py
+
+十五、实施确认前不得执行的事项
+
+1. 不得直接修改 code/models 或 code/main.py。
+2. 不得重新运行 main.py 覆盖 output，除非用户确认。
+3. 不得把 update2.1 中的“待升级项”写成已实现功能。
+4. 不得实施 U3 同化或 U8 三维随机场。
+5. 不得将 AH3D 默认开启。
+6. 不得让 PE/SSF 或 scatter kernel 默认改写 Pr_W。
+
+十六、Codex 实施建议顺序
+
+用户确认后，Codex 应按以下顺序逐步实施，并在每一阶段结束后汇报验证结果，再等待用户确认进入下一阶段：
+
+1. 阶段 1：U10 + NeProvider 最小接口。
+2. 阶段 2：AH3D 最小可用实现 + _verify_AH3D。
+3. 阶段 3：局部射线坐标与 2D/3D 字段统一。
+4. 阶段 4：2.5D Ray-PE/SSF 双向接口 + _verify_ray_pe_energy。
+5. 阶段 5：散射 P-D 谱闭环可选开关 + _verify_pd_scatter_kernel。
+6. 阶段 6：复折射率吸收路径积分 + _verify_complex_absorption。
+7. 阶段 7：参数扫描、Es 方位敏感性、OTH clutter 等扩展功能。
+
+十七、当前待用户确认的问题
+
+本方案已吸收用户对四项决策的确认。实施前仍建议用户最终确认以下执行边界：
+
+1. 是否同意 Codex 在阶段 1 中先新增 NeProvider、traceability matrix 和 update2 验证脚本。
+2. 是否同意 AH3D 首版以“正确性优先、性能次级”为准，允许运行时间明显长于各向同性 3D 射线。
+3. 是否同意阶段式实施，每一阶段完成后先验证并汇报，再进入下一阶段。
+
+待用户确认后，Codex 才可开始代码升级。

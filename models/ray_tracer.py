@@ -61,7 +61,7 @@ class RefractiveIndex:
 
     def n2(self, x: float, z: float) -> float:
         """n^2(x, z)  – interpolated, clamped to [1e-6, inf)."""
-        return float(self._n2_interp([[x, z]]))
+        return float(self._n2_interp([[x, z]])[0])
 
     def n(self, x: float, z: float) -> float:
         """n(x, z)."""

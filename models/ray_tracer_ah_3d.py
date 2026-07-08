@@ -1,0 +1,286 @@
+"""Full 3-D Appleton-Hartree O/X ray tracing.
+
+This first update2.1 implementation uses a numerical Hamiltonian finite
+difference formulation.  It prioritizes explicit formulas and regression to the
+isotropic 3-D tracer when ``fH_MHz = 0``.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+from config import FREQ_MHZ, GEOMAG, K_FP, LINK_BEARING_DEG, RE_KM, RT
+from utils import freq_to_k0, group_delay_ms
+from .ray_tracer_3d import RefractiveIndex3D
+
+
+def _b_hat_from_geomag(geomag: dict | None = None) -> np.ndarray:
+    g = GEOMAG if geomag is None else geomag
+    dip = np.radians(float(g.get("dip_deg", 48.7)))
+    decl = np.radians(float(g.get("decl_deg", -5.5)))
+    link = np.radians(float(g.get("link_bearing_deg", LINK_BEARING_DEG)))
+    bx = np.cos(dip) * np.cos(decl - link)
+    by = np.cos(dip) * np.sin(decl - link)
+    bz = -np.sin(dip)
+    b = np.array([bx, by, bz], dtype=float)
+    return b / max(float(np.linalg.norm(b)), 1e-30)
+
+
+class RefractiveIndexAH3D:
+    """Appleton-Hartree 3-D refractive-index model."""
+
+    def __init__(
+        self,
+        n3d: RefractiveIndex3D,
+        freq_MHz: float = FREQ_MHZ,
+        wave_mode: str = "O",
+        geomag: dict | None = None,
+        n2_floor: float = 1e-6,
+    ):
+        self.n3d = n3d
+        self.freq_MHz = float(freq_MHz)
+        self.wave_mode = str(wave_mode).upper()
+        self.geomag = GEOMAG if geomag is None else geomag
+        self.fH_MHz = float(self.geomag.get("fH_MHz", 1.197))
+        self.b_hat = _b_hat_from_geomag(self.geomag)
+        self.n2_floor = float(n2_floor)
+        self.earth_flat = bool(getattr(n3d, "earth_flat", True))
+        self.z_km = n3d.z_km
+
+    def _z_phys(self, x_km: float, y_km: float, z_cart_km: float) -> float:
+        if self.earth_flat:
+            z_phys = z_cart_km - (x_km * x_km + y_km * y_km) / (2.0 * RE_KM)
+        else:
+            z_phys = z_cart_km
+        return max(float(z_phys), float(self.z_km[0]))
+
+    def n2(self, x_km: float, y_km: float, z_cart_km: float, k_vec=None, t: float = 0.0) -> float:
+        """Return clamped AH phase-index squared for one position/direction."""
+        z_phys = self._z_phys(x_km, y_km, z_cart_km)
+        Ne = max(float(self.n3d.Ne_at(x_km, y_km, z_cart_km, t=t)), 0.0)
+        X = (K_FP ** 2) * Ne / (self.freq_MHz * 1e6) ** 2
+        Y = self.fH_MHz / self.freq_MHz
+        if abs(Y) < 1e-14:
+            n2_iso = 1.0 - X
+            if self.earth_flat:
+                n2_iso *= (1.0 + z_phys / RE_KM) ** 2
+            return max(float(n2_iso), self.n2_floor)
+
+        if k_vec is None:
+            k_hat = np.array([1.0, 0.0, 0.0], dtype=float)
+        else:
+            k_arr = np.asarray(k_vec, dtype=float)
+            k_hat = k_arr / max(float(np.linalg.norm(k_arr)), 1e-30)
+
+        cos_alpha = float(np.clip(np.dot(k_hat, self.b_hat), -1.0, 1.0))
+        sin_alpha_sq = max(1.0 - cos_alpha * cos_alpha, 0.0)
+        YL = Y * cos_alpha
+        YT_sq = (Y * Y) * sin_alpha_sq
+
+        denom_base = 1.0 - X
+        if abs(denom_base) < 1e-10:
+            denom_base = np.sign(denom_base + 1e-30) * 1e-10
+
+        half = YT_sq / (2.0 * denom_base)
+        disc = np.sqrt(max(YT_sq * YT_sq / (4.0 * denom_base * denom_base) + YL * YL, 0.0))
+        if self.wave_mode == "O":
+            denom = 1.0 - half + disc
+        else:
+            denom = 1.0 - half - disc
+        if abs(denom) < 1e-10:
+            denom = np.sign(denom + 1e-30) * 1e-10
+
+        n2_phase = 1.0 - X / denom
+        if self.earth_flat:
+            n2_phase *= (1.0 + z_phys / RE_KM) ** 2
+        return max(float(n2_phase), self.n2_floor)
+
+    def branch_status(self, x_km: float, y_km: float, z_cart_km: float, k_vec=None, t: float = 0.0) -> str:
+        n2_val = self.n2(x_km, y_km, z_cart_km, k_vec=k_vec, t=t)
+        if not np.isfinite(n2_val):
+            return "invalid_step"
+        if n2_val <= 1.1 * self.n2_floor:
+            return "cutoff"
+        return "ok"
+
+
+def hamiltonian_ah3d(state: np.ndarray, n_ah: RefractiveIndexAH3D, k0: float, t: float = 0.0) -> float:
+    x, y, z, kx, ky, kz = state
+    k_vec = np.array([kx, ky, kz], dtype=float)
+    return float(np.dot(k_vec, k_vec) - k0 * k0 * n_ah.n2(x, y, z, k_vec=k_vec, t=t))
+
+
+def ah3d_deriv(state: np.ndarray, n_ah: RefractiveIndexAH3D, k0: float, t: float = 0.0) -> np.ndarray:
+    """Hamiltonian finite-difference RHS normalized to geometric path length."""
+    h_r = 0.5
+    k_mag = max(float(np.linalg.norm(state[3:6])), 1e-30)
+    h_k = max(1e-6, 1e-5 * k_mag)
+
+    grad_r = np.empty(3, dtype=float)
+    for i in range(3):
+        sp = state.copy()
+        sm = state.copy()
+        sp[i] += h_r
+        sm[i] -= h_r
+        grad_r[i] = (hamiltonian_ah3d(sp, n_ah, k0, t=t) - hamiltonian_ah3d(sm, n_ah, k0, t=t)) / (2.0 * h_r)
+
+    grad_k = np.empty(3, dtype=float)
+    for i in range(3):
+        sp = state.copy()
+        sm = state.copy()
+        sp[3 + i] += h_k
+        sm[3 + i] -= h_k
+        grad_k[i] = (hamiltonian_ah3d(sp, n_ah, k0, t=t) - hamiltonian_ah3d(sm, n_ah, k0, t=t)) / (2.0 * h_k)
+
+    speed = max(float(np.linalg.norm(grad_k)), 1e-30)
+    dr_ds = grad_k / speed
+    dk_ds = -grad_r / speed
+    return np.array([dr_ds[0], dr_ds[1], dr_ds[2], dk_ds[0], dk_ds[1], dk_ds[2]], dtype=float)
+
+
+def rk4_step_ah3d(state: np.ndarray, n_ah: RefractiveIndexAH3D, k0: float, ds: float, t: float = 0.0) -> np.ndarray:
+    k1 = ah3d_deriv(state, n_ah, k0, t=t)
+    k2 = ah3d_deriv(state + 0.5 * ds * k1, n_ah, k0, t=t)
+    k3 = ah3d_deriv(state + 0.5 * ds * k2, n_ah, k0, t=t)
+    k4 = ah3d_deriv(state + ds * k3, n_ah, k0, t=t)
+    return state + (ds / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+
+
+def _renorm_k_ah3d(state: np.ndarray, n_ah: RefractiveIndexAH3D, k0: float, t: float = 0.0) -> np.ndarray:
+    k_vec = state[3:6]
+    k_mag = max(float(np.linalg.norm(k_vec)), 1e-30)
+    n_eff = np.sqrt(n_ah.n2(float(state[0]), float(state[1]), float(state[2]), k_vec=k_vec, t=t))
+    out = state.copy()
+    out[3:6] *= (n_eff * k0) / k_mag
+    return out
+
+
+def trace_single_ray_ah_3d(
+    tx_pos: tuple,
+    beta_deg: float,
+    az_deg: float,
+    n_ah: RefractiveIndexAH3D,
+    freq_MHz: float = FREQ_MHZ,
+    rt_params: dict = RT,
+    t: float = 0.0,
+) -> dict:
+    """Trace one AH3D O/X ray."""
+    k0 = freq_to_k0(freq_MHz)
+    ds_min = float(rt_params["ds_min_km"])
+    ds_max = float(rt_params["ds_max_km"])
+    z_stop = float(rt_params["z_stop_km"])
+    max_st = int(rt_params["max_steps"])
+
+    x0, z0 = float(tx_pos[0]), float(tx_pos[1])
+    y0 = 0.0
+    beta_r = np.radians(beta_deg)
+    az_r = np.radians(az_deg)
+    launch_hat = np.array([
+        np.cos(beta_r) * np.cos(az_r),
+        np.cos(beta_r) * np.sin(az_r),
+        np.sin(beta_r),
+    ])
+    n0 = np.sqrt(n_ah.n2(x0, y0, z0, k_vec=launch_hat, t=t))
+    state = np.array([x0, y0, z0, *(n0 * k0 * launch_hat)], dtype=float)
+
+    traj = [state.copy()]
+    geom_path = 0.0
+    group_path = 0.0
+    h_reflect = z0
+    x_reflect = x0
+    y_reflect = y0
+    has_risen = False
+    statuses = set()
+
+    for _ in range(max_st):
+        x, y, z, kx, ky, kz = state
+        statuses.add(n_ah.branch_status(x, y, z, k_vec=state[3:6], t=t))
+        n2_here = n_ah.n2(x, y, z, k_vec=state[3:6], t=t)
+        ds = ds_max if n2_here > 0.20 else (max(ds_min, 0.4) if n2_here > 0.04 else ds_min)
+        prev = state.copy()
+        state = rk4_step_ah3d(state, n_ah, k0, ds, t=t)
+        if not np.all(np.isfinite(state)):
+            statuses.add("invalid_step")
+            state = prev
+            break
+        state = _renorm_k_ah3d(state, n_ah, k0, t=t)
+
+        dx = float(state[0] - prev[0])
+        dy = float(state[1] - prev[1])
+        dz = float(state[2] - prev[2])
+        ds_geom = (dx * dx + dy * dy + dz * dz) ** 0.5
+        x_mid = float(0.5 * (state[0] + prev[0]))
+        y_mid = float(0.5 * (state[1] + prev[1]))
+        z_mid = float(0.5 * (state[2] + prev[2]))
+        k_mid = 0.5 * (state[3:6] + prev[3:6])
+        n_mid = max(np.sqrt(n_ah.n2(x_mid, y_mid, z_mid, k_vec=k_mid, t=t)), 1e-4)
+        geom_path += ds_geom
+        group_path += ds_geom / n_mid
+
+        x, y, z, kx, ky, kz = state
+        traj.append(state.copy())
+        if z > 50.0:
+            has_risen = True
+        if z > h_reflect:
+            h_reflect = float(z)
+            x_reflect = float(x)
+            y_reflect = float(y)
+        if z <= 0.0 and has_risen:
+            break
+        if z >= z_stop:
+            break
+
+    x_f, y_f, z_f, kx_f, ky_f, kz_f = state
+    kmag_f = max(float(np.sqrt(kx_f * kx_f + ky_f * ky_f + kz_f * kz_f)), 1e-30)
+    beta_rx = float(np.degrees(np.arcsin(np.clip(abs(kz_f) / kmag_f, 0.0, 1.0))))
+    az_rx = float(np.degrees(np.arctan2(ky_f, kx_f)))
+    if n_ah.earth_flat:
+        h_phys = h_reflect - (x_reflect * x_reflect + y_reflect * y_reflect) / (2.0 * RE_KM)
+    else:
+        h_phys = h_reflect
+    az_deflect = float(np.degrees(np.arctan2(y_f, max(abs(x_f), 1e-6))))
+
+    branch_status = "ok"
+    if "invalid_step" in statuses:
+        branch_status = "invalid_step"
+    elif "cutoff" in statuses:
+        branch_status = "cutoff"
+
+    return {
+        "x_land_km": float(x_f),
+        "y_land_km": float(y_f),
+        "z_land_km": float(z_f),
+        "geom_path_km": float(geom_path),
+        "group_path_km": float(group_path),
+        "tau_ms": group_delay_ms(group_path),
+        "h_reflect_km": float(h_phys),
+        "reflect_x_km": float(x_reflect),
+        "reflect_y_km": float(y_reflect),
+        "beta_deg_tx": float(beta_deg),
+        "az_deg_tx": float(az_deg),
+        "elevation_tx_deg": float(beta_deg),
+        "beta_deg_rx": beta_rx,
+        "elevation_rx_deg": beta_rx,
+        "az_deg_rx": az_rx,
+        "azimuth_deflect_deg": az_deflect,
+        "trajectory_3d": traj,
+        "wave_mode": n_ah.wave_mode,
+        "branch_status": branch_status,
+        "group_index_model": "cold_plasma_ng_approx",
+        "ox_solver": "ah3d",
+    }
+
+
+def shoot_rays_fan_ah_3d(
+    tx_pos: tuple,
+    n_ah: RefractiveIndexAH3D,
+    freq_MHz: float = FREQ_MHZ,
+    rt_params: dict = RT,
+    az_center_deg: float = 0.0,
+    t: float = 0.0,
+) -> list:
+    betas = np.linspace(rt_params["beta_min"], rt_params["beta_max"], rt_params["n_fan"])
+    return [
+        trace_single_ray_ah_3d(tx_pos, float(beta), az_center_deg, n_ah, freq_MHz, rt_params, t=t)
+        for beta in betas
+    ]

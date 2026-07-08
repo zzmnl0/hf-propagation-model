@@ -1,4 +1,4 @@
-"""
+﻿"""
 Module M5-M7 – Hybrid propagation model  (top-level integration).
 Orchestrates the full pipeline:
 
@@ -16,13 +16,15 @@ import numpy as np
 from scipy.signal import find_peaks
 from config import (FREQ_MHZ, PT_W, GT, GR, ES, BUBBLE,
                     BG_X, BG_Z, PE, P2P, RT, MODE, TX_POS, RX_POS, C_MS, EPS0,
-                    RADAR, LINK_BEARING_DEG, GEOMAG, ABSORPTION, TUBE_TRACER)
+                    RADAR, LINK_BEARING_DEG, GEOMAG, ABSORPTION, TUBE_TRACER,
+                    UPDATE2)
 from .ionosphere_model import IonosphereModel
 from .ray_tracer import RefractiveIndex
 from .point_to_point import (find_all_rays_p2p, classify_mode,
                               extract_es_params, extract_bubble_entry)
 from .es_model import EsLayerModel
 from .pe_propagator import PEPropagator, construct_incident_field
+from .hybrid_ray_pe import apply_ray_pe_coupling
 from .tube_tracer import TubeRayTracer
 from utils import (free_space_loss_dB, to_dBW, freq_to_k0,
                    radar_equation_W, d_layer_absorption_dB)
@@ -66,6 +68,12 @@ def build_pd_spectrum(mode_results: list,
     """
     if not mode_results:
         return np.array([0.0]), np.array([0.0])
+
+    if method == 'gaussian' and UPDATE2.get('SCATTER_PD', {}).get('apply_to_pd', False):
+        method = 'scatter_coupled'
+    if method == 'scatter_coupled':
+        from .pd_scatter_kernel import apply_scatter_kernel
+        return apply_scatter_kernel(mode_results, tau_axis, tau_res_ms)
 
     taus = [m['tau_ms'] for m in mode_results]
     if tau_axis is None:
@@ -312,8 +320,30 @@ class HybridPropagationModel:
                     L_free_dB = free_space_loss_dB(gp, self.freq)
                     Pr_W = Pt * Gt * Gr * 10.0 ** (-L_free_dB / 10.0)
 
-                # ── D-layer absorption ────────────────────────────────────────
-                if self.absorption.get('enable', False):
+                # -- D-layer / complex collision absorption --------------------
+                abs_oneway_dB = 0.0
+                abs_total_dB = 0.0
+                abs_model = 'none'
+                abs_diag = {'abs_status': 'disabled'}
+                complex_cfg = UPDATE2.get('ABSORPTION_COMPLEX', {})
+                if complex_cfg.get('enable', False):
+                    from .absorption_collision import complex_absorption_path_dB
+                    from scipy.interpolate import RegularGridInterpolator
+                    ne_interp = RegularGridInterpolator(
+                        (self.x_array, self.z_array), Ne_2d,
+                        bounds_error=False, fill_value=0.0)
+                    def _sample_ne(x, y, z):
+                        return float(ne_interp([[x, z]])[0])
+                    abs_diag = complex_absorption_path_dB(
+                        pts, self.freq, _sample_ne, complex_cfg,
+                        two_way=bool(self.radar_mode),
+                        wave_mode=ray.get('wave_mode', 'O'),
+                        geomag=self.geomag or GEOMAG)
+                    abs_oneway_dB = float(abs_diag.get('abs_complex_dB', 0.0))
+                    abs_total_dB = float(abs_diag.get('abs_total_dB', abs_oneway_dB))
+                    abs_model = 'appleton_hartree_collision_path'
+                    Pr_W *= 10.0 ** (-abs_total_dB / 10.0)
+                elif self.absorption.get('enable', False):
                     geomag  = self.geomag or GEOMAG
                     fH_L    = (float(geomag.get('fH_MHz', 1.197))
                                * float(np.cos(np.radians(geomag.get('dip_deg', 48.7)))))
@@ -323,8 +353,11 @@ class HybridPropagationModel:
                     A_dB    = d_layer_absorption_dB(
                         self.freq, float(ray.get('beta_deg', 30.0)), **ab_kw)
                     n_cross = 2 if self.radar_mode else 1
-                    Pr_W   *= 10.0 ** (-(A_dB * n_cross) / 10.0)
-
+                    abs_oneway_dB = float(A_dB)
+                    abs_total_dB = float(A_dB * n_cross)
+                    abs_model = 'legacy_d_layer'
+                    abs_diag = {'abs_status': 'ok'}
+                    Pr_W   *= 10.0 ** (-abs_total_dB / 10.0)
                 # ── Step 3a: Es model ─────────────────────────────────────────
                 if self.es is not None:
                     es_cfg = self.iono_params.get('es_params') or {}
@@ -339,43 +372,27 @@ class HybridPropagationModel:
                         label         = 'Es_' + es_res['mode']
 
                 # ── Step 3b: Plasma bubble (PE/SSF) ──────────────────────────
+                pe_diag = {}
                 bub_cfg = self.iono_params.get('bubble_params') or {}
                 if bub_cfg.get('enable', False):
-                    z0    = float(bub_cfg.get('z0_km', BUBBLE['z0_km']))
-                    Lz    = float(bub_cfg.get('Lz_km', BUBBLE['Lz_km']))
-                    Lx    = float(bub_cfg.get('Lx_km', BUBBLE['Lx_km']))
+                    z0 = float(bub_cfg.get('z0_km', BUBBLE['z0_km']))
+                    Lz = float(bub_cfg.get('Lz_km', BUBBLE['Lz_km']))
+                    Lx = float(bub_cfg.get('Lx_km', BUBBLE['Lx_km']))
                     h_bot = z0 - Lz
 
                     bub_entry = extract_bubble_entry(pts, h_bot)
                     if bub_entry is not None:
-                        x_ent  = float(bub_entry['x'])
-                        z_ent  = float(bub_entry['z'])
-                        b_deg  = float(bub_entry['beta_inc_deg'])
-                        A_inc  = _amplitude_from_power(Pr_W)
+                        x_ent = float(bub_entry['x'])
+                        z_ent = float(bub_entry['z'])
+                        b_deg = float(bub_entry['beta_inc_deg'])
+                        pe_cfg = UPDATE2.get('PE_COUPLING', {})
+                        if pe_cfg.get('enable', False):
+                            Pr_W, pe_diag = apply_ray_pe_coupling(
+                                self.pe, Ne_2d, self.x_array, self.z_array,
+                                Pr_W, self.k0, x_ent, z_ent, b_deg, bub_cfg,
+                                pe_cfg)
+                            delta_tau_ms += float(pe_diag.get('pe_delta_tau_ms', 0.0))
 
-                        dx_km = float(PE['dx_km'])
-                        dz_km = float(PE['dz_m']) / 1000.0
-
-                        x_rng = (max(x_ent, float(self.x_array[0])),
-                                 min(x_ent + 2.0 * Lx, float(self.x_array[-1])))
-                        z_rng = (max(h_bot, float(self.z_array[0])),
-                                 min(z0 + Lz, float(self.z_array[-1])))
-
-                        n_pe, x_pe, z_pe = self.pe.extract_domain(
-                            Ne_2d, self.x_array, self.z_array, x_rng, z_rng)
-
-                        u_init    = construct_incident_field(
-                            A_inc, b_deg, z_ent, z_pe, self.k0)
-                        u_out, _  = self.pe.propagate(u_init, n_pe, dx_km, dz_km)
-
-                        dx_tot    = (len(x_pe) - 1) * dx_km
-                        pe_res    = self.pe.analyze(u_out, z_pe, dx_tot)
-                        delta_tau_ms += float(pe_res['delta_tau_ms'])
-
-                        P_in  = float(np.sum(np.abs(u_init) ** 2))
-                        P_out = float(np.sum(np.abs(u_out)  ** 2))
-                        if P_in > 0.0:
-                            Pr_W *= P_out / P_in
 
                 mode_results.append({
                     'label'         : label,
@@ -390,9 +407,18 @@ class HybridPropagationModel:
                     'phi_deg'       : float(self.radar_params.get('bearing_deg',
                                                                    LINK_BEARING_DEG)),
                     'wave_mode'     : ray.get('wave_mode', 'iso'),
+                    'abs_dB'        : abs_oneway_dB,
+                    'abs_total_dB'  : abs_total_dB,
+                    'abs_model'     : abs_model,
+                    'abs_complex_dB': float(abs_diag.get('abs_complex_dB', 0.0)),
+                    'abs_status'    : abs_diag.get('abs_status', ''),
+                    'collision_model': abs_diag.get('collision_model', ''),
+                    'abs_index_model': abs_diag.get('abs_index_model', ''),
                     'points'        : pts,
                 })
 
+                if pe_diag:
+                    mode_results[-1].update(pe_diag)
         # ── Steps 4-5: P-D spectrum + main mode ───────────────────────────────
         _pd_method = 'tube' if self.tube_mode else 'gaussian'
         tau_axis, pd_W = build_pd_spectrum(mode_results, method=_pd_method)
@@ -467,3 +493,7 @@ def _split_iono(iono_params: dict) -> dict:
     """Extract IonosphereModel keyword arguments from iono_params."""
     keys = ('iri_params', 'tid_params', 'es_params', 'bubble_params', 'spread_f_params')
     return {k: iono_params[k] for k in keys if k in iono_params}
+
+
+
+

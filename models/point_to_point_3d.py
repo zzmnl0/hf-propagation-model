@@ -20,7 +20,7 @@ New ray dict fields vs 2-D P2P:
 Reference: Cervera & Harris (2014) for 3-D P2P Newton shooting approach.
 """
 import numpy as np
-from config import C_KMS, P2P, RT, MODE, FREQ_MHZ
+from config import C_KMS, P2P_3D, RT, MODE, FREQ_MHZ
 from .ray_tracer_3d import RefractiveIndex3D, trace_single_ray_3d
 from .point_to_point import classify_mode as classify_mode_2d
 
@@ -155,21 +155,91 @@ def classify_mode_3d(ray: dict) -> str:
     return base
 
 
+def _seed_betas_3d(rx: tuple, p2p_params: dict, rays_fan: list | None = None) -> tuple[list[float], str]:
+    """Return P2P seed elevations and the effective seed_source."""
+    n_init = int(p2p_params.get('n_init', 18))
+    seed_source = str(p2p_params.get('seed_source', 'internal_scan')).lower()
+    if seed_source == 'fan_warm_start':
+        if rays_fan:
+            x_rx_f = float(rx[0])
+            fan_sorted = sorted(rays_fan,
+                                key=lambda r: abs(float(r.get('x_land_km', 0.0)) - x_rx_f))
+            return [float(r.get('beta_deg_tx', r.get('beta_deg', 0.0)))
+                    for r in fan_sorted[:min(n_init, len(fan_sorted))]], seed_source
+        return list(np.linspace(5.0, 80.0, n_init)), 'internal_scan'
+    if seed_source == 'explicit_list':
+        betas = [float(v) for v in p2p_params.get('seed_betas_deg', [])]
+        if betas:
+            return betas, seed_source
+        return list(np.linspace(5.0, 80.0, n_init)), 'internal_scan'
+    return list(np.linspace(5.0, 80.0, n_init)), 'internal_scan'
+
+
+def _cause_layer_from_height(label: str, h_km: float) -> str:
+    if label.startswith('Es') or h_km < float(MODE['h_Es_km']):
+        return 'Es'
+    if h_km < float(MODE['h_E_km']):
+        return 'E'
+    if h_km < 300.0:
+        return 'F1'
+    return 'F2'
+
+
+def annotate_mode_causes_3d(modes: list,
+                            p2p_params: dict | None = None,
+                            seed_source: str | None = None,
+                            environment: str | None = None) -> list:
+    """Attach P1 cause_* fields for plotting/CSV interpretation."""
+    params = p2p_params or P2P_3D
+    low_max = float(params.get('launch_low_max_deg', 25.0))
+    high_min = float(params.get('launch_high_min_deg', 55.0))
+    seed = seed_source or str(params.get('seed_source', 'internal_scan'))
+    env = str(environment or '').lower()
+    for m in modes:
+        beta = float(m.get('beta_deg_tx', m.get('elevation_tx_deg', m.get('beta_deg', 0.0))))
+        if beta <= low_max:
+            launch = 'low_elevation'
+        elif beta >= high_min:
+            launch = 'high_elevation'
+        else:
+            launch = 'medium_elevation'
+        label = str(m.get('label', ''))
+        layer = _cause_layer_from_height(label, float(m.get('h_reflect_km', 0.0)))
+        wave_mode = str(m.get('wave_mode', 'iso'))
+        if wave_mode in ('O', 'X'):
+            mechanism = 'magnetoionic_split'
+        elif bool(m.get('pe_coupled', False)):
+            mechanism = 'ray_pe_coupled'
+        elif layer == 'Es':
+            mechanism = 'layered_reflection'
+        elif env in ('bubble', 'spreadf', 'full') and m.get('scatter_method'):
+            mechanism = 'irregularity_scatter'
+        else:
+            mechanism = 'elevation_branch'
+        m['cause_layer'] = layer
+        m['cause_launch'] = launch
+        m['cause_mechanism'] = mechanism
+        m['cause_summary'] = '{} {} branch'.format(layer, launch.replace('_', '-'))
+        if mechanism in ('magnetoionic_split', 'irregularity_scatter', 'ray_pe_coupled'):
+            m['cause_summary'] += ' ({})'.format(mechanism)
+        m['p2p_seed_source'] = seed
+    return modes
+
+
 # ── Main P2P search ───────────────────────────────────────────────────────────
 
 def find_all_rays_3d(tx:        tuple,
                      rx:        tuple,
                      n3d:       RefractiveIndex3D,
                      freq_MHz:  float = FREQ_MHZ,
-                     p2p_params: dict = P2P,
+                     p2p_params: dict = P2P_3D,
                      t:         float = 0.0,
                      rays_fan:  list  = None
                      ) -> list[dict]:
     """
     3-D point-to-point ray search using Newton two-parameter shooting.
 
-    Seeds: either from rays_fan (sorted by landing distance to RX, fast warm
-    start) or a uniform elevation scan [5, 80] deg (cold start).
+    Seeds: controlled by p2p_params['seed_source']. Default internal_scan uses an independent elevation scan; fan_warm_start is explicit only.
     Each seed runs Newton iteration to converge to (x_rx, y_rx=0).
     Results are deduplicated by (h_reflect, tau) and sorted by tau.
 
@@ -198,15 +268,7 @@ def find_all_rays_3d(tx:        tuple,
     d_az      = p2p_params.get('d_az',   0.10)
     jacobian  = p2p_params.get('jacobian', 'forward')
 
-    # Seeding: warm start from ray fan (sorted by landing proximity to RX)
-    if rays_fan:
-        x_rx_f = float(rx[0])
-        _fan_s = sorted(rays_fan,
-                        key=lambda r: abs(float(r['x_land_km']) - x_rx_f))
-        n_take = min(n_init, len(_fan_s))
-        betas  = [float(r['beta_deg_tx']) for r in _fan_s[:n_take]]
-    else:
-        betas  = list(np.linspace(5.0, 80.0, n_init))
+    betas, seed_source = _seed_betas_3d(rx, p2p_params, rays_fan)
     candidates = []
 
     for beta_i in betas:
@@ -228,8 +290,10 @@ def find_all_rays_3d(tx:        tuple,
                 continue
             ray['wave_mode'] = 'iso'
             ray['label']     = classify_mode_3d(ray)
+            ray['p2p_seed_source'] = seed_source
             candidates.append(ray)
 
     unique = _deduplicate_3d(candidates, clust_h, clust_tau)
     unique.sort(key=lambda r: r['tau_ms'])
+    annotate_mode_causes_3d(unique, p2p_params, seed_source)
     return unique

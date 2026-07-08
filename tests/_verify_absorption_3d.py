@@ -1,15 +1,14 @@
-"""
-Stage B verification: 3-D D-layer absorption in main._add_power_3d().
+﻿"""Stage B verification: 3-D legacy D-layer absorption in main._add_power_3d().
 
 Run:
     conda run -n pytorch_cpu python tests/_verify_absorption_3d.py
 """
+import copy
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import copy
 import numpy as np
 
 import config as cfg
@@ -34,7 +33,10 @@ def _ok(label, condition):
 def run():
     n_fail = 0
     old_abs = copy.deepcopy(cfg.ABSORPTION)
+    old_complex = copy.deepcopy(cfg.UPDATE2["ABSORPTION_COMPLEX"])
     try:
+        cfg.UPDATE2["ABSORPTION_COMPLEX"].clear()
+        cfg.UPDATE2["ABSORPTION_COMPLEX"].update({"enable": False})
         print("=" * 55)
         print("  Stage B verification: 3-D absorption")
         print("=" * 55)
@@ -83,6 +85,8 @@ def run():
     finally:
         cfg.ABSORPTION.clear()
         cfg.ABSORPTION.update(old_abs)
+        cfg.UPDATE2["ABSORPTION_COMPLEX"].clear()
+        cfg.UPDATE2["ABSORPTION_COMPLEX"].update(old_complex)
 
 
 if __name__ == "__main__":

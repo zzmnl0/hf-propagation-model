@@ -1,4 +1,4 @@
-"""
+﻿"""
 Phase 3 verification: D-layer absorption.
 
 Checks:
@@ -14,6 +14,7 @@ Run:
 """
 import sys
 import os
+import copy
 import numpy as np
 from collections import defaultdict
 
@@ -59,6 +60,9 @@ def _make_rp():
 
 
 def run():
+    old_complex = copy.deepcopy(cfg.UPDATE2["ABSORPTION_COMPLEX"])
+    cfg.UPDATE2["ABSORPTION_COMPLEX"].clear()
+    cfg.UPDATE2["ABSORPTION_COMPLEX"].update({"enable": False})
     p2p_fast = {**cfg.P2P, 'n_init': 6, 'max_iter': 100}
     n_fail   = 0
 
@@ -183,8 +187,11 @@ def run():
         print("Phase 3 absorption verification PASSED.")
     else:
         print("{} check(s) FAILED.".format(n_fail))
+    cfg.UPDATE2["ABSORPTION_COMPLEX"].clear()
+    cfg.UPDATE2["ABSORPTION_COMPLEX"].update(old_complex)
     return n_fail
 
 
 if __name__ == '__main__':
     sys.exit(run())
+
