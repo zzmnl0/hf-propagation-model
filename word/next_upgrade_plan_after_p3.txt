@@ -1,0 +1,43 @@
+P0-P3后下一步升级方案
+生成日期：2026-07-10
+
+一、当前运行策略
+
+main.py 与 main2.py 的研究参考运行采用 AH3D + 复 Appleton-Hartree 碰撞吸收作为主链。local_2p5d Ray-PE 和散射影响 P-D 谱不再默认改变功率、时延或 P-D 谱；它们仅可作为诊断/参考模块保留。雷达 Bragg clutter 仍作为参考观测输出，不声明绝对功率已校准。
+
+二、必须先补齐的升级项
+
+1. 统一传播主链彻底替换 main.py 分支逻辑。
+   main.py 仍保留多个历史场景函数，部分流程直接调用 isotropic 3D P2P、功率、散射诊断和绘图。下一步应把 main.py 的验证场景也逐步迁移为 main2.py/unified_hybrid_pipeline 同一入口，历史函数只保留为回归对照。
+
+2. AH3D first version 收敛性与稳定性升级。
+   当前 AH3D 是有限差分 Hamiltonian first version。下一步应补充群速度/群折射率一致性、步长自适应、near-cutoff/evanescent 状态处理、O/X 分支连续性和频率连续性验证，形成可作为主反射求解器的数值验收标准。
+
+3. 三维复杂 Ne 物理表达完善。
+   P1 仅完成电子密度场入口和部分参数化组件。下一步应重点补 Spread-F 三维各向异性谱介质、Es 薄层/场向不规则体/aspect sensitivity、bubble 场向耗空几何和 TID 多波分量时变表达，并保证外部 Ne 输入不依赖扰动类型标签。
+
+4. 散射模块从诊断走向可控耦合。
+   P3 的 MPS 是路径相关统计核，不是完整 3D 全波散射场；local_2p5d PE 也不能代表完整三维 PE/全波。下一步应建立统一 ScatteringSolver 验收：Born/Rytov 只用于弱散射判据满足时；MPS 输出 delay-angle-power kernel 与能量归一化；FDTD/FARR adapter 提供边界场、接收面和 field-to-PD 接口。在完成能量守恒、收敛性和文献算例验证前，不应默认开启 scatter-to-PD。
+
+5. 功率与观测语义分层。
+   绝对功率缺实测校准，吸收、海况、天线方向图、接收机链会显著改变结果。下一步即使暂不完整实施 P4，也应先统一字段：Pr_model_W、Pr_reference_W、Pr_calibrated_W、calibration_status、uncertainty_dB，避免把参考功率误读为实测可信功率。
+
+三、推荐实施顺序
+
+P3.1：统一 main.py 到 unified_hybrid_pipeline，只保留 legacy 对照。
+P3.2：AH3D 数值稳定性与 O/X 连续性验证。
+P3.3：Spread-F、Es、bubble 的三维 Ne 物理组件补强。
+P3.4：MPS delay-angle-power kernel 能量闭合与文献算例验证。
+P3.5：FARR/FDTD adapter 数据结构与最小外部算例对照。
+P3.6：功率/观测字段分层，为后续 P4/P5 做接口准备。
+
+四、当前仍关闭的高风险开关
+
+1. PE_COUPLING.enable=False，local_2p5d PE 不参与功率和时延主结果。
+2. PE_COUPLING.apply_to_power=False，不用 local_2p5d 修正 Pr。
+3. SCATTER_PD.apply_to_pd=False，不用路径统计散射核改写 P-D 谱。
+4. 绝对功率 calibration_status 仍应视为 reference_uncalibrated。
+
+五、理论支撑与参考方向
+
+主反射链继续以 Appleton-Hartree 色散关系、Haselgrove Hamiltonian 射线方程、Jones-Stephenson 3D ray tracing 为依据。散射升级以 Rino 幂律相位屏、Knepp 多相屏、Born/Rytov 适用性判据、PE/SSF 和 FARR/FDTD 全波参考为依据。雷达观测后续以 Skolnik 雷达方程、Barrick HF 海面 Bragg 散射和 Coleman OTH flux-tube backscatter 为依据。
