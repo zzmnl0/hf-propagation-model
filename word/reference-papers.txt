@@ -1,0 +1,21 @@
+
+Haselgrove, J. (1955). Ray theory and a new method for ray tracing. In The Physical Society (Ed.), The Physics of the Ionosphere (pp. 355-364). London: Physical Society.
+Haselgrove, C. B., & Haselgrove, J. (1960). Twisted ray paths in the ionosphere. Proceedings of the Physical Society, 75(3), 357-363.
+Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. U.S. Department of Commerce, Office of Telecommunications, OT Report 75-76.
+Budden, K. G. (1985). The Propagation of Radio Waves: The Theory of Radio Waves of Low Power in the Ionosphere and Magnetosphere. Cambridge: Cambridge University Press.
+Azzarone, A., Bianchi, C., Pezzopane, M., Pietrella, M., Scotto, C., & Settimi, A. (2012). IONORT: A Windows software tool to calculate the HF ray tracing in the ionosphere. arXiv:1202.2079.
+Cervera, M. A., & Harris, T. J. (2014). Modeling ionospheric disturbance features in quasi-vertically incident ionograms using 3-D magnetoionic ray tracing and atmospheric gravity waves. Journal of Geophysical Research: Space Physics, 119, 431-440.
+Bilitza, D., Altadill, D., Truhlik, V., Shubin, V., Galkin, I., Reinisch, B., & Huang, X. (2017). International Reference Ionosphere 2016: From ionospheric climate to real-time weather predictions. Space Weather, 15(2), 418-429.
+Hocke, K., & Schlegel, K. (1996). A review of atmospheric gravity waves and travelling ionospheric disturbances: 1982-1995. Annales Geophysicae, 14, 917-940.
+Rino, C. L. (1979). A power law phase screen model for ionospheric scintillation: 1. Weak scatter. Radio Science, 14(6), 1135-1145.
+Rino, C. L. (1979). A power law phase screen model for ionospheric scintillation: 2. Strong scatter. Radio Science, 14(6), 1147-1155.
+Yeh, K. C., & Liu, C. H. (1982). Radio wave scintillations in the ionosphere. Proceedings of the IEEE, 70(4), 324-360.
+Knepp, D. L. (1983). Multiple phase-screen calculation of the temporal behavior of stochastic waves. Proceedings of the IEEE, 71(6), 722-737.
+Feit, M. D., & Fleck, J. A. (1978). Light propagation in graded-index optical fibers. Applied Optics, 17(24), 3990-3998.
+Barrick, D. E. (1972). First-order theory and analysis of MF/HF/VHF scatter from the sea. IEEE Transactions on Antennas and Propagation, 20(1), 2-10.
+Skolnik, M. I. (Ed.). (2008). Radar Handbook (3rd ed.). New York: McGraw-Hill.
+Coleman, C. J. (1997). On the simulation of backscatter ionograms. Journal of Atmospheric and Solar-Terrestrial Physics, 59(16), 2089-2099.
+Nosikov, I. A., Klimenko, M. V., Zhbankov, G. A., Podlesnyi, A. V., Ivanova, V. A., & Bessarab, P. F. (2020). Generalized force approach to point-to-point ionospheric ray tracing and systematic identification of high and low rays. IEEE Transactions on Antennas and Propagation, 68(1), 455-467. https://doi.org/10.1109/TAP.2019.2938817
+Ding, M., Tong, P., Wei, Y., & Yu, L. (2021). Multiple phase screen modeling of HF wave field scintillations caused by the irregularities in inhomogeneous media. Radio Science, 56, e2020RS007239. https://doi.org/10.1029/2020RS007239
+Green, A., Longley, W. J., Oppenheim, M. M., & Young, M. A. (2025). An open source code for modeling radio wave propagation in Earth's ionosphere. Frontiers in Astronomy and Space Sciences, 12, 1521497. https://doi.org/10.3389/fspas.2025.1521497
+Hirvonen, E. A. O., Kauristie, K., & Kallio, E. (2025). AU-Ray program for modeling radio wave propagation in the ionosphere. Radio Science, 60, e2024RS008209. https://doi.org/10.1029/2024RS008209

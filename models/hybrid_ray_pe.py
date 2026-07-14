@@ -9,15 +9,77 @@ caller enables the config switch.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import numpy as np
 
 from config import BUBBLE, PE
 from .pe_propagator import PEPropagator, construct_incident_field
-from .local_frame import extract_irregularity_entry, make_boundary_field_descriptor
+from .local_frame import (
+    extract_irregularity_entry,
+    make_boundary_field_descriptor,
+    make_fdtd_adapter_descriptor,
+)
 
 
 def _power_ratio_to_db(ratio: float) -> float:
     return float(10.0 * np.log10(max(float(ratio), 1e-300)))
+
+
+@dataclass
+class ScatteringResult:
+    Pr_out_W: float
+    diagnostics: dict
+
+
+class ScatteringSolver:
+    """Minimal P3 scattering interface for PE/MPS/FDTD adapters."""
+
+    name = "base"
+    solver_dimensionality = "undefined"
+    validity = "interface_only"
+
+    def solve(self, mode: dict, n3d, freq_MHz: float, Pr_W: float, params: dict | None = None) -> ScatteringResult:
+        raise NotImplementedError
+
+
+class FDTDFARRAdapter(ScatteringSolver):
+    """Descriptor-only adapter for later FARR/FDTD coupling."""
+
+    name = "fdtd_farr_adapter"
+    solver_dimensionality = "fullwave_domain_descriptor"
+    validity = "interface_only_not_executed"
+
+    def solve(self, mode: dict, n3d, freq_MHz: float, Pr_W: float, params: dict | None = None) -> ScatteringResult:
+        desc = make_fdtd_adapter_descriptor(mode)
+        diag = {
+            "scatter_solver": self.name,
+            "scatter_solver_dimensionality": self.solver_dimensionality,
+            "scatter_validity": self.validity,
+            "scatter_power_applied": False,
+            "Pr_before_scatter": float(Pr_W),
+            "Pr_after_scatter": float(Pr_W),
+            "scatter_loss_dB": 0.0,
+            "energy_conservation_error": 0.0,
+            "kernel_normalization": 0.0,
+            "fdtd_adapter_status": desc["fdtd_adapter_status"],
+            "fdtd_domain": desc["fdtd_domain"],
+            "theory_reference": "Yee 1966 FDTD; Lehtinen and Inan 2008 full-wave method; FARR adapter descriptor",
+        }
+        return ScatteringResult(float(Pr_W), diag)
+
+
+class Local2p5DPEReferenceSolver(ScatteringSolver):
+    """local_2p5d PE/SSF reference solver; not a complete 3-D full-wave solver."""
+
+    name = "local_2p5d_pe"
+    solver_dimensionality = "local_2p5d"
+    validity = "reference_only"
+
+    def __init__(self, pe: PEPropagator):
+        self.pe = pe
+
+    def solve(self, mode: dict, n3d, freq_MHz: float, Pr_W: float, params: dict | None = None) -> ScatteringResult:
+        raise NotImplementedError("Use apply_ray_pe_coupling_3d with grid inputs for current PE implementation.")
 
 
 def apply_ray_pe_coupling(
@@ -142,9 +204,19 @@ def apply_ray_pe_coupling_3d(
             'pe_apply_to_power': apply_to_power,
             'pe_status': 'no_entry',
             'pe_frame_status': 'no_entry',
+            'pe_solver_dimensionality': 'local_2p5d',
+            'pe_validity': 'reference_only',
+            'scatter_solver': 'local_2p5d_pe',
+            'scatter_solver_dimensionality': 'local_2p5d',
+            'scatter_validity': 'reference_only',
+            'scatter_power_applied': False,
             'pe_Pr_correction_dB': 0.0,
             'pe_power_ratio': 1.0,
             'pe_delta_tau_ms': 0.0,
+            'Pr_before_scatter': float(Pr_W),
+            'Pr_after_scatter': float(Pr_W),
+            'scatter_loss_dB': 0.0,
+            'energy_conservation_error': 0.0,
         }
 
     bubble_like = {
@@ -180,6 +252,18 @@ def apply_ray_pe_coupling_3d(
         'pe_boundary_ky': float(np.asarray(field.get('k_hat', [1.0, 0.0, 0.0]), dtype=float)[1]),
         'pe_boundary_kz': float(np.asarray(field.get('k_hat', [1.0, 0.0, 0.0]), dtype=float)[2]),
         'pe_boundary_polarization': str(field.get('polarization', mode.get('wave_mode', 'scalar'))),
+        'pe_solver_dimensionality': 'local_2p5d',
+        'pe_validity': 'reference_only',
+        'scatter_solver': 'local_2p5d_pe',
+        'scatter_solver_dimensionality': 'local_2p5d',
+        'scatter_validity': 'reference_only',
+        'scatter_power_applied': bool(params.get('apply_to_power', False)),
+        'Pr_before_scatter': float(Pr_W),
+        'Pr_after_scatter': float(Pr_out),
+        'scatter_loss_dB': -_power_ratio_to_db(max(float(diag.get('pe_power_ratio', 1.0)), 1e-300)) if bool(params.get('apply_to_power', False)) else 0.0,
+        'energy_conservation_error': abs(float(diag.get('pe_power_ratio', 1.0)) - 1.0),
+        'kernel_normalization': 0.0,
+        'theory_reference': 'Parabolic equation split-step Fourier reference; local_2p5d only',
     })
     if 'pe_angle_spread_deg' not in diag:
         diag['pe_angle_spread_deg'] = float(diag.get('pe_mean_aoa_deg', 0.0))

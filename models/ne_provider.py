@@ -5,9 +5,17 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Iterable
+import copy
 
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
+
+from .ionosphere_components_3d import (
+    Bubble3DComponent,
+    Es3DComponent,
+    SpreadF3DComponent,
+    TID3DComponent,
+)
 
 
 class BaseNeProvider(ABC):
@@ -97,6 +105,7 @@ class GridNeProvider(BaseNeProvider):
         self.Ne_2d = np.asarray(Ne_2d, dtype=float)
         self.x_km = np.asarray(x_km, dtype=float)
         self.z_km = np.asarray(z_km, dtype=float)
+        self.fill_value = float(fill_value)
         self._interp = RegularGridInterpolator(
             (self.x_km, self.z_km),
             self.Ne_2d,
@@ -135,6 +144,11 @@ class GridNeProvider(BaseNeProvider):
             "units": "m^-3",
             "x_range_km": [float(self.x_km[0]), float(self.x_km[-1])],
             "z_range_km": [float(self.z_km[0]), float(self.z_km[-1])],
+            "coordinate_system": "local_cartesian_xz_km_y_invariant",
+            "interpolation": "linear",
+            "bounds_error": False,
+            "extrapolation": "fill_value",
+            "fill_value_m^-3": self.fill_value,
         }
 
 
@@ -180,6 +194,97 @@ class GridNeProvider3D(BaseNeProvider3D):
         }
 
 
+class ExternalNeProvider3D(BaseNeProvider3D):
+    """Provider backed by external Ne(x,y,z[,t]) data in npz format."""
+
+    name = "external_ne_provider_3d"
+
+    def __init__(self, path: str, fill_value: float = 0.0):
+        data = np.load(path, allow_pickle=True)
+        self.path = str(path)
+        self.Ne = np.asarray(data["Ne"], dtype=float)
+        self.x_km = np.asarray(data["x_km"] if "x_km" in data else data["x"], dtype=float)
+        self.y_km = np.asarray(data["y_km"] if "y_km" in data else data["y"], dtype=float)
+        self.z_km = np.asarray(data["z_km"] if "z_km" in data else data["z"], dtype=float)
+        self.t_s = np.asarray(data["t_s"], dtype=float) if "t_s" in data else None
+        units = str(data["units"]) if "units" in data else "m^-3"
+        self.units = units
+        self.mask = np.asarray(data["mask"], dtype=bool) if "mask" in data else None
+        self.metadata_in = {}
+        if "metadata" in data:
+            raw = data["metadata"]
+            self.metadata_in = raw.item() if getattr(raw, "shape", ()) == () else {"raw": str(raw)}
+        self._check_axes()
+        self.Ne = self._convert_units(self.Ne, units)
+        if self.mask is not None:
+            self.Ne = np.where(self.mask, self.Ne, fill_value)
+        if self.Ne.ndim == 3:
+            self._interp = RegularGridInterpolator(
+                (self.x_km, self.y_km, self.z_km),
+                self.Ne,
+                method="linear",
+                bounds_error=False,
+                fill_value=fill_value,
+            )
+        elif self.Ne.ndim == 4:
+            if self.t_s is None:
+                raise ValueError("4-D Ne requires t_s axis")
+            self._interp = RegularGridInterpolator(
+                (self.t_s, self.x_km, self.y_km, self.z_km),
+                self.Ne,
+                method="linear",
+                bounds_error=False,
+                fill_value=fill_value,
+            )
+        else:
+            raise ValueError("Ne must be 3-D or 4-D")
+
+    def _check_axes(self) -> None:
+        for name, arr in (("x", self.x_km), ("y", self.y_km), ("z", self.z_km)):
+            if arr.ndim != 1 or arr.size < 2 or not np.all(np.diff(arr) > 0.0):
+                raise ValueError("{} axis must be 1-D strictly increasing km".format(name))
+        if self.t_s is not None and (self.t_s.ndim != 1 or not np.all(np.diff(self.t_s) > 0.0)):
+            raise ValueError("t_s axis must be 1-D strictly increasing seconds")
+
+    @staticmethod
+    def _convert_units(Ne: np.ndarray, units: str) -> np.ndarray:
+        u = units.strip().lower().replace(" ", "")
+        if u in ("m^-3", "m-3", "1/m3", "m**-3"):
+            return np.maximum(Ne, 0.0)
+        if u in ("cm^-3", "cm-3", "1/cm3", "cm**-3"):
+            return np.maximum(Ne * 1.0e6, 0.0)
+        raise ValueError("unsupported Ne units: {}".format(units))
+
+    def get_Ne(self, pos_km, t: float = 0.0) -> float:
+        arr = np.asarray(pos_km, dtype=float).ravel()
+        if arr.size == 2:
+            arr = np.array([arr[0], 0.0, arr[1]], dtype=float)
+        elif arr.size >= 3:
+            arr = arr[:3].astype(float)
+        else:
+            raise ValueError("pos_km must contain (x,z) or (x,y,z)")
+        if self.Ne.ndim == 3:
+            val = self._interp([arr])[0]
+        else:
+            val = self._interp([[float(t), arr[0], arr[1], arr[2]]])[0]
+        return max(float(val), 0.0)
+
+    def get_metadata(self) -> dict:
+        return {
+            "name": self.name,
+            "dimensions": "4d" if self.Ne.ndim == 4 else "3d",
+            "units": "m^-3",
+            "source_path": self.path,
+            "source_units": self.units,
+            "x_range_km": [float(self.x_km[0]), float(self.x_km[-1])],
+            "y_range_km": [float(self.y_km[0]), float(self.y_km[-1])],
+            "z_range_km": [float(self.z_km[0]), float(self.z_km[-1])],
+            "t_range_s": None if self.t_s is None else [float(self.t_s[0]), float(self.t_s[-1])],
+            "mask_present": self.mask is not None,
+            "metadata": self.metadata_in,
+        }
+
+
 class ParameterizedIonosphere3DProvider(BaseNeProvider3D):
     """3-D parameterized complex ionosphere provider."""
 
@@ -194,6 +299,7 @@ class ParameterizedIonosphere3DProvider(BaseNeProvider3D):
         es_params: dict | None = None,
         geomag: dict | None = None,
         seed: int | None = None,
+        traceability: dict | None = None,
     ):
         self.background = background_provider
         self.tid = dict(tid_params or {})
@@ -202,7 +308,23 @@ class ParameterizedIonosphere3DProvider(BaseNeProvider3D):
         self.es = dict(es_params or {})
         self.geomag = dict(geomag or {})
         self.seed = seed
+        self.traceability = copy.deepcopy(traceability or {})
         self._b_hat = self._geomag_unit_vector()
+        self.components = []
+        if self.tid.get("enable", False):
+            self.components.append(TID3DComponent(self.tid, self.geomag, seed))
+        if self.bubble.get("enable", False):
+            self.components.append(Bubble3DComponent(self.bubble, self.geomag, seed))
+        if self.spreadf.get("enable", False):
+            self.components.append(SpreadF3DComponent(self.spreadf, self.geomag, seed))
+        if self.es.get("enable", False):
+            es_merged = dict(self.es)
+            try:
+                import config as _cfg
+                es_merged = {**getattr(_cfg, "ES_BG", {}), **es_merged}
+            except Exception:
+                pass
+            self.components.append(Es3DComponent(es_merged, self.geomag, seed))
 
     def _geomag_unit_vector(self) -> np.ndarray:
         dip = np.radians(float(self.geomag.get("dip_deg", 48.7)))
@@ -266,20 +388,29 @@ class ParameterizedIonosphere3DProvider(BaseNeProvider3D):
         else:
             raise ValueError("pos_km must contain (x,z) or (x,y,z)")
         Ne_bg = max(float(self.background.get_Ne((x, y, z), t=t)), 0.0)
+        if self.components:
+            Ne = Ne_bg
+            for comp in self.components:
+                Ne += comp.delta_Ne(x, y, z, t, Ne_bg)
+            return max(float(Ne), 0.0)
         Ne = max(Ne_bg + self._tid_delta(x, y, z, t, Ne_bg), 0.0)
         Ne *= 1.0 - self._bubble_factor(x, y, z)
         return max(float(Ne), 0.0)
 
     def get_metadata(self) -> dict:
         return {
+            **copy.deepcopy(self.traceability),
             "name": self.name,
             "dimensions": "3d",
             "units": "m^-3",
             "background": self.background.get_metadata(),
             "tid_enabled": bool(self.tid.get("enable", False)),
             "bubble_enabled": bool(self.bubble.get("enable", False)),
-            "spreadf_diagnostic_only": bool(self.spreadf.get("enable", False)),
-            "es_diagnostic_only": bool(self.es.get("enable", False)),
+            "spreadf_enabled": bool(self.spreadf.get("enable", False)),
+            "es_enabled": bool(self.es.get("enable", False)),
+            "spreadf_diagnostic_only": False,
+            "es_diagnostic_only": False,
+            "components": [c.metadata() for c in self.components],
             "seed": self.seed,
             "geomag_b_hat_xyz": [float(v) for v in self._b_hat],
         }

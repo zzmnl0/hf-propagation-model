@@ -19,7 +19,8 @@ def _check_update2_defaults() -> int:
     u2 = cfg.UPDATE2
     checks = [
         ("AH3D_ENABLE", u2["AH3D_ENABLE"] is False),
-        ("OX_MODE", u2["OX_MODE"] == "postproc"),
+        ("AH3D_SOLVER", u2["AH3D_SOLVER"] == "v2"),
+        ("OX_MODE", u2["OX_MODE"] == "ah3d"),
         ("EXTERNAL_NE_PROVIDER", u2["EXTERNAL_NE_PROVIDER"]["enable"] is False),
         ("PE_COUPLING.enable", u2["PE_COUPLING"]["enable"] is False),
         ("PE_COUPLING.apply_to_power", u2["PE_COUPLING"]["apply_to_power"] is False),

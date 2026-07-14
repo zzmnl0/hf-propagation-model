@@ -60,7 +60,12 @@ def run() -> int:
     n_fail += 0 if ok else 1
 
     tau1, pd1 = build_pd_spectrum([_mode()], method="tube")
-    tau2, pd2 = main._build_pd([clutter], method="tube", delay_key="tau_2way_ms")
+    pd_enabled = main.RUN_PRODUCTS["pd"]
+    main.RUN_PRODUCTS["pd"] = True
+    try:
+        tau2, pd2 = main._build_pd([clutter], method="tube", delay_key="tau_2way_ms")
+    finally:
+        main.RUN_PRODUCTS["pd"] = pd_enabled
     ok = abs(float(tau1[np.argmax(pd1)]) * 2.0 - float(tau2[np.argmax(pd2)])) < 0.05
     print(" radar_pd_uses_two_way_delay {}".format("OK" if ok else "FAIL"))
     n_fail += 0 if ok else 1
@@ -81,11 +86,27 @@ def run() -> int:
 
     ok = (
         cfg.UPDATE2["AH3D_ENABLE"] is False
-        and cfg.UPDATE2["OX_MODE"] == "postproc"
+        and cfg.UPDATE2["OX_MODE"] == "ah3d"
         and cfg.UPDATE2["RADAR_CLUTTER"]["enable"] is False
         and cfg.UPDATE2["RADAR_CLUTTER"]["apply_to_power"] is False
     )
     print(" default_gates_still_off {}".format("OK" if ok else "FAIL"))
+    n_fail += 0 if ok else 1
+
+    with main._temporary_update2({
+        "AH3D_ENABLE": True,
+        "SCATTER_PD": {"apply_to_pd": True},
+    }):
+        inside_ok = (
+            cfg.UPDATE2["AH3D_ENABLE"] is True
+            and cfg.UPDATE2["SCATTER_PD"]["apply_to_pd"] is True
+        )
+    restored_ok = (
+        cfg.UPDATE2["AH3D_ENABLE"] is False
+        and cfg.UPDATE2["SCATTER_PD"]["apply_to_pd"] is False
+    )
+    ok = inside_ok and restored_ok
+    print(" temporary_update2_restores_defaults {}".format("OK" if ok else "FAIL"))
     n_fail += 0 if ok else 1
 
     print("main_output_semantics: {} fail(s)".format(n_fail))

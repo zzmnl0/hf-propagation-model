@@ -88,7 +88,9 @@ def make_boundary_field_descriptor(ray: dict,
                                    frame: dict | None = None,
                                    sample_index: int | None = None,
                                    Pr_W: float | None = None,
-                                   k0_per_km: float | None = None) -> dict:
+                                   k0_per_km: float | None = None,
+                                   n3d=None,
+                                   t: float = 0.0) -> dict:
     """Describe the local ray field used to launch a PE/SSF section.
 
     The descriptor carries geometry and phase information only. Callers decide
@@ -104,6 +106,7 @@ def make_boundary_field_descriptor(ray: dict,
         tangent = pts[-1] - pts[-2]
     else:
         tangent = pts[idx + 1] - pts[idx - 1]
+    origin = np.asarray(frame["origin_km"], dtype=float)
     k_hat = _unit(tangent, np.array([1.0, 0.0, 0.0]))
     beta = float(np.degrees(np.arctan2(k_hat[2], max(np.hypot(k_hat[0], k_hat[1]), 1e-12))))
     amp = float(np.sqrt(max(float(Pr_W if Pr_W is not None else ray.get("Pr_W", 0.0)), 0.0)))
@@ -114,6 +117,16 @@ def make_boundary_field_descriptor(ray: dict,
     elif idx > 0:
         s_ref = float(np.sum(np.linalg.norm(np.diff(pts[:idx + 1], axis=0), axis=1)))
     phase = float((k0_per_km or 0.0) * s_ref)
+    grad_local = np.zeros(3, dtype=float)
+    if n3d is not None:
+        h = 1.0
+        for axis, key in enumerate(("s_hat", "u_hat", "v_hat")):
+            direction = np.asarray(frame[key], dtype=float)
+            rp = origin + h * direction
+            rm = origin - h * direction
+            nep = float(n3d.Ne_at(float(rp[0]), float(rp[1]), float(rp[2]), t=t))
+            nem = float(n3d.Ne_at(float(rm[0]), float(rm[1]), float(rm[2]), t=t))
+            grad_local[axis] = (nep - nem) / (2.0 * h)
     return {
         "amplitude_sqrt_W": amp,
         "phase_rad": phase,
@@ -122,6 +135,11 @@ def make_boundary_field_descriptor(ray: dict,
         "curvature_km_inv": estimate_ray_curvature_km_inv(ray, idx),
         "polarization": str(ray.get("wave_mode", ray.get("polarization", "scalar"))),
         "sample_index": idx,
+        "Ne_gradient_s_m3_per_km": float(grad_local[0]),
+        "Ne_gradient_u_m3_per_km": float(grad_local[1]),
+        "Ne_gradient_v_m3_per_km": float(grad_local[2]),
+        "boundary_field_model": "ray_tangent_scalar_envelope",
+        "theory_reference": "Knepp 1983 MPS; Lehtinen and Inan 2008 full-wave/FDTD interface concept",
     }
 
 
@@ -245,4 +263,39 @@ def extract_irregularity_entry(ray: dict,
         'beta_inc_deg': beta,
         'frame': frame,
         'boundary_field': descriptor,
+    }
+
+
+def make_fdtd_adapter_descriptor(ray: dict,
+                                 frame: dict | None = None,
+                                 sample_index: int | None = None,
+                                 domain_half_width_km: float = 50.0,
+                                 domain_length_km: float = 100.0,
+                                 grid_step_km: float = 1.0) -> dict:
+    """Describe, but do not run, a local FDTD/FARR coupling domain."""
+    if frame is None:
+        frame = make_ray_local_frame(ray, sample_index=sample_index)
+    boundary = make_boundary_field_descriptor(ray, frame=frame, sample_index=frame["sample_index"])
+    return {
+        "fdtd_adapter_status": "descriptor_only",
+        "fdtd_solver": "farr_adapter_placeholder",
+        "solver_dimensionality": "fullwave_domain_descriptor",
+        "validity": "interface_only_not_executed",
+        "fdtd_domain": {
+            "origin_km": np.asarray(frame["origin_km"], dtype=float).tolist(),
+            "s_length_km": float(domain_length_km),
+            "u_half_width_km": float(domain_half_width_km),
+            "v_half_width_km": float(domain_half_width_km),
+            "grid_step_km": float(grid_step_km),
+        },
+        "boundary_field": boundary,
+        "receiver_surface": {
+            "normal_axis": "s",
+            "offset_km": float(0.5 * domain_length_km),
+        },
+        "field_to_pd": {
+            "method": "field_time_series_to_delay_power",
+            "implemented": False,
+        },
+        "theory_reference": "Yee 1966 FDTD; Lehtinen and Inan 2008 full-wave method; FARR local full-wave reference",
     }

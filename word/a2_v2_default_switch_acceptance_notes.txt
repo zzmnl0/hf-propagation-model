@@ -1,0 +1,38 @@
+AH3D V2替换legacy默认入口及验收记录
+日期：2026-07-13
+
+一、入口与语义
+
+1. config.UPDATE2新增AH3D_SOLVER='v2'并作为默认AH3D实现；legacy仅通过AH3D_SOLVER='legacy'或构造参数use_dispersion_v2=False显式调用。
+2. AH3D_ENABLE仍是是否启用磁离子AH3D主链的功能门，不与“AH3D内部选择V2或legacy”混为同一语义。
+3. ray fan使用smoke档，只作候选路径和可视化筛选，convergence_status='screening_only'，不宣称研究级收敛。
+4. P2P迭代使用smoke档搜索；命中候选后使用research并自动与reference复算。只有convergence_status='passed'且再次满足接收点误差的模式进入正式结果。
+5. 正式P-D及主模式排序继续排除convergence_failed、constraint_failed、branch_lost和under_resolved_Ne模式。
+6. rejected_steps改名为rejected_steps_estimate，明确它由DOP853函数评估次数估计；同时输出SciPy真实nfev。
+7. 转向点使用DOP853高阶dense output在接受步内二分定位k_z=0；event_localization_error记录最终弧长参数区间宽度。
+8. Provider分辨率检查读取水平/垂直波长、包络尺度、Bubble尺度、Spread-F内外尺度和Es厚度/不规则体尺度。仅有网格信息时记录resolution_scope='grid_only'。
+
+二、验收结果
+
+1. 默认V2与显式legacy分流、smoke ray fan语义、自然转向和DOP853诊断字段通过。
+2. P2P完成smoke搜索及research/reference正式复算，最终模式通过计划中的落点、反射高度、群时延和色散残差阈值。
+3. baseline、TID、Spread-F、Bubble、Es均由相同V2主程序完成实际三维Provider采样和射线计算。
+4. baseline、TID和Bubble通过当前分辨率检查；Spread-F内尺度和Es薄层低于当前有效采样尺度，按真实语义标记under_resolved_Ne，不进入研究级P-D。
+5. O/X分支、近截止、fH=0退化、ray fan、主程序输出语义和统一pipeline回归均通过。
+
+三、边界
+
+1. 默认切换表示V2取代项目内部legacy AH3D入口，不表示已完成AU-Ray、PHaRLAP或IONORT外部真实性验证；该项仍属于A4。
+2. 当前P2P仍使用数值Jacobian。变分Jacobian、continuation、模式完整性审计和性能提升属于A3。
+3. Spread-F和Es需要更细Provider/梯度采样或尺度一致的子网格处理，才能解除under_resolved_Ne研究级门控。
+4. local_2p5d仍为默认关闭的reference_only，不属于完整3D PE或全波。
+
+四、理论依据
+
+Haselgrove, J. (1955). Ray theory and a new method for ray tracing. In The Physics of the Ionosphere (pp. 355-364). Physical Society.
+
+Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. OT Report 75-76, U.S. Department of Commerce.
+
+Budden, K. G. (1985). The Propagation of Radio Waves: The Theory of Radio Waves of Low Power in the Ionosphere and Magnetosphere. Cambridge University Press.
+
+以上文献已存在于word/reference-papers.txt，本次入口切换未新增未经核验的引用。

@@ -1,0 +1,37 @@
+A1 AH3D色散分支、截止与群速度物理修正实施记录
+日期：2026-07-13
+
+一、完成内容
+
+1. 新增models/dispersion_ah.py，统一计算Appleton-Hartree O/X复色散根、根间距、连续性、传播状态、色散函数D及D对k和omega的偏导。
+2. 状态统一为ok、near_cutoff、turning_point、evanescent、resonance_excluded、branch_lost和invalid_dispersion；输出branch_id、branch_gap_min和branch_continuity_max。
+3. AH3D V2不再用n2_floor穿越不可传播区。跨步进入evanescent区时，在最后有效步内二分定位n2=0边界并记录turning_point。
+4. 群速度由v_g=-D_k/D_omega计算；群时延通过c*integral(dt)等价群路径累计。旧dn/df群折射率仅保留为legacy_fd_dn_df对照。
+5. 碰撞语义保持“实色散轨迹+复折射率吸收积分”，明确记录real_ray_complex_attenuation，不宣称复坐标射线。
+6. config.py增加AH3D_DISPERSION_V2=False。A1验收前默认关闭；旧结果仍走legacy诊断。A1测试显式启用V2。
+7. 删除main.py中过时的二维Appleton-Hartree沿三维各向同性路径后处理。OX场景现在只允许独立AH3D O/X轨迹。Provider导出的二维切片仅用于绘图；local_2p5d仍按总计划保留为默认关闭的reference_only，不属于独立电子密度背景或正式3D全波计算。
+
+二、验收
+
+1. 真空极限：n2=1，群速度=c。
+2. fH=0各向同性极限：群速度与c*n一致。
+3. 截止两侧分别得到near_cutoff和evanescent，V2的n2不再被正数下限替换。
+4. 8-14 MHz连续扫描中O/X branch_id不互换。
+5. 旧AH3D回归在V2默认关闭时保持通过。
+
+三、理论依据
+
+Haselgrove, J. (1955). Ray theory and a new method for ray tracing. In The Physics of the Ionosphere (pp. 355-364). Physical Society.
+
+Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. OT Report 75-76, U.S. Department of Commerce.
+
+Budden, K. G. (1985). The Propagation of Radio Waves: The Theory of Radio Waves of Low Power in the Ionosphere and Magnetosphere. Cambridge University Press.
+
+以上文献已存在于word/reference-papers.txt，本阶段未新增未经核验的引用。
+
+四、风险与未完成项
+
+1. A1仍使用原固定步长RK4主积分器。V2在截止事件处准确停止并记录转向点，但尚未完成穿过转向点后的约束保持续积分，因此不得用于正式P2P输出；该项必须由A2自适应事件积分解决。
+2. D_k和D_omega采用对统一色散函数的对称复步长偏导，不再对n按频率做低阶差分；空间Hamiltonian导数仍沿用旧有限差分，A2继续升级。
+3. 未完成步长收敛、色散面投影、跨频完整射线路径连续性和外部软件验证，分别属于A2和A4。
+4. 本阶段没有改变绝对功率、散射功率或校准状态。

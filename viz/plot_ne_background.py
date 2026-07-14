@@ -30,7 +30,8 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 # ── Colormap / range ──────────────────────────────────────────────────────────
 
-CMAP       = 'plasma'
+CMAP       = 'jet'
+BG_ALPHA   = 0.5
 LOG10_VMIN = 9      # lower bound: 10^9 m^-3 (E-layer onset)
 LOG10_VMAX = 12     # upper bound: 10^12 m^-3
 
@@ -61,7 +62,7 @@ def _plot_ne(Ne_2d, x_km, z_km, title, save_path,
     # ── Colour mesh ───────────────────────────────────────────────────────────
     pcm = ax.pcolormesh(
         x_km, z_km, log_Ne.T,
-        cmap=CMAP, vmin=LOG10_VMIN, vmax=LOG10_VMAX,
+        cmap=CMAP, vmin=LOG10_VMIN, vmax=LOG10_VMAX, alpha=BG_ALPHA,
         shading='auto'
     )
     cb = plt.colorbar(pcm, ax=ax, extend='both', pad=0.02)

@@ -1,0 +1,41 @@
+A2 AH3D自适应积分、约束保持与收敛验证实施记录
+日期：2026-07-13
+
+一、完成内容
+
+1. 新增models/ray_tracer_ah_3d_v2.py。使用SciPy DOP853嵌入式自适应Runge-Kutta积分位置、波矢和群时延；未新增依赖。
+2. V2沿Haselgrove Hamiltonian主方程自然积分上升支、转向点和下降支。未使用镜面翻转、n2_floor或人为拼接回程轨迹。
+3. 每个接受步后沿D_k方向执行最小Newton修正，使状态保持在D=0色散面；记录最大归一化色散残差和最大投影修正量。投影失败标记constraint_failed。
+4. 转向点由k_z连续变号检测；地面事件采用步内插值定位。顶部、最大路径、共振、分支丢失和积分失败均有独立终止语义。
+5. 输出accepted_steps、rejected_steps、ds_min_used、ds_max_used、hamiltonian_residual_max、dispersion_projection_correction_max、event_localization_error和turning_point_count。
+6. config.py增加smoke、research、reference三档容差。research轨迹自动与reference轨迹比较落点、反射高度和群时延；不满足计划阈值时标记convergence_failed。
+7. 增加Provider网格/扰动尺度检查。明确欠分辨时标记under_resolved_Ne；缺少分量尺度元数据时记录grid_only_no_component_scale，不伪称完成扰动尺度验收。
+8. build_pd_spectrum拒绝convergence_failed、under_resolved_Ne、branch_lost和constraint_failed模式进入最终P-D。
+9. A2初始实施时旧AH3D继续作为默认legacy兼容路径；后续默认入口切换及验收见a2_v2_default_switch_acceptance_notes.txt。A2未改变功率、散射、PE或绝对校准语义。
+10. main.py和main2.py已无旧二维射线或二维电离层计算入口。Provider派生二维切片仅用于绘图；local_2p5d仍为默认关闭的reference_only波动参考，不宣称3D PE/全波。
+
+二、验收结果
+
+1. 分层fH=0算例完成一次物理转向并落地，未进入evanescent伪传播区。
+2. research/reference落点差不超过1 km，反射高度差不超过0.5 km，群时延相对差不超过1e-3。
+3. 最大归一化Hamiltonian/色散残差不超过1e-6。
+4. A1色散、跨频连续性、旧AH3D和AH3D物理回归均保持通过。
+
+三、理论与文献依据
+
+Haselgrove, J. (1955). Ray theory and a new method for ray tracing. In The Physics of the Ionosphere (pp. 355-364). Physical Society.
+
+Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. OT Report 75-76, U.S. Department of Commerce.
+
+Budden, K. G. (1985). The Propagation of Radio Waves: The Theory of Radio Waves of Low Power in the Ionosphere and Magnetosphere. Cambridge University Press.
+
+以上文献已记录于word/reference-papers.txt。本阶段数值积分直接使用SciPy已安装DOP853实现，不以软件实现替代电波传播理论依据，因此未新增未经核验的文献。
+
+四、风险与未完成项
+
+1. rejected_steps由DOP853函数评估次数按每接受步12个主阶段估计，属于求解器诊断估计，不是SciPy公开的内部拒绝计数。
+2. 当前转向事件定位采用接受步内连续变号与线性误差上界；路径积分本身由DOP853高阶密集算法控制，但尚未实现专用高阶事件根求解。
+3. 空间D_r仍通过Provider采样的有限差分获得；外部Ne若不提供可靠网格或最小扰动尺度元数据，只能给出grid-only检查，正式研究输出应补齐这些元数据。
+4. A2只完成单射线准确性与收敛门控。P2P变分Jacobian、模式连续延拓、模式完整性和十倍性能目标属于A3。
+5. 尚未与AU-Ray、PHaRLAP或IONORT进行外部同输入验证，该项属于A4。
+6. local_2p5d仍不是完整3D PE/全波；A2没有改变该限制。

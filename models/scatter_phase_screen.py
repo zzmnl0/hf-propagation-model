@@ -279,3 +279,107 @@ class MultiPhaseScreen:
             'S4'      : S4,
             'Pr_norm' : Pr_norm,
         }
+
+
+def _delta_kernel(tau_axis: np.ndarray, tau0: float) -> np.ndarray:
+    out = np.zeros_like(tau_axis, dtype=float)
+    if out.size:
+        out[int(np.argmin(np.abs(tau_axis - float(tau0))))] = 1.0
+    return out
+
+
+def _gaussian_kernel(tau_axis: np.ndarray, tau0: float, sigma_ms: float) -> np.ndarray:
+    sigma = max(float(sigma_ms), 1e-9)
+    k = np.exp(-0.5 * ((tau_axis - float(tau0)) / sigma) ** 2)
+    s = float(np.sum(k))
+    return _delta_kernel(tau_axis, tau0) if s <= 0.0 else k / s
+
+
+def make_path_mps_delay_kernel(mode: dict,
+                               n3d,
+                               tau_axis: np.ndarray,
+                               scatter_params: dict | None = None,
+                               phase_params: dict | None = None,
+                               freq_MHz: float = FREQ_MHZ,
+                               t: float = 0.0) -> dict:
+    """Build a path-related MPS delay kernel from 3-D ray samples.
+
+    This is a stage-P3 MPS statistical kernel, not a complete 3-D full-wave
+    solution. It uses Rino phase-screen statistics and Knepp MPS propagation
+    to obtain S4/energy diagnostics, then maps phase variance to delay spread.
+    """
+    sp = {**SCATTER, **(scatter_params or {})}
+    pp = {**PHASE_SCREEN, **(phase_params or {})}
+    tau0 = float(mode.get("tau_ms", 0.0))
+    sigma_phi = max(float(sp.get("sigma_phi_rad", sp.get("sigma_phi", 0.0))), 0.0)
+    if sigma_phi == 0.0 and float(sp.get("Cs_rel", 0.0)) <= 0.0:
+        kernel = _delta_kernel(tau_axis, tau0)
+        return {
+            "scatter_method": "MPS",
+            "mps_status": "sigma_phi_zero_delta",
+            "mps_delay_kernel": kernel,
+            "kernel_normalization": float(np.sum(kernel)),
+            "sigma_phi_rad": 0.0,
+            "sigma_phi_sq": 0.0,
+            "sigma_tau_ms": 0.0,
+            "S4": 0.0,
+            "Pr_norm": 1.0,
+            "energy_conservation_error": 0.0,
+            "scatter_solver_dimensionality": "path_mps_statistical",
+            "scatter_validity": "phase_screen_not_fullwave",
+        }
+
+    pts = np.asarray(mode.get("trajectory_3d", []), dtype=float)
+    if pts.ndim != 2 or pts.shape[0] < 2:
+        kernel = _delta_kernel(tau_axis, tau0)
+        return {
+            "scatter_method": "MPS_required",
+            "mps_status": "empty_path",
+            "mps_delay_kernel": kernel,
+            "kernel_normalization": float(np.sum(kernel)),
+            "scatter_validity": "no_path_no_mps",
+        }
+
+    sample_step = max(int(pts.shape[0] // 24), 1)
+    samples = pts[::sample_step, :3]
+    ne_vals = [
+        max(float(n3d.Ne_at(float(p[0]), float(p[1]), float(p[2]), t=t)), 0.0)
+        for p in samples
+    ]
+    Ne_eff = float(np.median(ne_vals)) if ne_vals else 1.0e11
+    DeltaL_km = float(sp.get("DeltaL_km", mode.get("scatter_DeltaL_km", 100.0)))
+    mps = MultiPhaseScreen(
+        freq_MHz=freq_MHz,
+        Cs_rel=float(sp.get("Cs_rel", 0.01)),
+        p=float(sp.get("p", 3.0)),
+        L_outer_km=float(sp.get("L_outer_km", 10.0)),
+        Ne_m3=Ne_eff,
+        DeltaL_km=DeltaL_km,
+        N_screen=int(pp.get("N_screen", 10)),
+        n_pts=int(pp.get("n_pts", 128)),
+        dx_m=float(pp.get("dx_m", 200.0)),
+        seed=pp.get("seed", None),
+    )
+    res = mps.propagate()
+    screen_sigma = mps.screens[0].sigma_phi_rms() if mps.screens else 0.0
+    sigma_phi = max(sigma_phi, screen_sigma * np.sqrt(max(int(pp.get("N_screen", 10)), 1)))
+    sigma_tau = float(mode.get("sigma_tau_ms", 0.0))
+    if sigma_tau <= 0.0:
+        sigma_tau = max(sigma_phi, float(res.get("S4", 0.0))) * DeltaL_km / 2.998e5 * 1e3
+    kernel = _gaussian_kernel(tau_axis, tau0, max(sigma_tau, float(np.median(np.diff(tau_axis))) if len(tau_axis) > 1 else 0.02))
+    pr_norm = float(res.get("Pr_norm", 1.0))
+    return {
+        "scatter_method": "MPS",
+        "mps_status": "ok",
+        "mps_delay_kernel": kernel,
+        "kernel_normalization": float(np.sum(kernel)),
+        "sigma_phi_rad": float(sigma_phi),
+        "sigma_phi_sq": float(sigma_phi * sigma_phi),
+        "sigma_tau_ms": float(sigma_tau),
+        "S4": float(res.get("S4", 0.0)),
+        "Pr_norm": pr_norm,
+        "energy_conservation_error": abs(pr_norm - 1.0),
+        "scatter_solver_dimensionality": "path_mps_statistical",
+        "scatter_validity": "phase_screen_not_fullwave",
+        "theory_reference": "Rino 1979 phase screen; Knepp 1983 multiple phase screen",
+    }

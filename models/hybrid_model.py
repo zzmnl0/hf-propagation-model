@@ -70,6 +70,15 @@ def build_pd_spectrum(mode_results: list,
     if not mode_results:
         return np.array([0.0]), np.array([0.0])
 
+    mode_results = [
+        m for m in mode_results
+        if m.get('convergence_status', 'passed') == 'passed'
+        and not m.get('under_resolved_Ne', False)
+        and m.get('branch_status') not in ('branch_lost', 'constraint_failed')
+    ]
+    if not mode_results:
+        return np.array([0.0]), np.array([0.0])
+
     if method == 'gaussian' and UPDATE2.get('SCATTER_PD', {}).get('apply_to_pd', False):
         method = 'scatter_coupled'
     if method == 'scatter_coupled':
@@ -168,6 +177,14 @@ def identify_main_mode(tau_axis: np.ndarray,
         'tau_spread_main': 0.0, 'mode_pairs': [],
     }
     if len(pd_W) == 0 or not mode_results:
+        return None, [], _empty_summary
+    mode_results = [
+        m for m in mode_results
+        if m.get('convergence_status', 'passed') == 'passed'
+        and not m.get('under_resolved_Ne', False)
+        and m.get('branch_status') not in ('branch_lost', 'constraint_failed')
+    ]
+    if not mode_results:
         return None, [], _empty_summary
 
     peak_max  = float(np.max(pd_W))

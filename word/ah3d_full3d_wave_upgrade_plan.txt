@@ -1,0 +1,279 @@
+AH3D与完整3D波动传播下一步升级计划
+生成日期：2026-07-11
+
+一、目标与适用范围
+
+本计划面向“在任意外部或参数化三维电子密度分布Ne(x,y,z,t)中，统一计算HF反射/散射混合传播”的阶段目标。传播算法不得依赖TID、Spread-F、Es或Bubble标签选择不同主链；环境标签只负责生成电子密度、记录来源和解释结果。
+
+统一计算链确定为：
+
+NeProvider3D -> 3D Appleton-Hartree Hamiltonian射线与P2P -> 复折射率吸收 -> 局部3D矢量宽角PE或FARR/FDTD -> 多路径相干合成 -> delay-angle-power/P-D输出。
+
+本计划不把当前有限差分AH3D称为最终求解器，不把local_2p5d称为完整3D PE或全波，不把未校准功率称为实测绝对功率。
+
+二、当前基础与已完成修复
+
+1. main2.py已采用统一UnifiedPropagationRequest/Result入口，baseline、TID、Spread-F、Bubble、Es分别映射到唯一ParameterizedIonosphere3DProvider。
+2. 同一Provider同时供AH3D射线、P2P、P-D和电子密度背景绘图使用；不允许计算场与绘图场分别生成。
+3. Spread-F和Es已消除二维背景与三维分量重复叠加；默认混合full场景已从main2.py移除。
+4. main2.py支持--scenario标签选择；Spread-F固定随机seed，以便main.py/main2.py及重复运行对照。
+5. main.py保留为单场景物理验证入口，main2.py作为统一算法应用入口。二者对照必须使用相同Provider、频率、地磁场、求解器参数和seed。
+6. AH3D当前是Appleton-Hartree色散关系下的数值Hamiltonian有限差分first version；空间和波矢导数、群折射率均依赖有限差分，近截止区使用固定规则调整步长。
+7. 当前P2P使用发射仰角/方位搜索和数值Jacobian，单次射线成本高，近截止、多径和O/X双分支会显著放大耗时。
+8. 当前Ray-PE仅为沿单条射线路径建立二维局部截面的local_2p5d参考实现，不能保留完整三维横向波场、路径间相干耦合、三维边界或后向散射。
+
+三、理论与文献依据
+
+1. 磁离子反射主链采用Appleton-Hartree色散关系D(r,k,omega)=0以及Haselgrove Hamiltonian射线方程。O/X分支必须由连续色散根跟踪，不得仅靠固定符号和n2下限掩盖截止。
+2. Jones与Stephenson的三维电离层射线程序、Budden磁离子传播理论以及AU-Ray用于三维轨迹、O/X、群时延和外部电子密度输入的实现与对照依据。
+3. P2P采用射击法、灵敏度/变分方程、连续延拓和信赖域Newton；高低射线与多解完整性参考Nosikov等的广义力方法，不能以减少搜索域换取速度。
+4. 三维PE采用射线中心曲线坐标、两个横向坐标、宽角Padé或等价高阶传播算子、磁化冷等离子体矢量介电张量和PML边界。
+5. 多相屏用于中强随机介质传播统计及相位、振幅闪烁；参考Knepp、Rino、Yeh与Liu及Ding等。MPS仍是统计波动模型，不等同于完整三维Maxwell全波。
+6. FARR直接求解磁化碰撞等离子体中的三维时域Maxwell方程，适合作为局部强散射、绕射、后向散射及PE适用性边界的全波基准。千公里HF全域FDTD网格量不可接受，因此不作为全局主求解器。
+
+核心参考文献采用code/word/reference-papers.txt中的完整记录，重点包括：
+
+Haselgrove, J. (1955). Ray theory and a new method for ray tracing. In The Physics of the Ionosphere (pp. 355-364). Physical Society.
+
+Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. OT Report 75-76, U.S. Department of Commerce.
+
+Budden, K. G. (1985). The Propagation of Radio Waves: The Theory of Radio Waves of Low Power in the Ionosphere and Magnetosphere. Cambridge University Press.
+
+Nosikov, I. A., Klimenko, M. V., Zhbankov, G. A., Podlesnyi, A. V., Ivanova, V. A., & Bessarab, P. F. (2020). Generalized force approach to point-to-point ionospheric ray tracing and systematic identification of high and low rays. IEEE Transactions on Antennas and Propagation, 68(1), 455-467. https://doi.org/10.1109/TAP.2019.2938817
+
+Ding, M., Tong, P., Wei, Y., & Yu, L. (2021). Multiple phase screen modeling of HF wave field scintillations caused by the irregularities in inhomogeneous media. Radio Science, 56, e2020RS007239. https://doi.org/10.1029/2020RS007239
+
+Green, A., Longley, W. J., Oppenheim, M. M., & Young, M. A. (2025). An open source code for modeling radio wave propagation in Earth's ionosphere. Frontiers in Astronomy and Space Sciences, 12, 1521497. https://doi.org/10.3389/fspas.2025.1521497
+
+Hirvonen, E. A. O., Kauristie, K., & Kallio, E. (2025). AU-Ray program for modeling radio wave propagation in the ionosphere. Radio Science, 60, e2024RS008209. https://doi.org/10.1029/2024RS008209
+
+四、实施顺序总览
+
+A0 统一场景与可复现实验基线
+A1 AH3D色散分支、截止与群速度物理修正
+A2 AH3D自适应积分、约束保持与收敛验证
+A3 P2P灵敏度Jacobian、连续延拓与性能升级
+A4 AH3D外部软件/文献基准验证
+B1 完整3D矢量宽角PE核心
+B2 AH3D到3D PE边界场与多路径相干耦合
+B3 三维散射输出、P-D闭环及MPS分工
+B4 FARR/FDTD局部全波接口与适用性切换
+B5 综合验收、性能与文档收敛
+
+A阶段必须先于B阶段。未通过AH3D路径、群时延和P2P完整性验收前，不把射线输出作为3D波动模块的可信入射边界。
+
+五、A0：统一场景与可复现实验基线
+
+目标：保证main.py与main2.py在同一输入下可逐值对照，防止后续升级由场景构造差异污染结果。
+
+实施内容：
+
+1. 将场景构造收敛到公共ScenarioProviderFactory；main.py和main2.py不得各自重复生成TID、Spread-F、Bubble或Es。
+2. 场景配置明确保存provider_name、components、seed、t_s、坐标、单位、插值方法、边界外推状态及配置哈希。
+3. 所有随机电子密度模型必须支持显式seed；验证运行禁止seed=None。
+4. 增加仅构造Provider、不执行P2P的快速对照测试，比较main.py/main2.py的Ne切片、三维采样点、metadata和配置哈希。
+5. 保留baseline、TID、Spread-F、Bubble、Es独立场景；组合环境仅通过显式components列表创建，不恢复隐式full标签。
+
+验收：
+
+1. 同一场景两入口的Ne网格和抽样值满足numpy全精度一致或明确的插值容差。
+2. AH3D、绘图和散射模块持有同一Provider实例或同一不可变配置哈希。
+3. 改变环境标签但不改变Provider数据时，传播结果不得改变。
+
+六、A1：AH3D色散分支、截止与群速度物理修正
+
+目标：消除n2_floor、分支跳变及有限差分群折射率在截止附近产生的非物理路径和时延。
+
+实施内容：
+
+1. 将Appleton-Hartree关系封装为统一色散函数D(r,k,omega,branch)，集中处理X、Y、碰撞项、地磁方向和O/X定义。
+2. 实现沿路径连续的O/X根跟踪。以频率、位置、k方向和上一步根作为预测信息；发生根接近时记录branch_gap和branch_continuity状态。
+3. 将传播判定建立在未截断色散根上。状态至少包括ok、near_cutoff、turning_point、evanescent、resonance_excluded、branch_lost和invalid_dispersion。
+4. 对D=0且群速度法向分量接近零的位置使用事件定位求反射/转向点；不通过把n2强制设为正数穿越不可传播区。
+5. 轨迹按实色散面求解，碰撞导致的虚部用于路径吸收积分。当前阶段不引入复坐标射线；输出明确real_ray_complex_attenuation。
+6. 由色散函数偏导计算群速度：v_g=-D_k/D_omega的等价规范形式；group_path和tau直接由dt=ds/|v_g|或Hamiltonian参数积分得到。
+7. 保留当前有限差分群折射率作为legacy诊断对照，不再作为最终研究输出。
+
+验收：
+
+1. fH=0时退化到各向同性冷等离子体结果。
+2. Ne趋近0时n趋近1、群速度趋近c。
+3. cutoff前后状态连续，不出现由n2_floor造成的伪穿透。
+4. O/X分支在连续频率扫描中不互换，branch_id连续。
+5. 群时延解析导数与高精度频率差分在远离截止处一致；截止附近由事件状态约束，不接受发散差分值。
+
+七、A2：AH3D自适应积分与收敛验证
+
+目标：以误差控制取代当前按n2阈值选择固定步长的first version。
+
+实施内容：
+
+1. 实现嵌入式自适应Runge-Kutta积分器，首选DOP853或RK45；空间、k和时间积分分别设置绝对/相对容差。
+2. 每个接受步后采用约束投影或受控修正，使状态回到D=0色散面；禁止无诊断地重标定|k|。
+3. 转向点、地面、计算域边界和evanescent边界使用事件检测与步内插值。
+4. 输出accepted_steps、rejected_steps、ds_min_used、ds_max_used、Hamiltonian残差、色散投影修正量和事件定位误差。
+5. 建立三档网格/容差配置：smoke、research、reference。研究图像默认research，reference仅用于收敛与基准。
+6. 对电子密度和梯度插值实施空间分辨率检查；当扰动尺度小于有效采样要求时拒绝研究级结果并报告under_resolved_Ne。
+
+强制收敛阈值：
+
+1. 步长减半或容差收紧后落点变化不超过1 km。
+2. 反射高度变化不超过0.5 km。
+3. 群时延相对变化不超过1e-3。
+4. 归一化Hamiltonian/色散残差不超过1e-6。
+5. 未满足阈值的模式标记convergence_failed，不进入主模式和最终P-D排序。
+
+八、A3：P2P准确性与性能升级
+
+目标：在不减少模式搜索范围、不丢失高低射线和O/X分支的前提下，将典型P2P耗时降低至少10倍。
+
+实施内容：
+
+1. 沿AH3D主方程同步积分状态转移矩阵/变分方程，直接获得落点对发射仰角和方位的Jacobian。
+2. 若解析或自动微分Jacobian暂不可用，采用带误差估计的中心差分作为reference fallback；forward差分只用于smoke。
+3. 使用粗射线扇区建立落点映射并检测折叠、caustic和候选根区间；候选区间内采用信赖域Newton或Levenberg-Marquardt。
+4. 使用continuation沿频率、时间、接收点或扰动强度延续既有模式，模式匹配依据branch、轨迹距离、反射高度、发射角和群时延。
+5. 对Ne、梯度、地磁量和局部色散中间量缓存；O/X、候选区间及独立频点允许并行。
+6. 保留全域审计扫描，定期检查continuation是否遗漏新生/消失模式。
+7. 对高低射线和鞍点问题增加广义力/变分法参考求解器或离线审计工具，不以单一Newton收敛代表模式完整。
+
+验收：
+
+1. 与当前高密度全角度扫描相比，不减少已知有效模式。
+2. 解析/变分Jacobian与中心差分Jacobian相对误差满足预设容差。
+3. 标准链路research配置总耗时至少降低10倍；报告硬件、线程数、模式数和精度。
+4. P2P命中误差、模式完整率和性能分别报告，禁止只报告运行时间。
+
+九、A4：AH3D外部验证
+
+目标：证明升级后的路径、O/X和群时延不仅内部自洽，而且与主流三维磁离子射线程序一致。
+
+实施内容：
+
+1. 建立分层解析退化算例：真空、常量折射率、Chapman/准抛物层、fH=0。
+2. 使用相同Ne、地磁、碰撞、发射条件与AU-Ray比较落点、反射高度、路径、群时延和O/X分裂。
+3. 条件允许时增加PHaRLAP或IONORT对照；记录软件版本、坐标系、地球模型和插值方式。
+4. 对Nosikov等P2P算例比较高低射线识别和多径完整性。
+5. 输出validation_report，区分公式差异、输入差异、数值误差和软件实现误差。
+
+建议通过条件：平滑分层基准的落点相对误差不超过1%，反射高度不超过2 km，群时延不超过1%；复杂3D场景只报告差异分布，不在缺少同输入条件时设虚假严格阈值。
+
+十、B1：完整3D矢量宽角PE核心
+
+目标：替代local_2p5d的单截面标量传播，保留两个横向自由度、矢量极化、三维边界和实际复波场。
+
+实施内容：
+
+1. 新建独立solver，例如models/vector_pe_3d.py，不直接修改local_2p5d参考模块。
+2. 在主射线或中心参考路径上建立曲线坐标(s,u,v)，u/v为两个横向坐标；计算基底旋转、曲率和Jacobian。
+3. 从冷磁化碰撞等离子体介电张量构造矢量波动算子；保留O/X极化耦合，不以单一标量n替代全部磁离子效应。
+4. 采用宽角Padé、有理近似或经验证的等价传播算子；明确单向PE的旁轴/前向传播适用条件。
+5. 横向u/v边界采用PML或经基准验证的吸收边界；记录PML厚度、反射误差和计算域尺寸。
+6. 支持复数频域场E/H或等价横向矢量场，输出相位、振幅、Poynting通量、角谱和接收面场。
+7. 实现CPU reference版本后再考虑GPU；数值正确性先于性能。
+
+验收：
+
+1. 真空/均匀介质高斯束传播与解析解一致。
+2. 分层介质与AH3D/WKB在高频弱梯度极限一致。
+3. 横向平移/旋转测试不产生坐标方向偏置。
+4. 网格减半、域扩大和PML加厚后接收场及通量收敛。
+5. 总能流误差有明确预算，不能用场幅归一化掩盖数值损耗。
+
+十一、B2：AH3D到3D PE边界场及多路径相干耦合
+
+目标：让射线与波动模块在振幅、相位、极化、曲率和能量上闭合，而不是只传入sqrt(Pr)。
+
+实施内容：
+
+1. 沿AH3D射线管或动态射线追踪计算几何扩展、Jacobian、波前曲率和caustic指标。
+2. 边界场包含复振幅、绝对/相对相位、波矢、O/X极化向量、波前曲率、脉冲/频谱包络和Poynting通量。
+3. 多条进入同一不规则区域的路径在同一3D PE域中按复场相干叠加；禁止先独立计算功率再相加来声称路径间相干耦合。
+4. 处理caustic时采用高斯束、Maslov相位或经验证的统一渐近方法，避免射线振幅发散。
+5. 3D PE输出通过接收面投影回模式/角谱；记录相干与非相干积分方式、相位参考和接收孔径。
+6. Ray->PE和PE->Ray均进行通量匹配，输出coupling_energy_error和polarization_error。
+
+验收：
+
+1. 单射线、无扰动域退化为原路径和功率链。
+2. 两路径相位扫描产生符合理论的相长/相消干涉。
+3. O/X正交输入在无耦合极限保持正交；存在介电张量耦合时能量转移可追踪。
+4. 入射和出射Poynting通量在误差预算内闭合。
+
+十二、B3：三维散射输出、MPS分工与P-D闭环
+
+目标：由实际复场或有明确适用范围的统计核形成P-D，而不是经验高斯展宽。
+
+实施内容：
+
+1. 3D PE输出delay-angle-power kernel；脉冲传播可由多频复场IFFT或等价因果时域合成得到。
+2. 多路径在复场层先相干合成，再由接收机时间、带宽、孔径和积分方式决定是否转为非相干功率。
+3. MPS保留为路径相关随机介质统计求解器，适用于多尺度随机相位/振幅闪烁和集合统计；不得标为完整3D Maxwell全波。
+4. Born/Rytov只在弱散射判据成立时使用；MPS用于中强随机散射；3D PE用于明显横向绕射和前向传播；FDTD用于强反射、后向散射或PE失效区域。
+5. P-D记录kernel_source、solver_dimensionality、coherence_mode、bandwidth、window、normalization、Pr_before/after及能量误差。
+6. sigma_phi=0、扰动幅度=0时必须退化为未展宽模式；关闭散射开关时保持旧P-D回归结果。
+
+十三、B4：FARR/FDTD局部全波接口与适用性切换
+
+目标：为PE无法可靠处理的局部强散射、后向散射、极化转换和复杂边界提供三维全波基准。
+
+实施内容：
+
+1. 完善现有FDTDFARRAdapter，由descriptor-only升级为可导出fdtd_domain、Ne、碰撞频率、B场、边界场、接收面和时间采样的任务包。
+2. FARR计算域仅覆盖物理必要的局部区域；全局长距离传播仍由AH3D承担。
+3. 输入边界使用AH3D/高斯束生成Total-Field/Scattered-Field兼容场；输出E/B场转换为散射矩阵、角谱、时延谱和能流。
+4. 定义自动/人工适用性判据：大角散射、显著后向能流、局部尺度接近波长、强模式转换、PE步进方向失效或PML误差过大时转FDTD。
+5. FARR结果首先用于验证3D PE，不在缺少网格收敛和资源记录时直接替换生产结果。
+
+验收：
+
+1. FARR的WKB、冷等离子体O/X/R/L和底侧反射基准复现论文趋势。
+2. 弱散射局部域中3D PE与FARR主瓣、通量和相位差满足预定容差。
+3. 后向散射算例明确显示单向PE失效并由FARR输出接管。
+4. 记录网格点数、每波长点数、Courant条件、PML、内存、运行时间和收敛结果。
+
+十四、B5：综合验收与输出规范
+
+1. 每个模式必须记录provider_hash、solver_chain、AH3D版本、wave_mode、branch_status、convergence_status、scatter_solver、solver_dimensionality和calibration_status。
+2. 图像必须标注场景标签、实际Provider components、单程/双程、AH3D、3D PE/MPS/FDTD状态、相干处理、吸收和校准状态。
+3. 研究级输出不得包含convergence_failed、branch_lost、under_resolved_Ne或energy_failed模式。
+4. 绝对功率继续标记reference_uncalibrated，直至天线方向图、海况、吸收、接收机链和实测数据完成校准。
+5. 建立端到端基准集：baseline、TID、Spread-F、Bubble、Es、外部未知Ne各至少一个；传播主链完全相同。
+6. local_2p5d保留为reference_only且默认关闭；3D PE和FARR同样通过显式feature gate启用，默认开关策略不在本计划中擅自改变。
+
+十五、文件与模块建议
+
+1. models/dispersion_ah.py：统一AH色散函数、分支和偏导。
+2. models/ray_tracer_ah_3d_v2.py：自适应、事件驱动AH3D；验收后再替换旧入口。
+3. models/p2p_ah_3d_v2.py：变分Jacobian、信赖域和continuation。
+4. models/vector_pe_3d.py：三维矢量宽角PE核心。
+5. models/ray_wave_boundary.py：动态射线、复边界场和通量匹配。
+6. models/coherent_field_coupler.py：多路径复场合成与接收面投影。
+7. models/farr_adapter.py：FARR任务导出、执行记录和结果导入。
+8. tests/_verify_ah3d_dispersion.py、_verify_ah3d_convergence.py、_verify_ah3d_frequency_continuity.py。
+9. tests/_verify_p2p_variational.py、_verify_p2p_mode_completeness.py、_benchmark_p2p_ah3d.py。
+10. tests/_verify_vector_pe_3d.py、_verify_coherent_coupling.py、_verify_farr_crosscheck.py。
+11. word/ah3d_full3d_wave_validation_report.txt：阶段验收结果和外部对照记录。
+
+十六、实施边界与禁止项
+
+1. 禁止用n2_floor跨越evanescent区域并把结果标记为有效反射路径。
+2. 禁止仅凭单一步长结果声明AH3D收敛。
+3. 禁止通过减少扫描角度、频率或O/X分支达到P2P十倍加速目标。
+4. 禁止把local_2p5d、MPS或单向3D PE称为完整三维全波。
+5. 禁止逐路径功率相加后声称实现了路径间相干耦合。
+6. 禁止使用单向PE计算显著后向散射并作为最终结果。
+7. 禁止在同一链路重复应用吸收、散射损耗或几何扩展。
+8. 禁止外部Ne输入必须预先声明扰动类型；标签只作诊断和验证。
+9. 禁止未记录网格、容差、边界条件和seed的结果进入正式报告。
+
+十七、里程碑与停止条件
+
+M1：A0-A2完成。AH3D通过截止、群速度、步长和跨频连续性测试。
+M2：A3完成。P2P在模式完整性不下降时达到至少10倍加速。
+M3：A4完成。AU-Ray及解析基准形成可复现验证报告。
+M4：B1-B2完成。3D矢量PE和多路径相干耦合通过通量、干涉及网格收敛测试。
+M5：B3-B4完成。P-D由物理核生成，FARR完成至少一个局部交叉验证。
+M6：B5完成。统一入口覆盖参数化和外部Ne，所有输出语义、风险和校准状态闭合。
+
+任一阶段若未达到收敛、能量或模式完整性阈值，应保留旧实现作为reference并停止替换主入口，不得通过放宽物理验收阈值直接进入下一阶段。

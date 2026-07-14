@@ -78,6 +78,9 @@ TID_3D = {
     'amplitude_list':   [0.10,   0.05,    0.05],   # dNe/Ne per component
     'period_s_list':    [2400.0, 2700.0, 2100.0],  # [s]   (typical MSTID range)
     'lambda_h_km_list': [300.0,  350.0,  250.0],   # [km]
+    'z0_km':            280.0,    # F-region perturbation envelope centre [km]
+    'sigma_z_km':       80.0,     # F-region vertical envelope sigma [km]
+    'lambda_z_km':      180.0,    # vertical wavelength [km]
     # Shared physical parameters (same as TID)
     'u_para_ms':        50.0,
     'I_dip_deg':        50.0,
@@ -222,12 +225,14 @@ RT_3D = {
 # P2P_3D: parameters for 3-D P2P Newton shooter
 P2P_3D = {
     'seed_source': 'internal_scan',  # internal_scan | fan_warm_start | explicit_list
-    'n_init':      6,      # number of seed elevations (fan-seeded: top-6 by proximity to RX)
+    'n_init':      18,     # full-domain coarse landing-map samples
     'tol_km':      5.0,    # Newton convergence tolerance [km] (looser than 2-D)
     'd_beta':      0.05,   # Jacobian step: elevation [deg]
     'd_az':        0.10,   # Jacobian step: azimuth   [deg]
-    'jacobian':    'forward',  # 'forward' (fast) or 'central' (more accurate)
-    'max_iter':    12,     # Newton max iterations (early-exit if diverging)
+    'jacobian':    'variational',  # variational; central/forward are fallbacks
+    'jacobian_rtol': 1.0e-3,       # research acceptance against central reference
+    'max_iter':    20,     # trust-region residual evaluations per candidate
+    'candidate_nearest': 3,
     'clust_h_km':  10.0,   # deduplication height tolerance
     'clust_tau_ms': 0.05,  # deduplication delay tolerance
     'launch_low_max_deg': 25.0,   # cause_launch low/medium threshold
@@ -308,7 +313,18 @@ ABSORPTION = {
 # ── update2.1 feature gates (default off for backward compatibility) ──────────
 UPDATE2 = {
     'AH3D_ENABLE': False,
-    'OX_MODE': 'postproc',
+    'AH3D_SOLVER': 'v2',
+    'AH3D_INTEGRATION_PROFILE': 'research',
+    'AH3D_INTEGRATION': {
+        'smoke': {'rtol': 3.0e-5, 'atol_r_km': 1.0e-3, 'atol_k': 1.0e-7,
+                  'ds_min_km': 0.05, 'ds_max_km': 5.0},
+        'research': {'rtol': 3.0e-7, 'atol_r_km': 1.0e-5, 'atol_k': 1.0e-9,
+                     'ds_min_km': 0.01, 'ds_max_km': 2.0},
+        'reference': {'rtol': 3.0e-9, 'atol_r_km': 1.0e-7, 'atol_k': 1.0e-11,
+                      'ds_min_km': 0.002, 'ds_max_km': 0.5},
+    },
+    'OX_MODE': 'ah3d',
+    'RAY_FAN_INCLUDE_X': False,
     'EXTERNAL_NE_PROVIDER': {
         'enable': False,
         'source': 'internal_grid',
@@ -351,6 +367,12 @@ SPREAD_F = {
     'p':            3.0,    # power-law spectral index (typical 2.5-4.0)
     'h_screen_km':  300.0,  # phase screen height [km]
     'L0_km':        50.0,   # outer scale [km]
+    'l0_m':         100.0,  # inner scale [m]
+    'delta_Ne_rel_rms': 0.05,  # relative Ne RMS; distinct from spectral strength Cs
+    'sigma_z_km':   40.0,   # F-region irregularity envelope sigma [km]
+    'anisotropy_ratio': 20.0,
+    'n_modes':      96,
+    'seed':         0,
 }
 
 # ── Geomagnetic parameters (Phase 2) ─────────────────────────────────────────

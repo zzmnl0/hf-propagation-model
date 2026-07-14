@@ -8,6 +8,7 @@ writes all products to output2/.
 from __future__ import annotations
 
 import copy
+import argparse
 import os
 import sys
 from contextlib import contextmanager
@@ -20,8 +21,11 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(__file__))
 
 import config as cfg
-from models.ionosphere_model import IonosphereModel
-from models.ne_provider import GridNeProvider, ParameterizedIonosphere3DProvider
+from models.scenario_provider_factory import (
+    SCENARIO_COMPONENTS,
+    ScenarioProviderFactory,
+    normalize_scenario_label,
+)
 from models.unified_hybrid_pipeline import (
     UnifiedPropagationRequest,
     run_unified_pipeline,
@@ -38,6 +42,16 @@ from viz.plot_utils import (
 
 _OUT = os.path.join(os.path.dirname(__file__), "output2")
 os.makedirs(_OUT, exist_ok=True)
+
+RUN_PRODUCTS = {
+    "ray_fan": True,
+    "p2p": False,
+    "pd": False,
+    "csv": False,
+}
+
+SCENARIO_LABELS = tuple(SCENARIO_COMPONENTS)
+_PROVIDER_FACTORY = ScenarioProviderFactory(cfg)
 
 
 def _merge_dict(dst, src):
@@ -118,11 +132,11 @@ def _make_link_info():
 
 def _make_pert_info(kind):
     info = {}
-    if kind in ("tid", "full"):
+    if kind == "tid":
         info["TID"] = cfg.TID_3D
-    if kind in ("es", "full"):
+    if kind == "es":
         info["Es"] = cfg.ES
-    if kind in ("bubble", "full"):
+    if kind == "bubble":
         info["Bubble"] = cfg.BUBBLE_3D
     if kind == "spreadf":
         info["SpreadF"] = cfg.SPREAD_F
@@ -149,51 +163,35 @@ def _make_pd_info(result, delay_key="tau_ms"):
     return "\n".join(lines)
 
 
-def _build_base_provider():
-    iono = IonosphereModel()
-    Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
-    return GridNeProvider(Ne_2d, cfg.BG_X, cfg.BG_Z)
+def _plot_x_limits():
+    return (float(cfg.BG_X[0]), float(cfg.BG_X[-1]))
+
+
+def _plot_ne_slice(provider, kind):
+    """Sample the same propagation provider on a visualization-aware grid."""
+    z_plot = np.asarray(cfg.BG_Z, dtype=float)
+    if kind == "es":
+        h_es = float(cfg.ES["h_Es_km"])
+        sigma_km = float(cfg.ES["delta_h_m"]) / 1000.0
+        z_es = np.linspace(h_es - 5.0 * sigma_km,
+                           h_es + 5.0 * sigma_km, 41)
+        z_plot = np.unique(np.concatenate((z_plot, z_es, [h_es])))
+    return provider.get_Ne_grid(cfg.BG_X, z_plot), z_plot
+
+
+def _normalize_scenario_label(kind):
+    return normalize_scenario_label(kind)
 
 
 def _scenario_provider(kind):
-    base = _build_base_provider()
-    if kind == "baseline":
-        return ParameterizedIonosphere3DProvider(base, geomag=cfg.GEOMAG)
-    if kind == "tid":
-        return ParameterizedIonosphere3DProvider(
-            base, tid_params={**cfg.TID_3D, "enable": True},
-            geomag=cfg.GEOMAG)
-    if kind == "bubble":
-        return ParameterizedIonosphere3DProvider(
-            base, bubble_params={**cfg.BUBBLE_3D, "enable": True},
-            geomag=cfg.GEOMAG)
-    if kind == "spreadf":
-        iono = IonosphereModel(spread_f_params={**cfg.SPREAD_F, "enable": True})
-        Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
-        return ParameterizedIonosphere3DProvider(
-            GridNeProvider(Ne_2d, cfg.BG_X, cfg.BG_Z),
-            spreadf_params={**cfg.SPREAD_F, "enable": True},
-            geomag=cfg.GEOMAG)
-    if kind == "es":
-        iono = IonosphereModel(es_params={**cfg.ES, "enable": True})
-        Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
-        return ParameterizedIonosphere3DProvider(
-            GridNeProvider(Ne_2d, cfg.BG_X, cfg.BG_Z),
-            es_params={**cfg.ES, "enable": True},
-            geomag=cfg.GEOMAG)
-    if kind == "full":
-        iono = IonosphereModel(es_params={**cfg.ES, "enable": True})
-        Ne_2d, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
-        return ParameterizedIonosphere3DProvider(
-            GridNeProvider(Ne_2d, cfg.BG_X, cfg.BG_Z),
-            tid_params={**cfg.TID_3D, "enable": True},
-            bubble_params={**cfg.BUBBLE_3D, "enable": True},
-            es_params={**cfg.ES, "enable": True},
-            geomag=cfg.GEOMAG)
-    raise ValueError("unknown scenario: {}".format(kind))
+    kind = _normalize_scenario_label(kind)
+    configured_seed = cfg.SPREAD_F.get("seed", 0)
+    seed = 0 if configured_seed is None else int(configured_seed)
+    return _PROVIDER_FACTORY.create(kind, seed=seed, t_s=0.0, validation=True)
 
 
 def _request_for(kind):
+    kind = _normalize_scenario_label(kind)
     apply_scatter_pd = bool(cfg.UPDATE2.get("SCATTER_PD", {}).get("apply_to_pd", False))
     apply_pe = bool(cfg.UPDATE2.get("PE_COUPLING", {}).get("enable", False))
     pe_params = None
@@ -206,7 +204,7 @@ def _request_for(kind):
             "sigma_perp_km": cfg.SPREAD_F.get("L0_km", 50.0),
             "sigma_para_km": 300.0,
         }
-    elif kind in ("bubble", "full"):
+    elif kind == "bubble":
         pe_params = {**cfg.BUBBLE_3D, "enable": True}
     return UnifiedPropagationRequest(
         scenario="unified_{}".format(kind),
@@ -219,17 +217,23 @@ def _request_for(kind):
         pe_irregularity_params=pe_params,
         environment=kind,
         metadata={"main2_output_dir": _OUT},
+        make_ray_fan=bool(RUN_PRODUCTS.get("ray_fan", True)),
+        make_p2p=bool(RUN_PRODUCTS.get("p2p", True)),
+        make_pd=bool(RUN_PRODUCTS.get("pd", True)),
     )
 
 
 def run_unified_scenario(kind):
+    kind = _normalize_scenario_label(kind)
     print("=" * 55)
     print("  main2 unified scenario: {}".format(kind))
     print("=" * 55)
     request = _request_for(kind)
     result = run_unified_pipeline(request)
+    Ne_plot, z_plot = _plot_ne_slice(request.provider, kind)
     print("  P2P modes: {}".format(len(result.modes)))
-    print_mode_table(result.modes)
+    if RUN_PRODUCTS.get("p2p", True):
+        print_mode_table(result.modes)
     if result.main_mode:
         print("  Main mode: {} tau={:.3f} ms Pr={:.1f} dBW".format(
             result.main_mode.get("label", ""),
@@ -239,40 +243,51 @@ def run_unified_scenario(kind):
         print("  Warning: {}".format(warning))
 
     pert_info = _make_pert_info(kind)
-    if result.rays3d:
+    if RUN_PRODUCTS.get("ray_fan", True) and result.rays3d:
         fig, _ = plot_tx_ray_fan(
-            _rays3d_to_fan(result.rays3d), result.Ne_2d, cfg.BG_X, cfg.BG_Z,
-            title="TX Ray Fan - unified {}".format(kind),
-            link_info=_make_link_info(), pert_info=pert_info)
+            _rays3d_to_fan(result.rays3d), Ne_plot, cfg.BG_X, z_plot,
+            title="TX Ray Fan - unified {} Ne background".format(kind),
+            link_info=_make_link_info(), pert_info=pert_info,
+            xlim=_plot_x_limits())
         _save(fig, "tx_fan_unified_{}.png".format(kind))
 
-    fig, _ = plot_p2p_modes(
-        result.modes, result.Ne_2d, cfg.BG_X, cfg.BG_Z,
-        title="P2P Modes - unified {}".format(kind),
-        link_info=_make_link_info(), pert_info=pert_info)
-    _save(fig, "p2p_modes_unified_{}.png".format(kind))
+    if RUN_PRODUCTS.get("p2p", True) and result.modes:
+        fig, _ = plot_p2p_modes(
+            result.modes, Ne_plot, cfg.BG_X, z_plot,
+            title="P2P Modes - unified {} Ne background".format(kind),
+            link_info=_make_link_info(), pert_info=pert_info,
+            xlim=_plot_x_limits())
+        _save(fig, "p2p_modes_unified_{}.png".format(kind))
 
-    info_text = _make_pd_info(result, delay_key=request.pd_delay_key)
-    fig, _ = plot_pd_spectrum(
-        result.tau_axis, result.pd_W, result.modes,
-        title="P-D - unified {} (one-way)".format(kind),
-        delay_key=request.pd_delay_key,
-        xlabel="One-way Group Delay  (ms)",
-        info_text=info_text)
-    _save(fig, "pd_unified_{}.png".format(kind))
+    if RUN_PRODUCTS.get("pd", True) and result.tau_axis.size and result.pd_W.size:
+        info_text = _make_pd_info(result, delay_key=request.pd_delay_key)
+        fig, _ = plot_pd_spectrum(
+            result.tau_axis, result.pd_W, result.modes,
+            title="P-D - unified {} (one-way)".format(kind),
+            delay_key=request.pd_delay_key,
+            xlabel="One-way Group Delay  (ms)",
+            info_text=info_text)
+        _save(fig, "pd_unified_{}.png".format(kind))
 
-    csv_path = save_modes_csv(
-        "unified_{}".format(kind), result.modes, result.tau_axis, result.pd_W,
-        cfg.FREQ_MHZ, _OUT, pd_delay_key=request.pd_delay_key)
-    print("  Saved: output2/{}".format(os.path.basename(csv_path)))
+    if RUN_PRODUCTS.get("csv", True) and result.modes:
+        csv_path = save_modes_csv(
+            "unified_{}".format(kind), result.modes, result.tau_axis, result.pd_W,
+            cfg.FREQ_MHZ, _OUT, pd_delay_key=request.pd_delay_key)
+        print("  Saved: output2/{}".format(os.path.basename(csv_path)))
     return result
 
 
-def main():
+def main(scenarios=None):
     _enable_reference_physics()
-    scenarios = ["baseline", "tid", "spreadf", "bubble", "es", "full"]
+    scenarios = SCENARIO_LABELS if scenarios is None else scenarios
     return [run_unified_scenario(s) for s in scenarios]
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Unified AH3D scenario runner")
+    parser.add_argument(
+        "--scenario", action="append", dest="scenarios",
+        help="Scenario label; repeat for multiple scenes: {}".format(
+            ", ".join(SCENARIO_LABELS)))
+    args = parser.parse_args()
+    main(args.scenarios)

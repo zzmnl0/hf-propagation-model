@@ -1,0 +1,32 @@
+A0 统一场景与可复现实验基线实施记录
+日期：2026-07-12
+
+一、完成内容
+
+1. 新增models/scenario_provider_factory.py，main.py与main2.py统一通过ScenarioProviderFactory构造baseline、TID、Spread-F、Bubble和Es场景。
+2. 删除main.py/main2.py内各场景直接调用IonosphereModel生成二维扰动背景的旧逻辑。参数化扰动只由ParameterizedIonosphere3DProvider在(x,y,z,t)查询时生成，AH3D、P2P、散射诊断和绘图均以同一Provider为数据源。
+3. baseline背景当前仍是IRI距离-高度采样并沿y不变，metadata明确标记range_height_sampled_y_invariant；这属于当前参数化背景的物理边界，不再冒充完整三维IRI背景。
+4. 二维Ne数组仅保留两类用途：从同一3D Provider在指定y平面抽取的绘图切片；默认关闭的local_2p5d参考接口输入。二维切片不再独立决定场景或覆盖3D传播场。
+5. 支持显式components组合，不恢复隐式full场景标签。main.py旧run_full验证函数内部改为显式components=(tid, es, bubble)。
+6. 正式验证强制整数seed，seed=None会被拒绝；t_s显式记录且当前默认0.0 s。
+7. metadata记录provider_name、物理分量、seed、t_s、坐标/单位、线性插值、边界填零、背景语义、config_hash和provider_hash。
+8. config_hash包含场景配置快照；provider_hash表示实际物理Provider内容。同一物理分量和参数即使使用不同标签，provider_hash仍一致。
+9. UnifiedPropagationResult和模式记录增加provider_hash、provider_config_hash、seed和t_s追溯字段。
+
+二、验收结果
+
+1. tests/_verify_a0_scenario_factory.py：0 fail(s)。main.py/main2.py的Ne切片、三维采样、metadata和哈希一致；验证seed=None拒绝规则及标签不改变物理场规则。
+2. tests/_verify_main2_scenario_fields.py：0 fail(s)。TID、Spread-F、Bubble、Es均与baseline存在实际场差异，Es薄层绘图采样有效。
+3. tests/_verify_unified_pipeline_semantics.py：0 fail(s)。统一入口、AH3D射线源、单双程语义、模式追溯和CSV字段保持有效。
+4. Python语法编译及git diff --check通过。
+
+三、理论与引用边界
+
+A0属于输入场一致性、实验可复现性和语义治理，不修改Appleton-Hartree、Haselgrove或散射理论参数，因此未新增文献。传播理论继续采用word/reference-papers.txt中Haselgrove (1955)、Jones and Stephenson (1975)、Budden (1985)、Nosikov et al. (2020)等记录。
+
+四、风险与下一阶段事项
+
+1. IRI背景仍为沿y不变的距离-高度采样，不是完整经纬高三维背景；后续外部NeProvider3D接入后应以真实3D网格替换。
+2. ParameterizedIonosphere3DProvider仍是Spread-F、Es和Bubble的阶段性参数化入口，不代表其全部三维动力学演化。
+3. A0不修正AH3D有限差分Hamiltonian、截止事件、群速度和步长收敛问题；这些属于A1/A2。
+4. local_2p5d仍为reference_only且默认关闭，不得称为完整3D PE或全波。

@@ -59,16 +59,30 @@ def build_ray_info_text(link_info: dict,
     pert = pert_info or {}
     if 'TID' in pert:
         p = pert['TID']
-        lines.append("[TID] amp={:.2f}  lambda={:.0f} km  T={:.0f} s".format(
-            p.get('amplitude', 0), p.get('lambda_h_km', 0), p.get('T_s', 0)))
+        amps = p.get('amplitude_list', [p.get('amplitude', 0)])
+        lambdas = p.get('lambda_h_km_list', [p.get('lambda_h_km', 0)])
+        periods = p.get('period_s_list', [p.get('T_s', 0)])
+        lines.append("[TID] amp={}  lambda={} km  T={} s  z0={:.0f} km".format(
+            "/".join("{:.2f}".format(float(v)) for v in amps),
+            "/".join("{:.0f}".format(float(v)) for v in lambdas),
+            "/".join("{:.0f}".format(float(v)) for v in periods),
+            float(p.get('z0_km', 280.0))))
     if 'Es' in pert:
         p = pert['Es']
         lines.append("[Es]  foEs={:.1f} MHz  h_Es={:.0f} km".format(
             p.get('foEs_MHz', 0), p.get('h_Es_km', 0)))
     if 'Bubble' in pert:
         p = pert['Bubble']
-        lines.append("[Bub] z0={:.0f} km  Lx={:.0f} km  dep={:.2f}".format(
-            p.get('z0_km', 0), p.get('Lx_km', 0), p.get('delta_max', 0)))
+        lines.append("[Bub] z0={:.0f} km  sperp={:.0f} km  spar={:.0f} km  dep={:.2f}".format(
+            p.get('z0_km', 0),
+            p.get('sigma_perp_km', p.get('Lx_km', 0)),
+            p.get('sigma_para_km', p.get('Lz_km', 0)),
+            p.get('delta_max', 0)))
+    if 'SpreadF' in pert:
+        p = pert['SpreadF']
+        lines.append("[Spread-F] dNe_rms={:.2f} Cs={:.1e} p={:.2f} h={:.0f} km".format(
+            p.get('delta_Ne_rel_rms', 0), p.get('Cs', 0),
+            p.get('p', 0), p.get('h_screen_km', 0)))
 
     return "\n".join(lines)
 
@@ -101,6 +115,10 @@ def save_modes_csv(scenario: str,
     os.makedirs(out_dir, exist_ok=True)
     fields = [
         'scenario', 'label', 'freq_MHz',
+        'provider_name', 'provider_components', 'solver_chain',
+        'feature_gates', 'pd_kernel', 'observable_type',
+        'delay_key', 'oneway_or_twoway', 'ray_pe_dimensionality',
+        'scatter_status', 'calibration_status',
         'tau_ms', 'tau_oneway_ms', 'tau_2way_ms', 'pd_delay_key',
         'pd_delay_ms', 'delta_tau_ms',
         'Pr_W', 'Pr_dBW', 'pd_power_W',
@@ -117,7 +135,12 @@ def save_modes_csv(scenario: str,
         'es_mode', 'theta_Es_deg', 'aspect_Es_deg', 'es_loss_dB',
         'scatter_method', 'sigma_phi_sq', 'sigma_phi_rad',
         'S4', 'sigma_tau_ms', 'MPS_required',
+        'scatter_solver', 'scatter_solver_dimensionality', 'scatter_validity',
+        'scatter_power_applied', 'Pr_before_scatter', 'Pr_after_scatter',
+        'scatter_loss_dB', 'energy_conservation_error',
+        'kernel_normalization', 'pd_kernel_source',
         'pe_coupled', 'pe_apply_to_power', 'pe_status', 'pe_frame_status',
+        'pe_solver_dimensionality', 'pe_validity',
         'pe_Pr_correction_dB', 'pe_power_ratio', 'pe_delta_tau_ms',
         'pe_mean_aoa_deg', 'pe_angle_spread_deg',
         'pe_x_entry_km', 'pe_y_entry_km', 'pe_z_entry_km', 'pe_entry_q',
@@ -127,6 +150,9 @@ def save_modes_csv(scenario: str,
         'sigma_eff_m2', 'grazing_angle_deg', 'bragg_wavenumber_rad_m',
         'bragg_wavelength_m', 'radial_velocity_ms', 'doppler_hz',
         'clutter_Pr_W', 'clutter_Pr_dBW', 'mode_confidence',
+        'clutter_pd_model', 'bragg_doppler_minus_hz',
+        'bragg_doppler_plus_hz', 'range_gate_span_km',
+        'n_range_bins', 'n_doppler_bins',
         'physics_basis',
     ]
     path = os.path.join(out_dir, 'modes_{}.csv'.format(scenario))
@@ -160,7 +186,7 @@ def plot_ne_field(Ne_2d: np.ndarray, x_km: np.ndarray, z_km: np.ndarray,
     """2-D colour map of electron density."""
     fig, ax = plt.subplots(figsize=(11, 5))
     pcm = ax.pcolormesh(x_km, z_km, Ne_2d.T / 1e10,
-                        cmap='viridis', shading='auto')
+                        cmap='jet', shading='auto', alpha=0.5)
     plt.colorbar(pcm, ax=ax, label='Ne  [x10^10 m^-3]')
     ax.set_xlabel('Distance  (km)')
     ax.set_ylabel('Height  (km)')
@@ -181,7 +207,8 @@ def plot_ray_fan(rays: list,
                  title: str = 'Ray Fan',
                  link_info: dict | None = None,
                  pert_info: dict | None = None,
-                 save_path: str | None = None):
+                 save_path: str | None = None,
+                 xlim: tuple[float, float] | None = None):
     """
     Overlay ray paths on density background.
 
@@ -200,20 +227,30 @@ def plot_ray_fan(rays: list,
 
     if ne_2d is not None and x_km is not None and z_km is not None:
         pcm = ax.pcolormesh(x_km, z_km, ne_2d.T / 1e10,
-                            cmap='Blues', shading='auto', alpha=0.6)
+                            cmap='jet', shading='auto', alpha=0.5)
         plt.colorbar(pcm, ax=ax, label='Ne  [x10^10 m^-3]',
                      fraction=0.046, pad=0.04)
 
+    seen_branches = set()
+    styles = {'O': ('crimson', '-'), 'X': ('deepskyblue', '--'),
+              'iso': ('crimson', '-')}
     for r in rays:
         xs = [s[0] for s in r['trajectory']]
         zs = [s[1] for s in r['trajectory']]
-        ax.plot(xs, zs, 'r-', lw=0.8, alpha=0.65)
+        branch = str(r.get('wave_mode', 'iso'))
+        color, linestyle = styles.get(branch, ('crimson', '-'))
+        label = '{} ray fan'.format(branch) if branch not in seen_branches else None
+        ax.plot(xs, zs, color=color, ls=linestyle, lw=0.8,
+                alpha=0.65, label=label)
+        seen_branches.add(branch)
 
     ax.axvline(tx_pos[0], color='g', lw=1.2, ls='--', label='TX')
     ax.axvline(rx_pos[0], color='b', lw=1.2, ls='--', label='RX')
     ax.set_xlabel('Distance  (km)')
     ax.set_ylabel('Height  (km)')
     ax.set_ylim([0, 500])
+    if xlim is not None:
+        ax.set_xlim([float(xlim[0]), float(xlim[1])])
     ax.set_title(title)
     ax.legend(fontsize=8, loc='upper left')
 
@@ -241,10 +278,11 @@ def plot_tx_ray_fan(rays: list,
                     title: str = 'TX Ray Fan',
                     link_info: dict | None = None,
                     pert_info: dict | None = None,
-                    save_path: str | None = None):
+                    save_path: str | None = None,
+                    xlim: tuple[float, float] | None = None):
     """Plot only the TX-launched ray fan; it is not a P2P mode plot."""
     return plot_ray_fan(rays, ne_2d, x_km, z_km, tx_pos, rx_pos,
-                        title, link_info, pert_info, save_path)
+                        title, link_info, pert_info, save_path, xlim=xlim)
 
 
 def _mode_xz(mode: dict):
@@ -271,12 +309,13 @@ def plot_p2p_modes(modes: list,
                    title: str = 'P2P Modes',
                    link_info: dict | None = None,
                    pert_info: dict | None = None,
-                   save_path: str | None = None):
+                   save_path: str | None = None,
+                   xlim: tuple[float, float] | None = None):
     """Plot only TX/RX-hitting P2P modes with mode labels and cause fields."""
     fig, ax = plt.subplots(figsize=(12, 6))
     if ne_2d is not None and x_km is not None and z_km is not None:
         pcm = ax.pcolormesh(x_km, z_km, ne_2d.T / 1e10,
-                            cmap='Blues', shading='auto', alpha=0.6)
+                            cmap='jet', shading='auto', alpha=0.5)
         plt.colorbar(pcm, ax=ax, label='Ne  [x10^10 m^-3]',
                      fraction=0.046, pad=0.04)
     colors = plt.cm.tab10(np.linspace(0, 1, max(len(modes), 1)))
@@ -294,6 +333,8 @@ def plot_p2p_modes(modes: list,
     ax.set_xlabel('Distance  (km)')
     ax.set_ylabel('Height  (km)')
     ax.set_ylim([0, 500])
+    if xlim is not None:
+        ax.set_xlim([float(xlim[0]), float(xlim[1])])
     ax.set_title(title)
     ax.grid(True, alpha=0.25)
     ax.legend(fontsize=7, loc='upper left', ncol=1)
@@ -316,7 +357,8 @@ def plot_pd_spectrum(tau_axis: np.ndarray, pd_W: np.ndarray,
                      title: str = 'P-D Spectrum',
                      save_path: str | None = None,
                      delay_key: str = 'tau_ms',
-                     xlabel: str = 'Group Delay  (ms)'):
+                     xlabel: str = 'Group Delay  (ms)',
+                     info_text: str | None = None):
     """Power-delay spectrum with optional mode markers."""
     fig, ax = plt.subplots(figsize=(10, 4))
     pd_dBW = 10.0 * np.log10(np.maximum(pd_W, 1e-30))
@@ -332,6 +374,11 @@ def plot_pd_spectrum(tau_axis: np.ndarray, pd_W: np.ndarray,
     ax.set_ylabel('Power  (dBW)')
     ax.set_title(title)
     ax.grid(True, alpha=0.3)
+    if info_text:
+        ax.text(0.99, 0.96, info_text, transform=ax.transAxes,
+                fontsize=6.8, va='top', ha='right', family='monospace',
+                bbox=dict(boxstyle='round,pad=0.35', facecolor='white',
+                          alpha=0.88, edgecolor='gray', lw=0.8))
     plt.tight_layout()
     if save_path:
         fig.savefig(save_path, dpi=150, bbox_inches='tight')

@@ -1,0 +1,34 @@
+A3 P2P灵敏度、连续延拓与性能升级实施记录
+日期：2026-07-14
+
+一、完成内容
+
+1. AH3D V2可沿7维射线状态同步积分发射仰角/方位角的两列切线灵敏度，输出落点Jacobian、条件数、方法和地面事件修正状态。灵敏度在每次D=0投影后同步投影，不绕过色散约束。
+2. 地面落点Jacobian对实际离散落地插值公式求导；避免把固定积分参数灵敏度误当作固定地面事件灵敏度。
+3. P2P由裸Newton改为SciPy trust-region reflective least_squares。发射仰角和方位角保留物理边界，最终候选仍须通过AH3D research+reference收敛检查。
+4. 每个O/X分支先建立全仰角域粗落点映射；由目标距离过零、局部折叠/极小值和最近落点生成候选，不以减少角域或删除分支换取速度。
+5. 变分Jacobian首次使用时与中心差分比较。相对误差超过1e-3、非有限或条件数超过1e10时，研究求解自动使用中心差分reference fallback，并记录误差和回退次数。
+6. find_all_rays_ah_3d支持continuation_modes；可由上一频点或相邻接收距离传入O/X模式作为初值。新生/消失模式仍由本次全域粗扫描审计。
+7. ray fan默认只计算和绘制O波；UPDATE2['RAY_FAN_INCLUDE_X']=True时同时计算并用不同颜色/线型绘制O/X。P2P主链固定传入wave_mode='both'，始终计算O/X。
+8. 修复A2遗留问题：不同积分profile不再因ds_max不同而改变物理最大传播距离和计算域。
+
+二、输出语义
+
+p2p_solver=scipy_trf；p2p_jacobian_method为请求方法；p2p_jacobian_effective记录variational或central_reference_fallback；p2p_jacobian_validation_relative记录首次交叉验证误差；p2p_full_domain_audit和p2p_candidate_audit_rays记录候选审计范围；p2p_continuation_used记录是否使用延拓初值。ray fan为筛选级smoke结果，不进入研究级模式/P-D排序；P2P最终O/X模式必须为convergence_status=passed。
+
+三、理论依据
+
+Haselgrove, J. (1955). Ray theory and a new method for ray tracing. In The Physics of the Ionosphere (pp. 355-364). Physical Society.
+
+Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. OT Report 75-76, U.S. Department of Commerce.
+
+Nosikov, I. A., Klimenko, M. V., Zhbankov, G. A., Podlesnyi, A. V., Ivanova, V. A., & Bessarab, P. F. (2020). Generalized force approach to point-to-point ionospheric ray tracing and systematic identification of high and low rays. IEEE Transactions on Antennas and Propagation, 68(1), 455-467. https://doi.org/10.1109/TAP.2019.2938817
+
+Branch, M. A., Coleman, T. F., & Li, Y. (1999). A subspace, interior, and conjugate gradient method for large-scale bound-constrained minimization problems. SIAM Journal on Scientific Computing, 21(1), 1-23. https://doi.org/10.1137/S1064827595289108
+
+四、风险与未完成项
+
+1. 当前AH3D Hamiltonian右端仍含有限差分。同步切线方程需要方向导数，因此单条灵敏度射线不一定比多条端点差分快；A3“相同搜索域至少10倍加速”尚未通过实测验收，不能声明M2完成。
+2. smoke档切线Jacobian在已测平滑退化算例中与稳定尺度中心差分约有百分量级误差；严格1e-3研究阈值由自动中心差分回退保证，而不是放宽阈值。
+3. caustic、截止和模式分岔处终端映射可不可微或病态；这些位置必须依赖全域候选审计及回退，不能只依赖continuation。
+4. 尚未完成标准链路硬件/线程/模式数一致的10倍性能基准，也未完成Nosikov高低射线外部算例复现；应在A4前作为M2剩余验收项处理。

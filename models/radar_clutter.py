@@ -79,6 +79,18 @@ class RadarClutterModel:
         """Monostatic Doppler shift fD = 2 v_r / lambda [Hz]."""
         return float(2.0 * float(radial_velocity_ms) / self.wavelength_m)
 
+    def sea_bragg_doppler_hz(self, radial_velocity_ms: float = 0.0) -> tuple[float, float]:
+        """Deep-water first-order Bragg Doppler pair for monostatic sea clutter.
+
+        Barrick first-order HF sea clutter peaks occur at +/-f_B, shifted by
+        surface radial current.  Deep-water dispersion gives
+        f_B = sqrt(g k_B) / (2*pi), k_B = 4*pi/lambda.
+        """
+        g_ms2 = 9.80665
+        f_bragg = math.sqrt(g_ms2 * self.bragg_wavenumber_rad_m()) / (2.0 * math.pi)
+        f_current = self.doppler_hz(radial_velocity_ms)
+        return float(f_current - f_bragg), float(f_current + f_bragg)
+
     def estimate_grazing_angle_deg(self, mode: dict) -> float:
         """Estimate ground grazing angle from final ray segment or launch beta."""
         explicit = mode.get("grazing_angle_deg")
@@ -182,3 +194,105 @@ def apply_clutter_to_mode(
         out["Pr_W"] = diag["clutter_Pr_W"]
         out["Pr_dBW"] = diag["clutter_Pr_dBW"]
     return out
+
+
+def build_surface_clutter_pd_spectrum(
+    modes: list,
+    freq_MHz: float = FREQ_MHZ,
+    params: dict | None = None,
+    tau_res_ms: float = 0.02,
+    gate_span_km: float = 220.0,
+    n_range_bins: int = 49,
+    doppler_bins_hz: int = 81,
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    """Build physically structured OTH surface-clutter P-D projection.
+
+    The spectrum is a power-delay projection of a monostatic range-Doppler
+    clutter surface.  For each flux-tube mode, neighbouring ground range gates
+    contribute with R^-4 propagation, sigma0*area backscatter, grazing/focusing
+    weighting, and first-order Bragg Doppler doublets.  Projecting this
+    range-Doppler surface onto delay produces the peak-bearing curved envelope
+    expected for OTH surface clutter, instead of a few isolated mode spikes.
+    """
+    if not modes:
+        return np.array([0.0]), np.array([0.0]), {}
+
+    cfg = dict(params or {})
+    model = RadarClutterModel(freq_MHz=freq_MHz, params=cfg)
+    surface_type = str(cfg.get("surface_type", "sea"))
+    sigma0_dB = cfg.get("sigma0_dB")
+    radial_velocity = float(cfg.get("radial_velocity_ms", 0.0))
+    gate_span_km = max(float(cfg.get("gate_span_km", gate_span_km)), 1.0)
+    n_range_bins = max(int(cfg.get("n_range_bins", n_range_bins)), 5)
+    doppler_bins_hz = max(int(cfg.get("doppler_bins_hz", doppler_bins_hz)), 11)
+
+    records = []
+    offsets = np.linspace(-0.5 * gate_span_km, 0.5 * gate_span_km, n_range_bins)
+    for mode_index, m in enumerate(modes):
+        tau_c = float(m.get("tau_2way_ms", 2.0 * float(m.get("tau_ms", 0.0))))
+        R_c = max(float(m.get("range_km", m.get("group_path_km", 0.0))), 1e-6)
+        base_area = max(float(m.get("A_tube_km2", m.get("scatter_area_km2", 0.0))), 0.0)
+        if tau_c <= 0.0 or base_area <= 0.0:
+            continue
+
+        tau_per_km = tau_c / R_c
+        grazing0 = float(m.get("grazing_angle_deg", model.estimate_grazing_angle_deg(m)))
+        focus = max(float(m.get("F_focus_3d", m.get("F_focus", 1.0))), 0.0)
+        base_Pr = max(float(m.get("clutter_Pr_W", m.get("Pr_W", 0.0))), 0.0)
+        gate_sigma_km = max(0.22 * gate_span_km, 1.0)
+        bragg_pair = model.sea_bragg_doppler_hz(radial_velocity)
+        doppler_sigma = max(float(cfg.get("bragg_width_hz", 0.08)), 0.01)
+        d_min = min(bragg_pair) - 4.0 * doppler_sigma
+        d_max = max(bragg_pair) + 4.0 * doppler_sigma
+        dopplers = np.linspace(d_min, d_max, doppler_bins_hz)
+        doppler_kernel = (
+            np.exp(-0.5 * ((dopplers - bragg_pair[0]) / doppler_sigma) ** 2)
+            + np.exp(-0.5 * ((dopplers - bragg_pair[1]) / doppler_sigma) ** 2)
+        )
+        doppler_kernel /= max(float(doppler_kernel.sum()), 1e-30)
+
+        for dx in offsets:
+            R = max(R_c + float(dx), 1e-6)
+            tau = tau_c + tau_per_km * float(dx)
+            grazing = max(0.0, min(90.0, grazing0 + 0.02 * float(dx)))
+            sigma0 = model.sigma0_linear(surface_type, sigma0_dB, grazing)
+            if sigma0 <= 0.0:
+                continue
+            range_weight = math.exp(-0.5 * (float(dx) / gate_sigma_km) ** 2)
+            area_gate = base_area / n_range_bins
+            range_loss_weight = (R_c / R) ** 4
+            Pr_gate = base_Pr * range_weight * range_loss_weight
+            if base_Pr <= 0.0:
+                sigma_eff = sigma0 * area_gate * 1e6 * max(focus, 0.05)
+                Pr_gate = radar_equation_W(PT_W, GT, GR, freq_MHz, R, sigma_eff)
+            for doppler, dw in zip(dopplers, doppler_kernel):
+                records.append((tau, Pr_gate * float(dw) / n_range_bins, float(doppler), mode_index))
+
+    if not records:
+        taus = [float(m.get("tau_2way_ms", 2.0 * float(m.get("tau_ms", 0.0)))) for m in modes]
+        tau_axis = np.arange(max(0.0, min(taus) - 2.0), max(taus) + 2.0, tau_res_ms)
+        return tau_axis, np.zeros(len(tau_axis)), {}
+
+    tau_values = np.array([r[0] for r in records], dtype=float)
+    tau_axis = np.arange(max(0.0, float(tau_values.min()) - 1.0),
+                         float(tau_values.max()) + 1.0, tau_res_ms)
+    pd = np.zeros(len(tau_axis))
+    tau_sigma = max(float(cfg.get("delay_width_ms", 0.12)), tau_res_ms)
+    for tau, power, _, _ in records:
+        pd += float(power) * np.exp(-0.5 * ((tau_axis - float(tau)) / tau_sigma) ** 2)
+
+    scale = sum(max(float(m.get("clutter_Pr_W", m.get("Pr_W", 0.0))), 0.0) for m in modes)
+    pd_sum = float(pd.sum())
+    if scale > 0.0 and pd_sum > 0.0:
+        pd *= scale / pd_sum
+
+    meta = {
+        "clutter_pd_model": "range_doppler_bragg_projection",
+        "surface_type": surface_type,
+        "bragg_doppler_minus_hz": model.sea_bragg_doppler_hz(radial_velocity)[0],
+        "bragg_doppler_plus_hz": model.sea_bragg_doppler_hz(radial_velocity)[1],
+        "range_gate_span_km": gate_span_km,
+        "n_range_bins": n_range_bins,
+        "n_doppler_bins": doppler_bins_hz,
+    }
+    return tau_axis, pd, meta
