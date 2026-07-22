@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import config as cfg
 from utils import freq_to_k0
-from models.pe_propagator import PEPropagator, construct_incident_field
+from legacy.models.pe_propagator import PEPropagator, construct_incident_field
 
 print("=" * 55)
 print("  Part 5 verification")

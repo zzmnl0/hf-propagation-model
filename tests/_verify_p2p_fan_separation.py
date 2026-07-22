@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 
 import config as cfg
-import models.point_to_point_3d as p2p3d
+import legacy.models.point_to_point_3d as p2p3d
 
 
 class DummyN3D:

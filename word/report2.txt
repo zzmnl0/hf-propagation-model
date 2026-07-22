@@ -1,0 +1,84 @@
+report2.txt
+主程序参考物理开关、复杂环境分离与 OTH P-D 谱更新报告
+生成日期：2026-07-09
+
+一、实施目的
+
+本次更新保持 config.py 全局默认关闭策略不变，仅在 main.py 作为参考算例入口运行时启用已经实现并通过验证的物理增强开关。main.py 输出用于阶段1参数化三维电离层中的参考传播分析；回归测试和兼容旧结果仍依赖默认关闭配置。
+
+二、主程序启用的参考物理开关
+
+main.py 运行时启用 UPDATE2.AH3D_ENABLE=True、UPDATE2.OX_MODE='ah3d'、UPDATE2.ABSORPTION_COMPLEX.enable=True、UPDATE2.RADAR_CLUTTER.enable=True 和 UPDATE2.RADAR_CLUTTER.apply_to_power=True。Bubble、Full、Spread-F 场景局部启用 Ray-PE/SSF local_2p5d 并允许改变功率；Full 和 Spread-F 场景局部启用散射核进入 P-D 谱。全局配置仍默认关闭，防止旧流程被隐式改变。
+
+三、各模式实现方式与输出语义
+
+1. Baseline IRI 3-D 模式
+文献参考：Bilitza et al. (2017)、Haselgrove (1955)、Jones and Stephenson (1975)。实现方式是在 IRI 背景电子密度场中进行三维 Haselgrove 射线和 3-D P2P 搜索，并附加复折射率吸收路径积分。输出 tau_ms 是通信单程群延迟，group_path_km 是群路径，不是几何路径。
+
+2. TID 3-D 模式
+文献参考：Hooke (1968)、Hunsucker (1982)、Hernandez-Pajares et al. (2006)。实现方式是在独立 TID 参数化电子密度扰动上进行 3-D 反射路径计算。该场景只表示大尺度折射扰动，不再与 Spread-F 混合作为单一复杂环境输出。
+
+3. Es 模式
+文献参考：Whitehead (1989)、Haldoupis (2011)。实现方式是在 IRI 背景叠加参数化 Es 层，并在射线路径接近 Es 高度时按掠射角施加 Es 反射/散射功率修正。当前仍是参数化层和局部功率修正，不是完整三维 Es 不规则体全波解。
+
+4. Bubble 模式
+文献参考：Kelley (2009)、Zalesak and Ossakow (1980)、Carrano et al. (2012)。实现方式是在三维场向 Gaussian 耗空泡中进行 3-D 射线，并局部启用 Ray-PE/SSF 耦合。输出 pe_coupled、pe_apply_to_power、pe_Pr_correction_dB、pe_delta_tau_ms 表示 PE 对功率和延迟的影响。Ray-PE 仍为 local_2p5d，不是完整三维 PE/全波。
+
+5. Full 模式
+文献参考综合 IRI、TID、Es、泡体、Ray-PE/SSF、Rino 相位屏和 Knepp 多相位屏。实现方式同时叠加 TID、Es 与 3-D bubble，并启用 PE 功率修正和散射核进入 P-D 谱。该模式适合机制叠加分析，但不适合反演单一不规则体来源。
+
+6. O/X AH3D 模式
+文献参考：Appleton (1932)、Budden (1961)、Haselgrove (1955)。实现方式是在 main.py 中启用 AH3D Hamiltonian O/X 三维射线；若 ox_solver='ah3d_hamiltonian'，才表示路径本身按磁离子理论求解。near-cutoff 和 evanescent 区域可能导致模式数量减少。
+
+7. Point-target radar 模式
+文献参考：Skolnik (2008)。实现方式为单站点目标 RCS 和 R^-4 双程雷达方程。输出 radar_observable='two_way_point_target'，pd_delay_key='tau_2way_ms'，P-D 横轴为雷达双程群延迟。该模式不能解释地/海面 clutter。
+
+8. Surface clutter radar 模式
+文献参考：Barrick (1972)、Barrick (1977)、Coleman (1997)、Skolnik (2008)。实现方式从单个模式点谱升级为 Bragg range-Doppler projection：3-D flux tube 给出传播路径、照射面积和聚焦；radar_clutter.py 对每个模式展开相邻地表距离门，按 sigma0、掠射角、R^-4、照射面积和一阶 Bragg 双峰 Doppler 核叠加，再投影为 P-D 谱。因此 pd_radar_clutter.png 不再只是少数离散延迟尖峰，而具有由距离门和 Bragg 双峰共同形成的峰值弧形包络。输出字段 clutter_pd_model、bragg_doppler_minus_hz、bragg_doppler_plus_hz、range_gate_span_km、n_range_bins、n_doppler_bins 用于解释该谱。
+
+9. Spread-F 模式
+文献参考：Rino (1979)、Knepp (1983)、Yeh and Liu (1982)、Carrano et al. (2012)。实现方式已改为 IRI + Spread-F 独立场景，不再叠加 TID。该模式用于分析强散射/相位屏环境导致的功率展宽、时延扩展和主模变化；scatter_method、sigma_phi_sq、S4、sigma_tau_ms 和 MPS_required 表示散射强度与方法选择。
+
+10. Tube radar 模式
+文献参考：Coleman (1997)、Barrick (1972)、Skolnik (2008)。实现方式为 TubeRayTracer3D 生成相邻射线管，计算 F_focus_el、F_focus_az、F_focus_3d 与 A_tube_km2，再调用同一 Bragg range-Doppler projection 生成双程 P-D 输出。tau_2way_ms 是雷达观测延迟，tau_ms 仅保留为单程传播延迟。
+
+四、输出图像语义标注
+
+所有 P-D 图统一标注 delay_key、单程/双程语义、物理基础、吸收模型、Ray-PE 是否进入功率、散射是否进入 P-D、雷达观测类型、O/X 求解器。ray fan 和 P2P mode 图继续标注链路、IRI 背景、Ne_max 和当前复杂环境参数；Spread-F 新增 Cs、谱指数 p 和相位屏高度标注。
+
+五、P2P 扫频+扫角升级意义与复杂度
+
+当前 P2P 是固定发射频率下扫角寻找可达路径，适合单频链路分析。升级为扫频+扫角有必要：HF 反射高度、截止条件、O/X 可传播性、吸收、Es 反射和散射强度都强依赖频率；扫频可直接形成 MUF/LUF、可用频段、模式跳变和频散诊断，更符合短波链路规划和 OTH 雷达频率管理。实施复杂度为中高：需要二维搜索空间、频率相关缓存、AH3D 分支收敛控制、输出维度扩展为 freq-mode-P-D，并新增跨频模式追踪与主模连续性判据。建议作为 P2/P3 后续升级，而不是夹在当前 P-D 图修复中完成。
+
+六、推荐验证软件
+
+推荐 IONORT。IONORT 是公开论文描述的 Windows HF 电离层 2-D/3-D 射线追踪软件，核心求解三维电离层磁等离子体中的射线路径、波矢和群时延，并使用电子密度、地磁场和碰撞频率模型。它适合作为本项目三维射线、O/X 分裂、群路径和虚高/时延的外部真实性对照。注意 IONORT 主要验证射线物理，PE/全波散射和海面 clutter 谱仍需另用文献算例或实测数据校准。
+
+七、风险与未完成项
+
+最大风险仍是绝对功率缺乏实测校准。复吸收、PE/SSF、散射核和 clutter sigma0 都是主流理论下的参数化参考实现，太阳天顶角、D 层碰撞频率、海况、地表类型、天线方向图、距离门和接收机处理链都会显著改变功率。Ray-PE 仍是 local_2p5d，不是完整三维 PE/全波。OTH clutter 已升级为 Bragg range-Doppler projection，但仍未包含真实海浪方向谱、二阶海杂波、多站/双基地、真实天线波束和接收处理。
+
+八、主要参考文献
+
+Appleton, E. V. (1932). Wireless studies of the ionosphere. Journal of the Institution of Electrical Engineers, 71(430), 642-650.
+Barrick, D. E. (1972). First-order theory and analysis of MF/HF/VHF scatter from the sea. IEEE Transactions on Antennas and Propagation, 20(1), 2-10.
+Barrick, D. E. (1977). Extraction of wave parameters from measured HF radar sea-echo Doppler spectra. Radio Science, 12(3), 415-424.
+Bilitza, D., Altadill, D., Truhlik, V., Shubin, V., Galkin, I., Reinisch, B., & Huang, X. (2017). International Reference Ionosphere 2016: From ionospheric climate to real-time weather predictions. Space Weather, 15(2), 418-429.
+Budden, K. G. (1961). Radio Waves in the Ionosphere. Cambridge University Press.
+Carrano, C. S., Groves, K. M., & Caton, R. G. (2012). Simulating the impacts of ionospheric scintillation on L band SAR image formation. Radio Science, 47, RS0L20.
+Coleman, C. J. (1997). On the simulation of backscatter ionograms. Journal of Atmospheric and Solar-Terrestrial Physics, 59(16), 2089-2099.
+Haldoupis, C. (2011). A tutorial review on sporadic E layers. In M. A. Abdu & D. Pancheva (Eds.), Aeronomy of the Earth's Atmosphere and Ionosphere (pp. 381-394). Springer.
+Haselgrove, J. (1955). Ray theory and a new method for ray tracing. In The Physics of the Ionosphere (pp. 355-364). Physical Society.
+Hernandez-Pajares, M., Juan, J. M., & Sanz, J. (2006). Medium-scale traveling ionospheric disturbances affecting GPS measurements: Spatial and temporal analysis. Journal of Geophysical Research: Space Physics, 111, A07S11.
+Hooke, W. H. (1968). Ionospheric irregularities produced by internal atmospheric gravity waves. Journal of Atmospheric and Terrestrial Physics, 30(5), 795-823.
+Hunsucker, R. D. (1982). Atmospheric gravity waves generated in the high-latitude ionosphere: A review. Reviews of Geophysics, 20(2), 293-315.
+Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere (OT Report 75-76). U.S. Department of Commerce.
+Kelley, M. C. (2009). The Earth's Ionosphere: Plasma Physics and Electrodynamics (2nd ed.). Academic Press.
+Knepp, D. L. (1983). Multiple phase-screen calculation of the temporal behavior of stochastic waves. Proceedings of the IEEE, 71(6), 722-737.
+Pederick, L. H., & Cervera, M. A. (2014). Modeling the geomagnetic field effect on D-region HF absorption. Radio Science, 49(2), 81-93.
+Rino, C. L. (1979). A power law phase screen model for ionospheric scintillation: 1. Weak scatter. Radio Science, 14(6), 1135-1145.
+Skolnik, M. I. (Ed.). (2008). Radar Handbook (3rd ed.). McGraw-Hill.
+Whitehead, J. D. (1989). Recent work on mid-latitude and equatorial sporadic-E. Journal of Atmospheric and Terrestrial Physics, 51(5), 401-424.
+Yeh, K. C., & Liu, C. H. (1982). Radio wave scintillations in the ionosphere. Proceedings of the IEEE, 70(4), 324-360.
+Zalesak, S. T., & Ossakow, S. L. (1980). Nonlinear equatorial spread F: Spatially large bubbles resulting from large horizontal scale initial perturbations. Journal of Geophysical Research: Space Physics, 85(A5), 2131-2142.
+ Azzarone, A., Bianchi, C., Pezzopane, M., Pietrella, M., Scotto, C., & Settimi, A. (2012). IONORT: A Windows software tool to calculate the HF ray tracing in the ionosphere. Computers & Geosciences, 42, 57-63.

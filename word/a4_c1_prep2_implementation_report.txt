@@ -1,0 +1,36 @@
+A4-C1-Prep-2 PHaRLAP完整仰角扫描实施记录
+
+日期：2026-07-21
+状态：passed_pharlap_full_domain_scan
+语义：pharlap_full_domain_scan_not_ah3d_or_c1_external_validation
+
+一、完成内容
+
+1. 新增tests/_run_a4_c1_prep2.py并部署D:/Matlab/PHaRLAP/a4_c1_prep2_pharlap.m；读取Prep-1冻结输入及哈希，不在MATLAB中重建Chapman场。
+2. PHaRLAP raytrace_3d_sp在bearing=0 deg、elevation=1至89 deg执行0.5 deg完整粗扫，共177条；对ground/non-ground边界、目标邻近和落点映射折叠触发0.1 deg局部加密，共208条。
+3. 只在相邻ground样本的有符号沿程残差变号区间执行MATLAB fzero有界Brent-Dekker型求根；未跨penetrated、grid_exit或异常状态插值。
+4. 保存原始MAT、MATLAB JSON/日志、完整扫描CSV、根CSV、Python验收JSON和冻结清单，记录输入、Python、MATLAB脚本、PHaRLAP MEX及原始结果哈希；哈希漂移默认拒绝，仅显式--rebuild-frozen允许受控重建。
+5. 输出a4_c1_prep2_full_domain_scan.png，分别显示发射仰角-终端地面距离和发射仰角-apex映射，区分ground、penetrated、0.1 deg加密点、RX目标距离和两个有界根。
+
+二、边界扩展闭环
+
+1. 首次扫描在纬度44 deg边界出现28条grid_exit，按计划判定为域不足而非物理终止，未接受该结果。
+2. Prep-1 Ne网格纬度扩展为28:0.25:65 deg，零B网格同步扩展为28:0.5:65 deg；两套输入重新生成、预检和冻结。
+3. 扩展后完整记录状态为ground=286、penetrated=99、grid_exit=0、max_points=0、catastrophic_error=0、unknown=0；no_grid_exit_after_domain_expansion硬门通过。
+
+三、候选根与验收
+
+1. 较低仰角候选：elevation=21.94256452915794 deg，ground，沿程残差=0.000799426226 km，cross-track=-3.28e-12 km，apex=203.305462708 km，group path=1327.047723153 km，tau=4.426554731 ms。
+2. 较高仰角候选：elevation=39.54285222940713 deg，ground，沿程残差=0.004137492585 km，cross-track=5.52e-12 km，apex=302.551246984 km，group path=1637.472735655 km，tau=5.462021115 ms。
+3. 两根均来自ground-ground区间[21.9,22.0] deg与[39.5,39.6] deg，求根exitflag=1；沿程和cross-track残差均小于1 km。
+4. 完整粗扫、无灾难错误、无grid_exit、触发加密、ground-only区间、至少双根、原始输出和旧角度未使用等全部硬检查通过。
+5. 图像存在、有限像素、最小尺寸、非空白像素方差及raw/summary来源SHA-256全部通过，并纳入Prep-2状态判定和冻结清单。
+
+四、风险与语义边界
+
+1. 本结果仅是PHaRLAP单求解器前向落点映射及候选根，不是AH3D对照，也不是A4-C1外部物理验证通过。
+2. 两根暂按发射仰角和apex描述为较低/较高候选；Coleman极小值/鞍点及low_ray/high_ray分支签名需由Prep-4审计，不在Prep-2提前赋义。
+3. B=0、水平分层Chapman场只验证各向同性退化下的双根可见性，不能证明O/X、复杂三维扰动或散射模式完整性。
+4. 未新增参考文献；沿用word/reference-papers.txt中的Haselgrove、Coleman、Nosikov、Cervera与Harris文献链。
+
+下一步建议：进入Prep-3，使用同一冻结网格和1至89 deg角域执行AH3D独立扫描与ground-only求根；不得把PHaRLAP根直接作为AH3D根或跳过全域扫描。

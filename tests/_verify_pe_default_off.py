@@ -3,8 +3,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import config as cfg
 from utils import free_space_loss_dB, to_dBW
-from models.hybrid_model import HybridPropagationModel
-import models.hybrid_model as hybrid_model
+from legacy.models.hybrid_model import HybridPropagationModel
+import legacy.models.hybrid_model as hybrid_model
 
 
 def ok(label, cond):

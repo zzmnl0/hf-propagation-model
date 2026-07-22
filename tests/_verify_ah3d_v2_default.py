@@ -8,9 +8,9 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
-from models.point_to_point_ah_3d import _shoot_ah_3d
-from models.ray_tracer_3d import RefractiveIndex3D
-from models.ray_tracer_ah_3d import RefractiveIndexAH3D, trace_single_ray_ah_3d
+from legacy.models.point_to_point_ah_3d import _shoot_ah_3d
+from legacy.models.ray_tracer_3d import RefractiveIndex3D
+from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D, trace_single_ray_ah_3d
 
 
 def run():

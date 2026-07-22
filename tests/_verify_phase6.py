@@ -19,10 +19,10 @@ import numpy as np
 import config as cfg
 from config import BG_X, BG_Z, TX_POS, RX_POS, FREQ_MHZ, SCATTER
 from models.ionosphere_model import IonosphereModel
-from models.ray_tracer import RefractiveIndex, trace_single_ray
-from models.ray_tracer_3d import RefractiveIndex3D, trace_single_ray_3d
-from models.point_to_point_3d import find_all_rays_3d
-from models.point_to_point import find_all_rays_p2p
+from legacy.models.ray_tracer import RefractiveIndex, trace_single_ray
+from legacy.models.ray_tracer_3d import RefractiveIndex3D, trace_single_ray_3d
+from legacy.models.point_to_point_3d import find_all_rays_3d
+from legacy.models.point_to_point import find_all_rays_p2p
 from models.scatter_selector import scatter_phase_variance, select_scatter_method
 from models.scatter_born import born_sigma_v, born_scatter
 from models.scatter_rytov import rytov_full

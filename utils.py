@@ -125,6 +125,160 @@ def from_dBW(P_dBW: float) -> float:
 
 # ── Coordinate helpers ────────────────────────────────────────────────────────
 
+def _validated_earth_radius_km(earth_radius_km: float) -> float:
+    radius = float(earth_radius_km)
+    if not np.isfinite(radius) or radius <= 0.0:
+        raise ValueError("earth_radius_km must be finite and positive")
+    return radius
+
+
+def _normalized_longitude_deg(lon_deg):
+    return (np.asarray(lon_deg, dtype=float) + 180.0) % 360.0 - 180.0
+
+
+def geocentric_to_ecef(lat_deg, lon_deg, height_km,
+                       earth_radius_km: float) -> np.ndarray:
+    """Geocentric latitude/longitude/spherical height -> ECEF position [km]."""
+    radius0 = _validated_earth_radius_km(earth_radius_km)
+    lat, lon, height = np.broadcast_arrays(
+        np.asarray(lat_deg, dtype=float),
+        np.asarray(lon_deg, dtype=float),
+        np.asarray(height_km, dtype=float),
+    )
+    if not (np.all(np.isfinite(lat)) and np.all(np.isfinite(lon))
+            and np.all(np.isfinite(height))):
+        raise ValueError("latitude, longitude, and height must be finite")
+    if np.any((lat < -90.0) | (lat > 90.0)):
+        raise ValueError("geocentric latitude must be in [-90, 90] degrees")
+    radius = radius0 + height
+    if np.any(radius <= 0.0):
+        raise ValueError("height must remain above the Earth center")
+    lat_rad = np.radians(lat)
+    lon_rad = np.radians(_normalized_longitude_deg(lon))
+    cos_lat = np.cos(lat_rad)
+    return np.stack((
+        radius * cos_lat * np.cos(lon_rad),
+        radius * cos_lat * np.sin(lon_rad),
+        radius * np.sin(lat_rad),
+    ), axis=-1)
+
+
+def ecef_to_geocentric(ecef_km, earth_radius_km: float) -> np.ndarray:
+    """ECEF position [km] -> geocentric (latitude deg, longitude deg, height km)."""
+    radius0 = _validated_earth_radius_km(earth_radius_km)
+    points = np.asarray(ecef_km, dtype=float)
+    if points.ndim == 0 or points.shape[-1] != 3:
+        raise ValueError("ecef_km must have final dimension 3")
+    if not np.all(np.isfinite(points)):
+        raise ValueError("ecef_km must be finite")
+    radius = np.linalg.norm(points, axis=-1)
+    if np.any(radius <= 0.0):
+        raise ValueError("ECEF position cannot be the Earth center")
+    horizontal = np.hypot(points[..., 0], points[..., 1])
+    lat = np.degrees(np.arctan2(points[..., 2], horizontal))
+    lon = _normalized_longitude_deg(
+        np.degrees(np.arctan2(points[..., 1], points[..., 0])))
+    return np.stack((lat, lon, radius - radius0), axis=-1)
+
+
+def enu_basis(lat_deg: float, lon_deg: float,
+              earth_radius_km: float) -> np.ndarray:
+    """Return ECEF unit vectors as columns ordered East, North, Up."""
+    _validated_earth_radius_km(earth_radius_km)
+    lat = float(lat_deg)
+    lon = float(lon_deg)
+    if not np.isfinite(lat) or not -90.0 <= lat <= 90.0:
+        raise ValueError("geocentric latitude must be finite and in [-90, 90] degrees")
+    if not np.isfinite(lon):
+        raise ValueError("longitude must be finite")
+    lat, lon = np.radians([lat, float(_normalized_longitude_deg(lon))])
+    east = np.array([-np.sin(lon), np.cos(lon), 0.0])
+    north = np.array([-np.sin(lat) * np.cos(lon),
+                      -np.sin(lat) * np.sin(lon), np.cos(lat)])
+    up = np.array([np.cos(lat) * np.cos(lon),
+                   np.cos(lat) * np.sin(lon), np.sin(lat)])
+    return np.column_stack((east, north, up))
+
+
+def launch_direction_ecef(lat_deg: float, lon_deg: float,
+                          elevation_deg: float, bearing_deg: float,
+                          earth_radius_km: float) -> np.ndarray:
+    """Unit ECEF launch direction; bearing is clockwise from geocentric North."""
+    elevation = float(elevation_deg)
+    bearing = float(bearing_deg)
+    if not np.isfinite(elevation) or not -90.0 <= elevation <= 90.0:
+        raise ValueError("elevation_deg must be finite and in [-90, 90]")
+    if not np.isfinite(bearing):
+        raise ValueError("bearing_deg must be finite")
+    elevation = np.radians(elevation)
+    bearing = np.radians(bearing % 360.0)
+    local = np.array([
+        np.cos(elevation) * np.sin(bearing),
+        np.cos(elevation) * np.cos(bearing),
+        np.sin(elevation),
+    ])
+    direction = enu_basis(lat_deg, lon_deg, earth_radius_km) @ local
+    return direction / np.linalg.norm(direction)
+
+
+def elevation_bearing_from_ecef(direction_ecef, lat_deg: float, lon_deg: float,
+                                earth_radius_km: float) -> tuple[float, float]:
+    """Recover elevation and clockwise-from-North bearing from an ECEF direction."""
+    direction = np.asarray(direction_ecef, dtype=float)
+    if direction.shape != (3,) or not np.all(np.isfinite(direction)):
+        raise ValueError("direction_ecef must be a finite length-3 vector")
+    norm = float(np.linalg.norm(direction))
+    if norm <= 0.0:
+        raise ValueError("direction_ecef must be nonzero")
+    east, north, up = (direction / norm) @ enu_basis(
+        lat_deg, lon_deg, earth_radius_km)
+    elevation = np.degrees(np.arctan2(up, np.hypot(east, north)))
+    bearing = np.degrees(np.arctan2(east, north)) % 360.0
+    return float(elevation), float(bearing)
+
+
+def spherical_destination(lat_deg: float, lon_deg: float, bearing_deg: float,
+                          surface_distance_km: float,
+                          earth_radius_km: float) -> tuple[float, float]:
+    """Endpoint at signed great-circle distance; longitude is in [-180, 180)."""
+    radius = _validated_earth_radius_km(earth_radius_km)
+    lat = float(lat_deg)
+    lon = float(lon_deg)
+    bearing = float(bearing_deg)
+    distance = float(surface_distance_km)
+    if not np.isfinite(lat) or not -90.0 <= lat <= 90.0:
+        raise ValueError("geocentric latitude must be finite and in [-90, 90] degrees")
+    if not (np.isfinite(lon) and np.isfinite(bearing) and np.isfinite(distance)):
+        raise ValueError("longitude, bearing, and surface distance must be finite")
+    angular_distance = distance / radius
+    lat1 = np.radians(lat)
+    lon1 = np.radians(float(_normalized_longitude_deg(lon)))
+    bearing = np.radians(bearing % 360.0)
+    lat2 = np.arcsin(np.clip(
+        np.sin(lat1) * np.cos(angular_distance)
+        + np.cos(lat1) * np.sin(angular_distance) * np.cos(bearing),
+        -1.0, 1.0,
+    ))
+    lon2 = lon1 + np.arctan2(
+        np.sin(bearing) * np.sin(angular_distance) * np.cos(lat1),
+        np.cos(angular_distance) - np.sin(lat1) * np.sin(lat2),
+    )
+    return float(np.degrees(lat2)), float(_normalized_longitude_deg(np.degrees(lon2)))
+
+
+def rx_enu_residual(terminal_ecef_km, rx_lat_deg: float, rx_lon_deg: float,
+                    rx_height_km: float, earth_radius_km: float) -> np.ndarray:
+    """Terminal minus RX residual [East, North] in the RX tangent plane [km]."""
+    terminal = np.asarray(terminal_ecef_km, dtype=float)
+    if terminal.shape != (3,) or not np.all(np.isfinite(terminal)):
+        raise ValueError("terminal_ecef_km must be a finite length-3 vector")
+    receiver = geocentric_to_ecef(
+        rx_lat_deg, rx_lon_deg, rx_height_km, earth_radius_km)
+    residual_enu = (terminal - receiver) @ enu_basis(
+        rx_lat_deg, rx_lon_deg, earth_radius_km)
+    return residual_enu[:2]
+
+
 def destination_point(lat1_deg: float, lon1_deg: float,
                       bearing_deg: float, dist_km: float
                       ) -> tuple[float, float]:
@@ -134,15 +288,7 @@ def destination_point(lat1_deg: float, lon1_deg: float,
     Returns (lat2_deg, lon2_deg).
     """
     from config import RE_KM
-    d     = dist_km / RE_KM                        # angular distance [rad]
-    b     = np.radians(bearing_deg)
-    lat1  = np.radians(lat1_deg)
-    lon1  = np.radians(lon1_deg)
-    lat2  = np.arcsin(np.sin(lat1) * np.cos(d)
-                      + np.cos(lat1) * np.sin(d) * np.cos(b))
-    lon2  = lon1 + np.arctan2(np.sin(b) * np.sin(d) * np.cos(lat1),
-                               np.cos(d) - np.sin(lat1) * np.sin(lat2))
-    return float(np.degrees(lat2)), float(np.degrees(lon2))
+    return spherical_destination(lat1_deg, lon1_deg, bearing_deg, dist_km, RE_KM)
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

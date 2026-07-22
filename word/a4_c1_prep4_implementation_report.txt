@@ -1,0 +1,42 @@
+A4-C1 Prep-4 分支识别与联合去重实施报告
+
+日期：2026-07-22
+状态：passed_branch_identification_and_joint_dedup
+语义：拓扑一致的low_ray/high_ray识别；不是直接变分Hessian验证，不是A4-C1跨求解器误差验收
+
+一、实施内容
+
+1. 只读取Prep-2/Prep-3冻结报告、扫描表和根轨迹，不重新运行PHaRLAP或AH3D，不修改生产传播方程。
+2. 对每个根检查termination=ground、单转向、ground-ground残差变号区间、根位于有界区间内及局部落点映射非退化。
+3. 两端分别按较低发射仰角且较低apex的连续分支标记low_ray，按较高发射仰角且较高apex的连续分支标记high_ray。
+4. 去重复用models/point_to_point_ah_3d_ecef.py的联合签名语义与阈值：状态/分支、转向点、发射角0.02 deg、ECEF轨迹RMS 1 km、apex 1 km、群时延0.05 ms。
+
+二、结果
+
+1. PHaRLAP：candidate=2、unique=2；低/高根之间ECEF轨迹RMS=82.499506 km，不是重复根。
+2. AH3D：candidate=2、unique=2；低/高根之间ECEF轨迹RMS=82.668016 km，不是重复根。
+3. low_ray配对：PHaRLAP/AH3D仰角21.9425645292/21.9475659250 deg，轨迹RMS=0.080771 km，apex差=0.128505 km，群时延差=0.000038 ms。
+4. high_ray配对：PHaRLAP/AH3D仰角39.5428522294/39.5793636326 deg，轨迹RMS=0.099788 km，apex差=0.051288 km，群时延差=0.003105 ms。
+5. 同标签配对轨迹RMS代价和=0.180559 km，交叉配对=165.167532 km；分支对应关系无歧义。上述差值只用于身份诊断，不作为A4-C1通过结论。
+6. 四条求解器专属根全部保留，额外有效根清单为空；未跨求解器合并、平均或删除根。
+
+三、理论语义
+
+结果符合Coleman（2011）和Nosikov等（2017、2020）关于多分支与高/低射线系统识别的理论背景。当前low_ray/high_ray命名依据独立全域映射的连续分支、发射角和apex拓扑；未计算光程泛函二阶变分或Hessian，因此不能声称直接证明高射线为极小值、低射线为鞍点。
+
+四、产物
+
+目录：output2/a4_pharlap/c1_prep/prep4/
+- a4_c1_prep4_branch_signatures.csv
+- a4_c1_prep4_branch_matching.csv
+- a4_c1_prep4_branch_trajectories.npz
+- a4_c1_prep4_branch_identification.png
+- a4_c1_prep4_validation.json
+- a4_c1_prep4_freeze_manifest.json
+
+五、风险与下一步
+
+1. Prep-4没有执行1 km相对2 km网格收敛，分支标签和签名仍需Prep-5复核后才能成为最终冻结根。
+2. 当前仅验证B=0水平Chapman双根拓扑，不能外推为磁场O/X、复杂三维扰动、散射或全波模式完整性。
+3. 当前跨求解器差值看似较小，但正式A4-C1必须在Prep-6准入后按预定全部阈值独立判定，不得用本阶段结果提前宣称外部验证通过。
+4. 建议进入Prep-5：使用1 km冻结高度网格分别复核双方low/high根，检查仰角、apex和群时延收敛门，并冻结完整分支签名与恢复哈希。

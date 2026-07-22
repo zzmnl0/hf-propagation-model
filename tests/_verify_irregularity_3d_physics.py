@@ -12,8 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
 from models.irregularity_detector import diagnose_irregularity_field
-from models.ne_provider import ExternalNeProvider3D, GridNeProvider, ParameterizedIonosphere3DProvider
-from models.parameterized_ionosphere_3d import ParameterizedIonosphere3DFactory
+from legacy.models.ne_provider import ExternalNeProvider3D, GridNeProvider, ParameterizedIonosphere3DProvider
+from legacy.models.parameterized_ionosphere_3d import ParameterizedIonosphere3DFactory
 
 
 def _ok(label, cond):

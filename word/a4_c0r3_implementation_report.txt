@@ -1,0 +1,42 @@
+A4-C0R-3 ECEF AH Hamiltonian与积分实施记录
+日期：2026-07-20
+状态：passed
+
+一、范围与语义
+
+1. 本阶段只实现球形地球下严格ECEF Appleton-Hartree Hamiltonian、空间导数、色散约束投影、群速度和固定物理路径积分核心。
+2. 正式状态为[r_x,r_y,r_z,k_x,k_y,k_z,t_group]，r为ECEF km，k为同一ECEF基底km^-1，t_group为s。Hamiltonian为D=|k|^2-(omega/c)^2*n_AH^2，无(1+h/R)^2展平因子。
+3. C0R-3不处理地面、上边界、grid_exit、turning/apex等事件；这些属于C0R-4。P2P、Ray-PE、main.py、main2.py和unified pipeline迁移属于C0R-5/C0R-6。
+4. 旧models/ray_tracer_ah_3d.py和models/ray_tracer_ah_3d_v2.py仍供未迁移调用者使用，但已明确标记legacy_coordinate_reference_only，不属于新正式ECEF路径。
+
+二、实现
+
+1. 新增models/ray_tracer_ah_3d_ecef.py。RefractiveIndexAH3DECEF只接受GeocentricNeProvider3D、显式球半径、频率、O/X分支、ECEF磁场方向和回旋频率；Provider类型、坐标契约和球半径冲突直接拒绝。
+2. AH根沿用无碰撞冷等离子体Appleton-Hartree色散。碰撞频率在本阶段必须为0；复碰撞吸收继续属于独立路径积分，禁止用于构造复坐标射线。
+3. 空间D梯度沿ECEF三轴分别采用0.5/1/2倍基础步长中心差分，以三尺度离散度判定稳定平台。非有限Ne/色散、Provider跨域或无稳定平台均抛出明确错误，不回退单尺度结果。
+4. 波矢和频率偏导沿用色散面导数，群速度严格按v_g=-D_k/D_omega计算。Hamilton方程按|D_k|归一到物理ECEF几何弧长，dt_group/ds=1/|v_g|。
+5. DOP853保留自适应rtol/atol/max_step；每个接受步后沿D_k作最小k空间修正并验证D=0，不按无诊断方式重标|k|。
+6. C0R-3内部k0与色散、群速度统一采用c=299792.458 km/s。原utils.freq_to_k0使用的项目近似光速未进入本正式核心，避免真空D残差和群速出现约2.5e-5系统偏差。
+7. 固定路径输出仅使用trajectory_ecef_km、wavevector_ecef_km^-1、trajectory_geocentric_lat_lon_height和trajectory_geom_path_km等显式字段，并记录Provider、坐标映射和源码哈希；不提供trajectory_3d兼容别名。
+
+三、验收结果
+
+1. tests/_verify_a4_c0r3_ecef_hamiltonian.py共20项检查，结果0 fail(s)。
+2. 真空O/X的|n^2-1|均为0；B=0时O/X n^2差为0。
+3. 真空群速度相对c误差0；250 km固定路径解析直线最大误差2.2882424e-11 km。
+4. 真空group path与physical geom path相对差2.2737368e-16，最大归一Hamiltonian残差1.6564252e-16，均满足C0R硬门槛。
+5. Chapman geocentric/ECEF同点Ne差为0；ECEF Hamiltonian梯度有限，0.25/0.5/1.0 km三尺度相对离散度1.0029520e-5。
+6. 人工扰动波矢的归一残差由6.7429091e-2降至3.2946297e-13，D=0投影通过。
+7. 严格Provider类型、球半径冲突、无稳定多尺度平台、Provider跨域和含糊trajectory_3d输出禁止项全部通过。
+8. C0R-1和C0R-2回归均为0 fail(s)；原A1色散回归为0 fail(s)。机器结果见output2/a4_pharlap/c0r3_ecef_hamiltonian_validation.json。
+
+四、理论与引用
+
+本阶段依据Haselgrove三维Hamilton射线理论、Jones-Stephenson三维电离层射线程序及Budden磁离子色散理论。完整引用已存在word/reference-papers.txt，本阶段未新增未经核验文献，也未重复写入引用文件。
+
+五、风险、未完成项与下一步
+
+1. 新ECEF核心当前按给定物理路径长度终止，尚不能产生正式ground、upper_boundary、grid_exit、turning或apex语义；因此不得用于落点、反射高度或P2P验收。
+2. 固定磁场必须以ECEF向量显式输入；位置相关IGRF及PHaRLAP磁场分量语义仍按A4-C2-Prep处理。
+3. 旧V2默认回归中的p2p_formal_recheck在当前工作树仍失败，其余五项通过。本次仅修改旧模块说明，未改旧V2/P2P数值逻辑；该问题不作为C0R-3 Hamiltonian核心门槛，但必须保留到C0R-5迁移和P2P新坐标复验，不能声称旧P2P已回归通过。
+4. 建议进入C0R-4，按|r|-R实现球面地面/上边界事件、Provider grid_exit、径向群速度转向及dense-output apex定位。C0R-4通过前，不进入C0R-5下游迁移或A4-C1。

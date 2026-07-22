@@ -16,6 +16,7 @@ import numpy as np
 
 from config import GEOMAG, K_FP, LINK_BEARING_DEG
 from utils import freq_to_k0
+from .dispersion_ah import C_KM_S
 
 
 def _b_hat_from_geomag(geomag: dict | None = None) -> np.ndarray:
@@ -63,6 +64,7 @@ def complex_refractive_index_ah(
     k_hat,
     wave_mode: str = "O",
     geomag: dict | None = None,
+    b_hat=None,
 ) -> complex:
     """Collisional Appleton-Hartree complex phase index."""
     f_hz = float(freq_MHz) * 1e6
@@ -77,7 +79,9 @@ def complex_refractive_index_ah(
     else:
         kh = np.asarray(k_hat, dtype=float)
         kh = kh / max(float(np.linalg.norm(kh)), 1e-30)
-        bh = _b_hat_from_geomag(g)
+        bh = (_b_hat_from_geomag(g) if b_hat is None
+              else np.asarray(b_hat, dtype=float))
+        bh = bh / max(float(np.linalg.norm(bh)), 1e-30)
         cos_alpha = float(np.clip(np.dot(kh, bh), -1.0, 1.0))
         sin_alpha_sq = max(1.0 - cos_alpha * cos_alpha, 0.0)
         YL = Y * cos_alpha
@@ -159,4 +163,57 @@ def complex_absorption_path_dB(
         "abs_status": "ok",
         "collision_model": model,
         "abs_index_model": "appleton_hartree_collision",
+    }
+
+
+def complex_absorption_ecef_ray_dB(
+    ray: dict,
+    provider,
+    params: dict | None = None,
+    two_way: bool = False,
+    t: float = 0.0,
+) -> dict:
+    """Integrate AH collisional absorption on an explicit spherical-ECEF ray."""
+    points = np.asarray(ray.get("trajectory_ecef_km", []), dtype=float)
+    if points.ndim != 2 or points.shape[0] < 2 or points.shape[1] != 3:
+        raise ValueError("ray must contain trajectory_ecef_km with shape (N,3)")
+    radius = float(ray["earth_radius_km"])
+    if not hasattr(provider, "get_Ne_ecef"):
+        raise TypeError("provider must implement get_Ne_ecef")
+    p = params or {}
+    frequency = float(ray.get("frequency_MHz", ray.get("freq_MHz", 0.0)))
+    if frequency <= 0.0:
+        raise ValueError("ray must record a positive frequency_MHz")
+    branch = str(ray.get("branch_id", ray.get("wave_mode", "O"))).upper()
+    b_ecef = np.asarray(ray.get("b_ecef_hat", []), dtype=float)
+    if b_ecef.shape != (3,) or not np.all(np.isfinite(b_ecef)):
+        raise ValueError("ray must record finite b_ecef_hat")
+    geomag = {"fH_MHz": float(ray.get("gyrofrequency_MHz", 0.0))}
+    k0_m = (2.0 * np.pi * frequency * 1.0e6 / C_KM_S) / 1000.0
+    one_way = 0.0
+    for start, end in zip(points[:-1], points[1:]):
+        segment = end - start
+        ds_m = float(np.linalg.norm(segment)) * 1000.0
+        if ds_m <= 0.0:
+            continue
+        midpoint = 0.5 * (start + end)
+        height = float(np.linalg.norm(midpoint) - radius)
+        Ne = max(float(provider.get_Ne_ecef(midpoint, radius, t=t)), 0.0)
+        collision = collision_frequency_s(height, p)
+        if collision <= 0.0 or Ne <= 0.0:
+            continue
+        index = complex_refractive_index_ah(
+            frequency, Ne, collision, segment, wave_mode=branch,
+            geomag=geomag, b_hat=b_ecef)
+        one_way += 8.686 * 2.0 * k0_m * max(float(index.imag), 0.0) * ds_m
+    one_way = float(max(one_way, 0.0))
+    return {
+        "abs_complex_dB": one_way,
+        "abs_total_dB": one_way * (2.0 if two_way else 1.0),
+        "abs_status": "ok",
+        "collision_model": p.get("collision_model", "d_region_exponential"),
+        "abs_index_model": "appleton_hartree_collision",
+        "abs_path_coordinate_model": "spherical_ECEF_physical_height",
+        "abs_path_semantics": "one_way_path_integral_two_way_optional_multiplier",
+        "branch_id": branch,
     }

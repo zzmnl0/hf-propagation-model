@@ -10,8 +10,8 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
-from models.ne_provider import GridNeProvider, GridNeProvider3D, ParameterizedIonosphere3DProvider
-from models.ray_tracer_3d import RefractiveIndex3D
+from legacy.models.ne_provider import GridNeProvider, GridNeProvider3D, ParameterizedIonosphere3DProvider
+from legacy.models.ray_tracer_3d import RefractiveIndex3D
 
 
 def _field():

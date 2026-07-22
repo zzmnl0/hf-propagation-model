@@ -1,0 +1,43 @@
+P3 反射-散射耦合与P-D谱物理闭环实施说明
+生成日期：2026-07-10
+
+一、实施范围
+
+P3在P2 AH3D反射主链之后，建立散射求解器语义、局部边界场、路径相关MPS统计核、P-D核来源标记和能量闭环字段。当前local_2p5d PE/SSF仍为reference_only，不宣称完整三维PE或全波解。FARR/FDTD仅定义adapter数据结构，不直接执行外部全波代码。
+
+二、理论依据
+
+1. 弱散射与相位统计采用Rino幂律相位屏模型，参数包括相对电子密度起伏Cs_rel、谱指数p、外尺度L_outer_km、散射层厚度DeltaL_km。
+2. 中强散射的统计传播采用Knepp多相位屏思想，沿主射线路径生成多屏相位扰动并输出S4、sigma_phi、sigma_tau和delay kernel。
+3. 强折射、caustic、尺度接近波长或MPS适用性不足时，只标记MPS/FDTD required，不套用Born/Rytov弱散射公式。
+4. FDTD/FARR接口以Yee网格全波思想为参考，当前仅记录fdtd_domain、boundary_field、receiver_surface、field_to_pd。
+
+三、参数语义
+
+1. local_2p5d_pe：局部2.5D PE/SSF参考解，字段必须包含solver_dimensionality='local_2p5d'和validity='reference_only'。
+2. path_mps_statistical：路径相关多相屏统计核，字段包含seed、N_screen、n_pts、dx_m、sigma_phi_rad、S4、sigma_tau_ms、kernel_normalization。
+3. scatter功率闭环字段包括Pr_before_scatter、Pr_after_scatter、scatter_loss_dB、energy_conservation_error、kernel_normalization。
+4. 默认不开启散射改变P-D或功率。只有SCATTER_PD.apply_to_pd=True或PE_COUPLING.apply_to_power=True时才应用对应影响。
+5. P-D核必须记录pd_kernel_source。MPS_required无实际MPS核时使用delta保持功率，不用经验Gaussian冒充物理散射。
+
+四、参考文献
+
+Rino, C. L. (1979). A power law phase screen model for ionospheric scintillation. 1. Weak scatter. Radio Science, 14(6), 1135-1145.
+
+Rino, C. L. (1979). A power law phase screen model for ionospheric scintillation. 2. Strong scatter. Radio Science, 14(6), 1147-1155.
+
+Knepp, D. L. (1983). Multiple phase-screen calculation of the temporal behavior of stochastic waves. Proceedings of the IEEE, 71(6), 722-737.
+
+Yee, K. S. (1966). Numerical solution of initial boundary value problems involving Maxwell's equations in isotropic media. IEEE Transactions on Antennas and Propagation, 14(3), 302-307.
+
+Lehtinen, N. G., & Inan, U. S. (2008). Radiation of ELF/VLF waves by harmonically varying currents into a stratified ionosphere with application to radiation by a modulated electrojet. Journal of Geophysical Research: Space Physics, 113, A06301.
+
+FARR本地资料：D:\0文件\0文献\电离层短波传播\FARR 复杂电离层波传播的开源 FDTD 混合全波模拟器.pdf；reference-code\farr-Release.zip。
+
+五、未完成项
+
+1. 当前MPS核为路径相关统计核，不是完整3D全波散射场。
+2. FDTD/FARR仅完成接口描述，尚未进行外部代码耦合、边界场注入和field_to_pd验证。
+3. local_2p5d PE仍不能代表完整三维PE/全波。
+4. 绝对功率、天线、海况和接收机处理链留给P4。
+5. AH3D P2P性能优化和外部benchmark仍留给P5。

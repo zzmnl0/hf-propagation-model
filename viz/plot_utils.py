@@ -53,6 +53,19 @@ def build_ray_info_text(link_info: dict,
             link_info.get('IRI_LAT', 0.0),
             link_info.get('IRI_LON', 0.0)),
     ]
+    if link_info.get('coordinate_model'):
+        lines.extend([
+            "Coordinates",
+            "  earth={} R={:.1f} km".format(
+                link_info.get('earth_model', 'sphere'),
+                float(link_info.get('earth_radius_km', 0.0))),
+            "  {}".format(link_info.get('coordinate_model')),
+            "  {} | AH3D={} | Ray-PE={} | scatter={}".format(
+                link_info.get('oneway_or_twoway', 'one_way'),
+                link_info.get('reflection_coupling', 'on'),
+                link_info.get('ray_pe_coupling', 'off'),
+                link_info.get('scatter_coupling', 'diagnostic_only')),
+        ])
     if ne_line:
         lines.append(ne_line)
 
@@ -116,6 +129,8 @@ def save_modes_csv(scenario: str,
     fields = [
         'scenario', 'label', 'freq_MHz',
         'provider_name', 'provider_components', 'solver_chain',
+        'earth_model', 'earth_radius_km', 'coordinate_model',
+        'coordinate_semantics', 'state_semantics', 'plot_coordinate_semantics',
         'feature_gates', 'pd_kernel', 'observable_type',
         'delay_key', 'oneway_or_twoway', 'ray_pe_dimensionality',
         'scatter_status', 'calibration_status',
@@ -169,7 +184,8 @@ def save_modes_csv(scenario: str,
             pd_delay = float(m.get(pd_delay_key, m.get('tau_ms', 0.0)))
             row['pd_delay_key'] = pd_delay_key
             row['pd_delay_ms'] = pd_delay
-            row['pd_power_W']  = float(np.interp(pd_delay, tau_axis, pd_W))
+            row['pd_power_W'] = (float(np.interp(pd_delay, tau_axis, pd_W))
+                                 if len(tau_axis) and len(pd_W) else '')
             if row.get('az_deflect_deg', '') == '' and 'azimuth_deflect_deg' in m:
                 row['az_deflect_deg'] = m.get('azimuth_deflect_deg', '')
             tau2 = m.get('tau_2way_ms')
@@ -235,8 +251,11 @@ def plot_ray_fan(rays: list,
     styles = {'O': ('crimson', '-'), 'X': ('deepskyblue', '--'),
               'iso': ('crimson', '-')}
     for r in rays:
-        xs = [s[0] for s in r['trajectory']]
-        zs = [s[1] for s in r['trajectory']]
+        if 'trajectory_geocentric_lat_lon_height' in r:
+            xs, zs = _mode_xz(r)
+        else:
+            xs = [s[0] for s in r['trajectory']]
+            zs = [s[1] for s in r['trajectory']]
         branch = str(r.get('wave_mode', 'iso'))
         color, linestyle = styles.get(branch, ('crimson', '-'))
         label = '{} ray fan'.format(branch) if branch not in seen_branches else None
@@ -286,10 +305,21 @@ def plot_tx_ray_fan(rays: list,
 
 
 def _mode_xz(mode: dict):
-    if 'trajectory_3d' in mode:
-        xs = [float(s[0]) for s in mode['trajectory_3d']]
-        zs = [float(s[2]) for s in mode['trajectory_3d']]
-        return xs, zs
+    if 'trajectory_geocentric_lat_lon_height' in mode:
+        points = np.asarray(
+            mode['trajectory_geocentric_lat_lon_height'], dtype=float)
+        if points.ndim == 2 and points.shape[0] >= 1 and points.shape[1] == 3:
+            lat = np.radians(points[:, 0])
+            lon = np.radians(points[:, 1])
+            unit = np.column_stack((
+                np.cos(lat) * np.cos(lon),
+                np.cos(lat) * np.sin(lon),
+                np.sin(lat)))
+            angles = np.arccos(np.clip(
+                np.sum(unit[1:] * unit[:-1], axis=1), -1.0, 1.0))
+            ground = np.r_[0.0, np.cumsum(
+                float(mode['earth_radius_km']) * angles)]
+            return ground.tolist(), points[:, 2].tolist()
     if 'points' in mode:
         pts = np.asarray(mode['points'], dtype=float)
         if pts.ndim == 2 and pts.shape[1] >= 2:

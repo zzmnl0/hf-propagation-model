@@ -1,0 +1,217 @@
+A4-C0R PHaRLAP一致坐标统一与AH3D路径语义修复实施方案
+生成日期：2026-07-20
+修订日期：2026-07-20
+状态：C0R-0至C0R-8已完成；状态passed_pharlap_coordinate_contract_closed，A4-C1-Prep待实施
+上位计划：a4_pharlap_external_validation_implementation_plan.txt、ah3d_full3d_wave_upgrade_plan.txt
+
+一、已确认总决策
+
+1. 后续研究统一采用与PHaRLAP raytrace_3d_sp一致的球形地球坐标输入，不再使用原local Cartesian/earth-flattening坐标定义作为运行入口。
+2. 用户输入和电子密度网格采用geocentric latitude、longitude、height above spherical Earth；AH3D内部状态采用等价的地心ECEF Cartesian坐标积分。
+3. 发射输入采用TX latitude/longitude/height、elevation above local horizontal和bearing clockwise from geographic north；P2P目标采用RX latitude/longitude/height。
+4. 原legacy_parabolic只保留在历史结果、报告和不可变原始产物中；完成迁移后删除生产运行分支，不提供旧link-local输入/输出兼容适配器。
+5. main.py、main2.py、P2P、Provider、Ray-PE、吸收、绘图、模式去重和unified pipeline均迁移到新坐标契约后，才允许切换正式入口。
+6. A4-C0历史机器结果保留，但不再具有A4准入意义；C0R通过前继续阻断C1/C2。
+
+二、语义边界
+
+1. “与PHaRLAP一致”指地球模型、纬经高坐标、发射角、方位、网格轴顺序和物理位置一致，不表示复制PHaRLAP代码或修改其MEX内部实现。
+2. 项目内部Ne继续使用m^-3；导出PHaRLAP时显式转换为electrons/cm^3。坐标统一不等于取消必要的单位转换。
+3. 参数化TID、Spread-F、Es和bubble可使用由球面位置推导的沿链路/横链路距离计算扰动，但这些距离只能是模型内部派生量，不能继续作为射线全局输入坐标或无标签输出。
+4. 绘图可显示ground range、cross range和height，但必须由geocentric/ECEF轨迹派生并标记plot_coordinate_semantics。
+5. C0R验证坐标、Hamiltonian、事件和路径度量；不验证完整三维全波、散射功率或绝对功率。
+
+三、问题证据与理论依据
+
+1. 当前AH3D真空轨迹相对PHaRLAP前250 km RMS误差1.777204918766 km，最大误差3.943963842048 km；group_path与局部geom_path相对差4.014963155488%。
+2. 关闭现有earth-flattening并按精确TX切平面嵌入ECEF后，最大轨迹误差降至2.0481e-10 km，路径相对差降至2.5157404e-5。
+3. 根因是抛物高度、(1+h/R)^2有效折射率、z_cart事件、展平Euclidean路径和物理输出语义混用，不是DOP853或真空Appleton-Hartree退化精度不足。
+4. Haselgrove和Jones-Stephenson三维Hamiltonian理论要求位置、波矢、介质梯度、事件和路径度量位于同一坐标系统。
+5. PHaRLAP raytrace_3d_sp采用用户指定半径的球形地球；A4固定R=6371000 m。AU-Ray亦采用地心Cartesian射线状态并与球形电离层网格转换。
+6. A3Rnew-P3和P5new保留为原坐标下的内部有限证据，不再作为新坐标生产基线；迁移后相关检查必须重跑。
+7. 理论引用沿用word/reference-papers.txt中的Haselgrove（1955）、Haselgrove与Haselgrove（1960）、Jones与Stephenson（1975）、Budden（1985）、Cervera与Harris（2014）及Hirvonen等（2025）。
+
+四、统一坐标与单位契约
+
+4.1 外部输入
+
+1. TX/RX位置字段：lat_deg、lon_deg、height_km；纬度为地心纬度，经度向东为正，高度相对半径R的球面地表。
+2. 发射字段：elevation_deg和bearing_deg；bearing从地理北顺时针，范围按[0,360)归一。
+3. 电离层网格：latitude_deg、longitude_deg、height_km，轴顺序固定为(latitude, longitude, height)，Ne单位m^-3。
+4. 地球半径必须显式记录；缺失坐标系、轴顺序、单位或R的外部Ne输入直接拒绝，不按数值范围猜测。
+5. 经度采用周期语义；跨日期变更线时必须归一并使用周期差。C0R不宣称完成极区高精度验证。
+
+4.2 AH3D内部状态
+
+1. 状态为[r_x,r_y,r_z,k_x,k_y,k_z,t_group]；r为ECEF km，k为同一基底km^-1，t_group为s。
+2. h=|r|-R；lat=atan2(r_z,sqrt(r_x^2+r_y^2))；lon=atan2(r_y,r_x)。
+3. Hamiltonian为D=|k|^2-k0^2*n_AH^2，禁止乘原(1+h/R)^2展平因子。
+4. geom_path_km为ECEF物理曲线长度；group_path_km=c*t_group；tau_ms=1000*t_group。
+5. 正式轨迹字段为trajectory_ecef_km和trajectory_geocentric_lat_lon_height；删除无坐标标签的trajectory_3d生产语义。
+
+4.3 局部派生坐标
+
+1. TX的East/North/Up基底由TX地心纬经度唯一计算。
+2. P2P落点误差在RX ENU切平面计算East/North残差。
+3. Ray-PE局部up取轨迹点径向r_hat，传播切向由群速度确定；不得继续使用固定global z_hat。
+4. 链路沿/横向距离、图像ground range及扰动相位坐标均由球面/ECEF位置派生，字段名必须表明derived语义。
+
+五、实施步骤
+
+C0R-0 历史冻结与迁移清单
+
+1. 保存现有C0输入、PHaRLAP MAT、AH3D JSON、图像、报告和哈希，不覆盖。
+2. 将原P3/P5、Coleman/P0C根和main/main2图像标记legacy_coordinate_reference_only。
+3. 固定所有生产调用者清单；迁移期间禁止部分调用者静默读取新轨迹、部分调用者继续解释trajectory_3d。
+4. 完成状态（2026-07-20）：passed_legacy_coordinate_artifacts_frozen。冻结14项C0证据、25项旧坐标参考产物，登记16个生产调用文件；机器清单见output2/a4_pharlap/c0r0_freeze/c0r0_freeze_manifest.json，验收记录见word/a4_c0r0_implementation_report.txt。
+5. C0R-0只冻结历史证据和迁移边界，未修改射线方程、坐标计算、Provider或生产入口；C0R-1至C0R-8完成前继续禁止切换正式入口。
+
+C0R-1 最小球面/ECEF几何内核
+
+1. 复用现有C0脚本中已核验公式，建立单一共享实现：geocentric<->ECEF、ENU基底、bearing/elevation方向、球面终点和RX ENU残差。
+2. 所有函数接受显式R并校验finite、单位和角度范围；不建立未使用的通用坐标框架。
+3. 检查坐标往返、ENU正交/右手性、发射角恢复、经度周期和已知大圆终点。
+4. 完成状态（2026-07-20）：passed。共享实现位于utils.py；新增球面地心纬经高与ECEF双向转换、ENU基底、发射方向及反变换、球面终点和RX ENU残差。原destination_point保留为迁移期旧调用包装器，但已委托给显式R共享内核，不再保留第二套球面终点公式。
+5. 验收结果：坐标往返最大位置误差1.28622e-12 km，ENU正交误差2.22045e-16且最小行列式1.0，仰角恢复误差5.32907e-15 deg、方位恢复误差0，已知球面终点误差3.90111e-13 km，经度周期位置误差0，RX ENU残差误差2.44693e-13 km；全部满足硬门槛。
+6. 机器报告见output2/a4_pharlap/c0r1_geometry_validation.json，实施记录见word/a4_c0r1_implementation_report.txt。该通过只证明球面/ECEF几何内核，不证明Provider、AH3D、P2P、PHaRLAP轨迹或传播物理通过。
+
+C0R-2 Provider输入统一
+
+1. NeProvider正式查询接口改为geocentric lat/lon/height或ECEF物理位置，不再接受无标签local x/y/z。
+2. 外部3D Ne按PHaRLAP轴顺序读取；插值边界、经度周期、单位转换和网格哈希必须显式记录。
+3. 参数化场从球面位置派生链路局部距离后计算现有扰动方程，先验证派生坐标，再验证Ne值和梯度。
+4. 真空Provider、Chapman Provider和当前参数化Provider分别留一个最小可运行检查；禁止为统一接口重写扰动物理方程。
+5. 完成状态（2026-07-20）：passed。正式接口位于models/ne_provider_geocentric.py，仅公开get_Ne_geocentric和get_Ne_ecef；旧models/ne_provider.py全部明确标记legacy_coordinate_reference_only，迁移完成前不删除，但不得用于C0R生产入口。
+6. 外部NPZ硬契约要求Ne、latitude_deg、longitude_deg、height_km、units、coordinate_system、axis_order、earth_radius_km和longitude_periodic_complete；轴顺序固定latitude,longitude,height，区域/完整周期经度网格显式区分，缺失或冲突直接拒绝，不推断x/y/z、单位、覆盖类型或球半径。
+7. 参数化Provider采用球面方位等距派生along-link/cross-link/physical-height，再原样调用现有TID、bubble、Spread-F和Es组件；与相同局部坐标下旧组件方程的Ne相对差为0。沿链路/横链路派生误差分别2.10942e-13/7.31859e-13 km。
+8. 真空、Chapman、网格、外部网格、单位转换、经度周期、ECEF同点、ECEF梯度、轴交换拒绝、球半径冲突拒绝、Provider/网格哈希和四类参数化组件全部通过。机器报告见output2/a4_pharlap/c0r2_provider_validation.json，实施记录见word/a4_c0r2_implementation_report.txt。
+9. C0R-2不迁移AH3D、P2P、Ray-PE或main/main2，也不证明传播轨迹正确；C0R-3前正式入口继续阻断。
+
+C0R-3 ECEF AH Hamiltonian与积分
+
+1. RefractiveIndexAH3D和V2积分器只保留geocentric_ecef正式路径；删除生产legacy_parabolic选择。
+2. 空间中心差分沿ECEF三个轴扰动，并通过统一Provider查询物理Ne；reference保留多尺度稳定平台及非有限/跨域拒绝。
+3. 保留DOP853、自适应积分、D=0投影和群速度-D_k/D_omega计算。
+4. 真空必须满足n^2=1且geom/group path一致；非真空必须记录Provider和坐标映射哈希。
+5. 完成状态（2026-07-20）：passed。正式核心新增于models/ray_tracer_ah_3d_ecef.py；状态严格为[r_ecef,k_ecef,t_group]，Hamiltonian严格为D=|k|^2-(omega/c)^2*n_AH^2，不包含earth-flattening或无标签local入口。旧ray_tracer_ah_3d.py和ray_tracer_ah_3d_v2.py仅在C0R-5调用迁移前保留legacy_coordinate_reference_only语义，不属于C0R正式入口。
+6. ECEF空间导数采用0.5/1/2倍中心差分稳定平台；非有限Provider值、跨Provider域和无稳定平台均显式拒绝。积分保留DOP853、自适应步长、沿D_k最小修正的D=0投影及v_g=-D_k/D_omega；统一使用C=299792.458 km/s，消除旧配置近似光速与色散常数混用。
+7. C0R-3只提供固定物理几何路径积分以验收Hamiltonian核心，不提前实现地面、上边界、grid_exit、turning/apex等C0R-4事件，也不输出trajectory_3d、x_land或z_land等旧语义。
+8. 验收结果：真空O/X的n^2误差均为0，真空群速度相对误差0，250 km解析直线最大误差2.28824e-11 km，群路径/几何路径相对差2.27374e-16，最大Hamiltonian归一残差1.65643e-16；Chapman ECEF梯度有限且三尺度相对离散度1.00295e-5，投影后残差3.29463e-13。B=0退化、非真空哈希、Provider类型/半径冲突、跨域和不稳定导数拒绝全部通过。
+9. tests/_verify_a4_c0r3_ecef_hamiltonian.py为0 fail(s)；机器报告见output2/a4_pharlap/c0r3_ecef_hamiltonian_validation.json，实施记录见word/a4_c0r3_implementation_report.txt。该通过不证明物理事件、P2P、PHaRLAP对照或下游生产迁移通过。
+
+C0R-4 物理事件与输出
+
+1. 地面事件g_ground=|r|-R，仅在离开发射面后下降穿越时触发。
+2. 上边界事件g_upper=|r|-R-h_stop；Provider域退出单独记录grid_exit。
+3. 转向使用群速度径向分量；apex按物理高度最大值或径向群速度零点确定，事件均用dense output定位。
+4. 输出同时记录ECEF、geocentric、物理高度、落点lat/lon、geom path、group path和tau；不输出含糊trajectory_3d别名。
+5. 完成状态（2026-07-20）：passed。models/ray_tracer_ah_3d_ecef.py新增trace_ray_ah3d_ecef正式事件入口，复用C0R-3同一DOP853和Hamiltonian循环；未建立第二套射线方程或积分器。
+6. 地面、上边界、Provider grid_exit和径向群速度转向均在ECEF物理状态上判定，并用DOP853 dense output二分定位；发射面上的下降/切入地球方向直接拒绝，避免把s=0误报为返回地面。
+7. Provider新增显式domain_margin_geocentric/domain_margin_ecef边界语义；规则网格按纬度、区域经度及物理高度边界产生grid_exit，完整周期经度不产生人为经度边界，参数化Provider继承背景Provider域。
+8. 正式输出包含trajectory_ecef_km、wavevector_ecef_km^-1、trajectory_geocentric_lat_lon_height、trajectory_physical_height_km、geom/group path、tau、事件历史、落点和apex显式字段；非ground终止的landing字段为None，不提供trajectory_3d、x_land或z_land别名。
+9. 验收结果：解析真空上边界路径误差2.83023e-10 km、地面路径误差2.51923e-11 km；地面高度误差1.36424e-11 km，网格退出高度误差2.19188e-10 km，最大dense-output事件定位区间5.82077e-10 km。Chapman反射轨迹以ground终止，apex高度264.131239 km，apex径向群速度5.88043e-8 km/s，最大Hamiltonian归一残差7.89000e-11。
+10. tests/_verify_a4_c0r4_events.py共17项、0 fail(s)；C0R-1至C0R-3回归均为0 fail(s)。机器报告见output2/a4_pharlap/c0r4_event_validation.json，实施记录见word/a4_c0r4_implementation_report.txt。该通过不证明P2P、Ray-PE、吸收、散射、绘图或主入口已迁移。
+
+C0R-5 P2P与下游调用迁移
+
+1. P2P输入改为TX/RX纬经高；残差改为RX ENU East/North，多尺度中心差分Jacobian对该物理残差求导。
+2. 旧高/低根仅作搜索种子；新坐标下重新搜索、去重和冻结，不要求角度匹配旧值。
+3. Ray-PE local frame、吸收高度积分、散射路径采样、模式去重和绘图全部读取显式ECEF/geocentric字段。
+4. 每个模块只做坐标迁移和必要接口修复，不借C0R改变PE、散射或功率方程。
+5. 完成状态（2026-07-20）：passed。新增models/point_to_point_ah_3d_ecef.py，P2P输入严格为TX/RX geocentric纬经高，射线状态为ECEF，终端残差严格为RX ENU East/North；使用单元有界TRF和0.5/1/2倍多尺度中心差分Jacobian，不启用旧变分Jacobian或local落点残差。
+6. 旧高/低角度只允许以legacy_coordinate_reference_seed_only语义进入新坐标局部搜索；输出明确标记seeded_local_roots_not_full_domain_mode_audit。去重联合branch、终止状态、转向数、发射角、ECEF轨迹RMS、apex和群时延，不读取trajectory_3d、x_land或h_reflect旧字段。正式C1高/低根仍按总路线在C1-Prep冻结，不以本阶段轻量根替代。
+7. local_frame.py正式路径优先读取trajectory_ecef_km和trajectory_group_tangent_ecef；局部s沿群轨迹切向，局部up由径向ECEF方向投影获得，输出origin_ecef_km和ECEF local cross-section。旧trajectory_3d分支仅供C0R-6前未迁移调用者使用，并标记legacy_local_cartesian_reference_only。
+8. 正式ECEF Ray-PE若收到旧Ne_2d/x/z网格会显式拒绝，防止把link-local网格误解释为ECEF；当前可由GeocentricNeProvider3D生成ECEF局部截面。local_2p5d PE方程未改，完整3D PE/全波仍不在C0R范围。
+9. absorption_collision.py新增complex_absorption_ecef_ray_dB，以|r|-R计算碰撞高度、以ECEF路径段和ECEF磁场方向计算O/X吸收；scatter_coupler.py和scatter_phase_screen.py可沿trajectory_ecef_km通过正式Provider采样；plot_utils.py由geocentric轨迹派生累计球面ground range和物理高度。
+10. 验收结果：Chapman轻量seeded P2P落点RX ENU误差1.00604e-12 km，Jacobian最大条件数2.90530；ECEF局部框架正交误差1.11022e-16、行列式1.0；一/双程吸收严格2倍；散射和绘图均读取正式字段。tests/_verify_a4_c0r5_downstream.py共15项、0 fail(s)，机器报告见output2/a4_pharlap/c0r5_downstream_validation.json，实施记录见word/a4_c0r5_implementation_report.txt。
+11. C0R-5通过只证明seeded P2P及下游组件的坐标消费契约；main.py、main2.py、unified pipeline、配置入口和旧自动fallback仍由C0R-6迁移，当前不得宣称正式生产入口已切换。
+
+C0R-6 配置与主入口迁移
+
+1. config.py中的正式TX/RX和外部Ne坐标改用统一契约；旧TX_POS local tuple及隐式range坐标不再作为生产输入。
+2. main.py、main2.py和unified pipeline统一传递纬经高、elevation/bearing及R。
+3. 所有图像和CSV记录earth_model、coordinate_model、coordinate_semantics、one-way/two-way及耦合状态。
+4. 所有生产调用迁移后删除旧坐标开关和自动fallback；缺少新坐标字段时直接报错。
+5. 完成状态（2026-07-20）：passed。config.py新增正式EARTH_MODEL、TX_GEOCENTRIC、RX_GEOCENTRIC及严格外部Ne契约；main2.py和unified_hybrid_pipeline.py只接受geocentric纬经高、elevation/bearing和显式R，正式求解器固定为ah3d_ecef，legacy solver请求直接拒绝且无自动fallback。
+6. ScenarioProviderFactory已改为生成GeocentricParameterizedIonosphere3DProvider；既有IRI range-height背景仅作为由球面位置派生的along-link/physical-height内部网格，不再作为射线全局输入。外部Ne仅接受C0R-2严格NPZ契约，启用时禁止叠加已知场景扰动标签。
+7. main.py正式AH3D fan/P2P调用已切换统一ECEF pipeline；旧link-local flux-tube/tube radar函数降级为legacy_coordinate_reference_only且从自动入口移除，正式同名入口显式拒绝，待C0R-8或A4实际需要时迁移/删除。Ray-PE保持关闭时不参与；若对ECEF射线误传旧Ne_2d网格继续显式拒绝。
+8. 图像注释、CSV及机器traceability新增earth_model、earth_radius_km、coordinate_model、coordinate_semantics、plot_coordinate_semantics、单程/双程、AH3D、Ray-PE及scatter功率耦合状态。正式绘图由geocentric轨迹派生great-circle ground range和physical height，不读取trajectory_3d。
+9. tests/_verify_a4_c0r6_entry_migration.py共8项、0 fail(s)；C0R-2、C0R-5及main输出语义回归均为0 fail(s)。机器报告见output2/a4_pharlap/c0r6_entry_validation.json，图像见c0r6_ecef_entry_smoke.png，实施记录见word/a4_c0r6_implementation_report.txt。
+10. C0R-6通过只证明正式入口坐标流、轻量ECEF ray和输出语义；不证明PHaRLAP轨迹一致、全域P2P模式完整性、旧flux-tube迁移或完整3D PE/全波。
+
+C0R-7 PHaRLAP真空复验
+
+1. 沿用C0条件：Ne=0、B=0、collision=0、10 MHz、elevation=35 deg、bearing=37 deg、R=6371 km。
+2. PHaRLAP输入及哈希一致时可复用现有原始MAT；缺失或哈希漂移才重跑MATLAB。
+3. 在ECEF共同区间直接比较，不平移、旋转、缩放或拟合轨迹；生成新PHaRLAP图、AH3D图和对比图。
+4. 完成状态（2026-07-20）：passed。冻结PHaRLAP输入SHA256=b51e4fca5300423e50bc6455fc7161827a50a2446d65a159bd0ebfb27a334f3c、原始MAT SHA256=907bafefe76ef4c2a3b7fa79ba1de80a6d0e5bb14d32fa3813c451355f73f37e，均与C0通过报告一致，因此未重跑MATLAB，也未覆盖历史C0产物。
+5. AH3D采用正式geocentric_spherical_ecef Hamiltonian、VacuumGeocentricNeProvider3D和DOP853 reference积分；B=0时O/X按磁离子退化单计数处理。前250 km在共同ECEF几何路径上直接插值比较，全程未进行平移、旋转、缩放、拟合或轨迹配准。
+6. 验收结果：轨迹RMS误差2.5962162536965937e-11 km，最大误差4.507507492598736e-11 km；PHaRLAP群/几何路径相对差0，AH3D相对差2.2737367544323206e-16；AH3D最大Hamiltonian归一残差1.6564252021325083e-16。全部满足RMS<=1e-3 km、最大误差<=1e-2 km、路径相对差<=1e-4及Hamiltonian残差<=1e-8硬门槛。
+7. tests/_verify_a4_c0r7_pharlap_vacuum.py共12项、0 fail(s)；机器报告见output2/a4_pharlap/a4_c0r7_validation.json，三张图见output2/a4_pharlap/figures_c0r7，实施记录见word/a4_c0r7_implementation_report.txt。
+8. C0R-7只证明PHaRLAP与AH3D在单程真空、球形地球/ECEF坐标和路径度量上的一致性；不证明电离层反射、O/X分裂、P2P模式完整性、Ray-PE、散射或绝对功率。C0R-8回归和旧入口清理完成前仍阻断A4-C1。
+
+C0R-8 回归、旧入口移除与关闭
+
+1. 重跑真空退化、B->0 O/X、Hamiltonian残差、色散投影、reference步长收敛、Provider、P2P Jacobian、Ray-PE局部框架及main/main2轻量检查。
+2. 静态检查生产代码不得继续读取无标签trajectory_3d、启用earth_flattening或把local TX_POS作为AH3D输入。
+3. 数值、接口、图像、哈希和语义全部通过后，状态才可写为passed_pharlap_coordinate_contract_closed。
+4. 完成状态（2026-07-20）：passed_pharlap_coordinate_contract_closed。正式生产文件静态检查无trajectory_3d、earth_flat、legacy_parabolic、cfg.TX_POS/cfg.RX_POS或旧ray_tracer_3d/point_to_point_3d导入；main.py中两个不可达旧flux-tube/tube计算体已删除，同名公开产品继续显式拒绝，禁止静默恢复旧实现。
+5. local_frame、scatter_coupler、scatter_phase_screen和plot_utils的正式路径已删除无标签local轨迹fallback，统一消费trajectory_ecef_km或trajectory_geocentric_lat_lon_height。unified pipeline内的模式原因标注改为直接读取ECEF模式的apex/elevation/branch语义，不再从旧P2P模块导入。
+6. Chapman非均匀场采用相同reference容差，仅将最大/最小几何步长从0.5/0.002 km减半至0.25/0.001 km。最大轨迹变化1.5249778781408408e-5 km、RMS变化3.687910016904825e-6 km、群路径相对变化7.898107670191954e-11；两组最大Hamiltonian残差分别9.932256797026946e-11和9.996095424317132e-11，均通过硬门槛。
+7. C0R-0至C0R-7、main输出语义和main2场景字段共10项阶段脚本全部返回0；总运行643.11 s。正式入口数值、接口、图像、哈希和语义闭环完成，机器报告见output2/a4_pharlap/a4_c0r8_validation.json，实施记录见word/a4_c0r8_implementation_report.txt。
+8. 旧ray_tracer_3d、旧P2P、hybrid_model、旧PE、tube tracer、旧parameter sweep和2D背景脚本已迁入legacy/，仅作为historical_reference_only，不属于main/main2/models生产链；models/不保留兼容副本。tests/_verify_legacy_source_separation.py对无重复源码、正式链无legacy导入和历史脚本位置执行硬检查。config中的TX_POS/RX_POS只服务这些历史模块；A4若实际需要相应产品，必须迁移到geocentric/ECEF后重新验收，不得直接恢复。
+9. C0R坐标修复门已关闭，建议进入A4-C1-Prep，在新坐标下重新冻结Chapman高/低根；不得跳过C1-Prep直接沿用A3Rnew旧坐标角度或宣称A4外部物理验证已完成。
+
+六、验收门槛
+
+1. geocentric->ECEF->geocentric往返位置误差<=1e-9 km；ENU正交误差<=1e-12且右手性为正。
+2. 发射elevation/bearing恢复误差<=1e-10 deg；已知球面终点误差<=1e-9 km。
+3. 真空|n^2-1|<=1e-12；B=0只记录magnetoionic_degenerate_single_count。
+4. PHaRLAP前250 km无配准轨迹RMS<=1e-3 km，最大误差<=1e-2 km。
+5. group path与physical geom path相对差<=1e-4；AH3D解析真空直线最大误差<=1e-2 km。
+6. reference Hamiltonian residual<=1e-8且无constraint_failed；步长减半最大轨迹变化<=1e-3 km、群路径相对变化<=1e-5。
+7. Provider同点查询、经度周期和轴顺序检查通过；Ne单位往返转换无额外尺度误差。
+8. P2P轻量参考根命中误差<5 km；该门只验证迁移未破坏求解，不替代C1外部验证。
+9. Ray-PE局部框架正交/右手性和既有能量接口轻量检查通过；不宣称完整3D PE正确。
+10. 所有产物包含坐标、地球半径、Provider和代码哈希；三张C0R图通过非空白、有限像素、尺寸和来源哈希检查。
+11. 任一硬门槛失败即failed或blocked，不放宽阈值或恢复旧坐标fallback。
+
+七、新总路线
+
+A3Rnew原坐标内部证据（已完成，降级为历史有限参考）
+-> A4-C0历史接口预检（已完成，准入意义撤销）
+-> A4-C0R-0至C0R-4统一坐标核心
+-> A4-C0R-5至C0R-6全调用链迁移
+-> A4-C0R-7真空PHaRLAP复验
+-> A4-C0R-8回归、删除旧入口并关闭坐标门
+-> A4-C1-Prep在新坐标下重新冻结Chapman高/低根
+-> A4-C1无磁Chapman高/低射线外部验证
+-> A4-C2-Prep核验PHaRLAP与AH3D磁场分量坐标语义
+-> A4-C2冻结磁场O/X外部验证
+-> A4-C3弱TID三维单轨迹诊断
+-> A4-C4球形/WGS84及位置相关IGRF差异记录
+-> A4有限外部验证总结
+-> B1-B5后续全波/耦合升级。
+
+A4-C1-Prep详细输入、完整仰角扫描、独立求根、分支签名和准入门槛见word/a4_c1_prep_chapman_high_low_implementation_plan.txt。当前仅Prep-0源码边界整理完成，Prep-1至Prep-6未实施。
+
+八、主要风险与处置
+
+1. 影响面较大：现有trajectory_3d有大量调用者。采用调用清单逐项迁移，全部完成前不切换正式入口。
+2. 旧结果漂移：P3/P5、高低根和图像基于旧坐标。保留历史证据但重新生成新坐标基线，禁止调参复现旧角度。
+3. Provider轴错误：lat/lon/height轴交换或Ne单位错误可产生看似合理轨迹。以同点查询、shape、单位和哈希作硬检查。
+4. 参数化扰动变化：链路局部距离改由球面位置派生后，TID/Spread-F/Es/bubble图像可能变化。先验证坐标映射，再判断物理结果，不反向拟合旧图。
+5. 地面事件误触发：发射点本身位于事件面。使用离地标志和下降穿越条件，并覆盖近水平发射。
+6. 磁场坐标风险：PHaRLAP磁场网格分量约定必须在C2-Prep独立核验，C0的B=0通过不能证明C2方向正确。
+7. Ray-PE语义风险：坐标接口迁移不等于3D PE升级；仍须标记local_2p5d。
+8. 性能风险：ECEF到球面及Provider查询增加开销。只缓存确定性转换，不降低积分、梯度或验收精度。
+9. 验证范围风险：C0R通过证明坐标契约与真空路径闭环，不证明复杂电离层模式完整性、全波散射或绝对功率正确。
+
+九、禁止项
+
+1. 禁止修改、拟合或配准PHaRLAP轨迹以迎合AH3D。
+2. 禁止保留生产legacy坐标开关、自动fallback或无标签trajectory_3d兼容别名。
+3. 禁止把ECEF z或ENU Up当长路径物理高度。
+4. 禁止只修绘图、group path或事件而保留混合Hamiltonian。
+5. 禁止用原P3/P5通过替代新坐标回归或A4外部验证。
+6. 禁止把C0R结果表述为WGS84、位置相关IGRF、完整3D PE/全波、散射功率或绝对功率验证。

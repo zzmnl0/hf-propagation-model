@@ -1,0 +1,41 @@
+A4-C1 Prep-5 网格稳定性与冻结签名实施报告
+
+日期：2026-07-22
+状态：passed_1km_grid_stability_and_signatures
+语义：求解器内refined_1km与primary_2km网格稳定性复核，不是A4-C1跨软件正式误差验收
+
+一、完成内容
+
+1. PHaRLAP和AH3D分别复用Prep-4冻结的low_ray/high_ray连续ground根区间，在refined_1km共同输入网格重新执行有界求根；未重新全域扫描，未采用另一求解器的根作为本求解器结果。
+2. 冻结四条完整签名：solver、branch_id、wave_branch_id、发射角、bearing、termination、turning_count、apex、落点geocentric/ECEF/RX-ENU残差、ECEF轨迹哈希、几何/群路径、群时延及Provider/输入/代码哈希。
+3. PHaRLAP和AH3D各分支结果使用独立checkpoint；配置、Provider、输入、脚本、求解器或MEX哈希不一致时拒绝恢复，仅显式rebuild-frozen允许重建。
+4. 生成机器JSON、收敛CSV、签名CSV、轨迹NPZ、冻结manifest及网格收敛PNG。图像使用冻结Ne背景、jet色标、alpha=0.5，并标注单程、10 MHz、B=0 O/X退化、1 km对2 km和非A4-C1正式验收语义。
+
+二、验收结果
+
+1. PHaRLAP low/high仰角变化分别为0.000338736/0.000303984 deg，apex变化为0.010423785/0.002075040 km，群时延相对变化为0.000157518%/0.000787390%。
+2. AH3D low/high仰角变化分别为0.001937204/0.007647752 deg，apex变化为0.017831684/0.083200194 km，群时延相对变化为0.003536364%/0.009929129%。
+3. 四条根均为ground、单转向；最大沿程端点残差0.006880168 km，最大横程残差0.000051456 km，均低于1 km门槛。
+4. 全部结果满足仰角不超过0.02 deg、apex不超过0.5 km、群时延相对变化不超过0.2%的冻结门；全部机器检查为true。
+5. 可视化尺寸、有限像素、非空白性、来源哈希均通过；二次执行返回A4-C1-Prep-5 frozen: OK。
+
+三、产物
+
+1. output2/a4_pharlap/c1_prep/prep5/a4_c1_prep5_validation.json
+2. output2/a4_pharlap/c1_prep/prep5/a4_c1_prep5_convergence.csv
+3. output2/a4_pharlap/c1_prep/prep5/a4_c1_prep5_frozen_signatures.csv
+4. output2/a4_pharlap/c1_prep/prep5/a4_c1_prep5_trajectories.npz
+5. output2/a4_pharlap/c1_prep/prep5/a4_c1_prep5_grid_convergence.png
+6. output2/a4_pharlap/c1_prep/prep5/a4_c1_prep5_freeze_manifest.json及checkpoints/
+
+四、风险与边界
+
+1. AH3D高射线对网格最敏感，但当前最大变化仍显著低于冻结门；这不替代后续固定发射角和独立根的跨软件误差归因。
+2. low_ray/high_ray仍是连续ground分支的拓扑一致、文献引导标签；未计算光程泛函Hessian，不能宣称直接验证高射线极小值或低射线鞍点。
+3. B=0算例只验证O/X退化的平滑Chapman高/低分支，不覆盖有磁O/X分裂、near-cutoff、复杂三维扰动、多径完整性、散射或全波效应。
+4. AH3D双根1 km复核耗时约3小时，说明后续不得无必要重复求根；严格checkpoint可复用，但任何来源哈希漂移必须重新计算。
+5. A4-C1正式外部误差门尚未应用，不能将Prep-5状态表述为PHaRLAP外部物理验证通过。
+
+五、下一步建议
+
+进入Prep-6，仅汇总Prep-1至Prep-5的冻结完整角域、状态分布、低/高路径和来源清单，形成C1准入预验收报告；不得重新执行长时间全域扫描或放宽数值门。Prep-6全部通过后，再单独确认进入A4-C1正式跨软件误差验收。

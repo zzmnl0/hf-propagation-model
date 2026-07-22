@@ -1,0 +1,354 @@
+A4 PHaRLAP外部验证详细实施方案
+生成日期：2026-07-20
+状态：A4-C0R-0至C0R-8已通过，坐标契约已关闭；A4-C1-Prep-0至Prep-6已完成并通过C1准入，A4-C1正式物理对照尚未开始
+上位计划：ah3d_full3d_wave_upgrade_plan.txt、a3rnew_accuracy_first_implementation_plan.txt
+
+A4-C0R修复门（2026-07-20）
+
+1. 后续隔离实验确认：关闭现有earth-flattening并用精确TX切平面/ECEF嵌入后，真空轨迹相对PHaRLAP最大误差由3.943964 km降至2.05e-10 km，群路径/几何路径相对差由4.01496%降至2.52e-5。
+2. 原因是当前抛物高度、(1+h/R)^2有效折射率、z_cart事件、展平Euclidean geom path和物理输出混用，不是DOP853或真空色散精度不足。
+3. 因C0本身是接口与坐标预检，原passed不再具有A4准入意义；历史结果仍保留，不删除、不覆盖。
+4. a4_c0r_coordinate_model_repair_plan.txt已更新为PHaRLAP一致坐标统一方案：外部输入统一为球形纬经高，AH3D内部统一为ECEF，并迁移P2P、Provider、Ray-PE及主入口后删除legacy运行路线。C0R闭环前不得执行C1/C2正式验收。
+
+实施进度（2026-07-20）
+
+0. A4-C0R-0已完成：14项C0证据只写一次冻结，25项P3/P5、Coleman/P0C及main/main2旧坐标产物统一标记legacy_coordinate_reference_only；16个生产调用文件已形成机器可读迁移清单。该步骤不修复坐标或传播方程，C0R-1前不得宣称坐标闭环。
+0.1 A4-C0R-1已完成：显式球半径的geocentric/ECEF、ENU、bearing/elevation、球面终点及RX ENU残差共享内核通过数值验收。该步骤尚未迁移Provider、AH3D、P2P或正式入口，不能解释为PHaRLAP轨迹对照通过。
+0.2 A4-C0R-2已完成：建立无歧义geocentric/ECEF NeProvider正式接口，外部Ne固定latitude/longitude/height轴顺序并记录单位、周期、边界和哈希；参数化场从球面位置派生链路坐标后复用原扰动方程。旧local Provider只保留legacy_coordinate_reference_only语义，尚未接入C0R-3 AH3D。
+0.3 A4-C0R-3已完成：新增严格ECEF AH Hamiltonian和固定物理路径DOP853积分核心，只调用C0R-2 Provider；实现ECEF三轴多尺度中心差分、非有限/跨域/无稳定平台拒绝、D=0投影和v_g=-D_k/D_omega群时延。真空、B=0、Chapman梯度、非真空哈希和失败拒绝验收全部通过。物理事件及完整轨迹终止语义仍由C0R-4实施，P2P/main等调用迁移仍由C0R-5/C0R-6实施。
+0.4 A4-C0R-4已完成：在同一ECEF积分循环实现球面ground/upper_boundary、Provider grid_exit和径向群速度turning/apex dense-output定位；输出显式ECEF、geocentric、物理高度、落点、apex、几何路径、群路径和群时延字段。解析真空、规则网格退出和Chapman反射算例共17项全部通过。P2P、Ray-PE、吸收、散射、绘图和主入口尚未迁移，继续由C0R-5/C0R-6处理。
+0.5 A4-C0R-5已完成：建立TX/RX geocentric输入、ECEF轨迹和RX ENU残差的seeded P2P正式路径，实现多尺度中心差分Jacobian及ECEF联合去重；Ray-PE局部框架、复吸收高度积分、散射路径采样和P2P绘图已能读取显式ECEF/geocentric字段。旧Ne_2d/x/z不得用于正式ECEF Ray-PE。该通过不是全域模式完整性验收，main/main2/unified/config入口仍待C0R-6统一迁移。
+0.6 A4-C0R-6已完成：config、main.py、main2.py和unified pipeline正式入口统一为PHaRLAP一致geocentric纬经高输入与ECEF状态；生产solver固定ah3d_ecef，拒绝legacy fallback；图像/CSV补齐地球、坐标、单/双程和耦合语义。8项轻量验收0 fail。旧link-local flux-tube/tube radar保留为不可自动调用的历史参考，待C0R-8或A4实际需要时处理。
+0.7 A4-C0R-7已完成：复用输入及原始MAT哈希均未漂移的冻结PHaRLAP真空结果，以正式ECEF AH3D在共同前250 km直接比较，未作任何轨迹配准。轨迹RMS/最大误差分别为2.5962162536965937e-11/4.507507492598736e-11 km，PHaRLAP和AH3D群/几何路径相对差分别为0/2.2737367544323206e-16，12项硬检查全部通过。该结论只关闭真空坐标与路径度量对照，不替代C0R-8回归或C1电离层反射验证。
+0.8 A4-C0R-8已完成：正式main/main2/unified及共享下游无旧坐标fallback，旧flux-tube/tube计算体从main删除且产品入口继续显式拒绝；旧源码仅登记为historical_reference_only。Chapman reference/半步长最大轨迹变化1.52498e-5 km、群路径相对变化7.89811e-11，10项阶段/入口回归全部通过，最终状态passed_pharlap_coordinate_contract_closed。下一步只开放C1-Prep，不把C0R表述为电离层反射外部验证通过。
+0.9 A4-C1-Prep-5已完成：冻结refined_1km网格下PHaRLAP/AH3D各自low/high根均重新求解并通过1 km对2 km稳定性门；最大仰角变化0.007647752 deg、最大apex变化0.083200194 km、最大群时延相对变化0.009929129%，四根均ground且端点残差小于1 km。完整签名、独立checkpoint、JSON/CSV/NPZ和PNG已冻结，状态passed_1km_grid_stability_and_signatures。该状态不是A4-C1跨软件正式误差验收。
+0.10 A4-C1-Prep-6已完成：Prep-1至Prep-5冻结哈希链和全部数值门复验通过；双方177角完整粗扫、四条低/高根和三类可视化已汇总冻结，Ne背景只读refined_1km网格并使用jet、alpha=0.5。状态passed_c1_prep_admission，仅允许进入C1正式对照，不表示跨软件误差或外部物理验证通过。
+1. A4-C0已完成，机器状态passed；数值与三类图像证据均已闭环。该状态仅表示PHaRLAP运行时、真空输入单位/轴、坐标方向/尺度和非地面退出状态映射通过，不表示A4外部物理验证通过。
+2. MATLAB R2024a Update 7成功加载PHaRLAP 4.7.4 raytrace_3d_sp.mexw64；真空射线ray_label=-2，无catastrophic_error。
+3. 前250 km无配准ECEF对照：轨迹RMS差1.777205 km，最大差3.943964 km；PHaRLAP解析直线最大误差7.42e-12 km。
+4. 已记录风险：AH3D真空group path与局部geometric path约有4%差异。因双方全程终止高度不同，C0不以该全程差异作硬门槛；C1共同反射轨迹必须正式检查群路径/群时延，不得放宽阈值。
+5. 记录见a4_c0_implementation_report.txt和output2/a4_pharlap/a4_c0_validation.json。A4总状态仍为未完成，禁止写成pharlap_smooth_field_limited_pass。
+6. 图像复验已生成trajectory_c0_pharlap.png、trajectory_c0_ah3d.png和trajectory_c0_comparison.png；三图的像素尺寸、非空白性、有限像素、PNG哈希和原始数据源哈希均通过机器检查。
+
+图像证据验收增补（2026-07-20确认）
+
+1. C0-C4每个已执行算例至少保存PHaRLAP独立图、AH3D独立图和统一坐标对比图；诊断算例未执行时不得生成占位图。
+2. 图像统一由Python读取PHaRLAP原始MAT和AH3D原始JSON生成，不使用MATLAB窗口截图，不改变任何射线方程或原始结果。
+3. 单模型图至少包含物理高度-几何路径侧视图和TX中心ENU俯视图；对比图增加共同路径上的East/North/Up及三维残差。
+4. 每张图同时保留原始轨迹点和解析/重采样曲线。PHaRLAP与AH3D独立图使用相同坐标范围和纵横比例；禁止通过自动缩放、平移、旋转、缩放拟合或三维透视掩盖差异。
+5. C0绘制解析真空直线，不绘制Ne背景。C1-C3需要Ne背景时，只能读取同一冻结输入网格，色标jet、alpha=0.5；背景不得重新调用IRI或参数化模型生成。
+6. O/X、高/低射线分别绘制并保留branch_id、终止状态，禁止跨分支平均。PHaRLAP penetrated、grid_exit和AH3D upper_boundary等原始状态分别显示，不伪装为同一状态。
+7. 图题必须标明单程/双程、case、频率、波模、Ne/B模型、地球模型、碰撞状态、求解器版本、终止状态、散射/功率是否参与及校准状态。
+8. PNG输出至output2/a4_pharlap/figures，线图300 dpi。验收JSON记录图像SHA-256、来源raw文件SHA-256、像素尺寸、有限性和像素方差。
+9. 机器硬门槛为三类必需图均存在、非空白、尺寸达标、来源哈希完整且数值报告通过。图像只提供可视化证据，不能覆盖数值阈值失败。
+10. C0在补图前语义为numeric_pass_visual_evidence_pending；补图机器复验通过后恢复passed。该passed仍仅是接口/坐标预检，不是A4物理验证通过。
+11. A4后续每个Prep/C0-C3验证步骤均须输出与该步骤验收量直接对应的可视化产物，并将图像存在、尺寸、有限像素、非空白性和数值来源哈希列为硬门；无图时不得标记passed。
+
+一、阶段位置与准入状态
+
+1. 总执行关系为：A0 -> A1 -> A2 -> A3 -> A3Rnew(P0C -> P1 -> P2-6L -> P3 -> P5new) -> A4 -> B1 -> B2 -> B3 -> B4 -> B5。
+2. P0C、P1、P2-6L、P3和P5new已完成，当前gate_status=a4_limited_scope_ready。
+3. P2-6L只达到reference_case_limited_pass；P2-6H复杂场高密度完整性审计仍延期。因此A4只允许验证平滑场、已知高/低射线和可识别单轨迹O/X分支，不验证复杂场全模式召回。
+4. A4验证对象是AH3D磁离子Hamiltonian前向轨迹、分支、群路径/群时延和有限范围P2P根的一致性。PHaRLAP是独立交叉验证基准，不是无误差的绝对真值。
+5. A4不验证完整三维PE/全波、散射功率、P-D谱、模式转换、near-cutoff隧穿或实测绝对功率。
+
+二、已确认实施决策
+
+1. 正式外部程序采用本地PHaRLAP 4.7.4；AU-Ray不作为依赖，IONORT不作为当前门槛。
+2. MATLAB可执行文件固定为D:\Matlab2024a\bin\matlab.exe。
+3. PHaRLAP安装根目录固定为D:\pharlap\pharlap_4.7.4；该目录只读，不修改、不复制、不提交PHaRLAP受控发布文件。
+4. 本项目MATLAB适配脚本写入D:\Matlab\PHaRLAP。该目录与PHaRLAP安装目录语义不同，只保存本项目自行编写的验证脚本。
+5. PHaRLAP 4.7.4发布于2025-07-14，并针对MATLAB R2024a构建；优先使用Windows raytrace_3d_sp.mexw64。
+6. 正式基准使用PHaRLAP raytrace_3d_sp，地球半径固定为6371000 m，与当前AH3D的RE_KM=6371.0保持同一物理半径。raytrace_3d的WGS84结果仅作地球模型差异诊断，不作为当前有限A4硬门槛。
+7. raytrace_3d_sp的模式定义按PHaRLAP接口固定：OX_mode=1为O波，OX_mode=-1为X波，OX_mode=0为无磁场。禁止根据轨迹外观重新映射模式。
+8. 正式轨迹验证关闭碰撞和吸收：collision_freq全零。PHaRLAP轨迹Hamiltonian不含碰撞，碰撞网格只进入吸收计算；A4不得把吸收差异混入轨迹精度判断。
+9. 正式门槛为无磁Chapman高/低射线和同一冻结磁场下的O/X单轨迹；弱TID仅作三维差异诊断。
+10. 任一门槛失败时保持A4未通过，先定位输入、坐标、公式或数值原因，不降低阈值、不反演调参、不修改电子密度制造一致。
+
+三、理论与软件依据
+
+1. 两端均以Appleton-Hartree磁离子色散和Haselgrove Hamiltonian射线理论为基础。AH3D使用DOP853、自适应步长、D=0色散面投影和有限差分Hamiltonian导数；PHaRLAP raytrace_3d_sp使用其受控Fortran/MEX三维磁离子射线实现。
+2. PHaRLAP raytrace_3d_sp采用用户指定半径的球形地球坐标；C0R将AH3D外部输入统一为同一球形纬经高、内部状态统一为等价ECEF。通过C0R后两端使用相同球半径和物理位置语义，但仍是独立数值实现。
+3. 当前AH3D使用固定fH_MHz和固定link-frame b_hat；PHaRLAP支持三维B网格。当前正式O/X门槛向PHaRLAP传入由同一AH3D冻结磁场转换得到的恒定ECEF B网格，语义为midpoint_IGRF_derived_frozen_field，不是position_dependent_IGRF。
+4. 当前有限A4通过后，只能证明在相同平滑Ne和冻结磁场假设下与PHaRLAP一致。位置相关三维IGRF验证列为后续射线物理升级项，不得在报告中省略。
+5. 完整论文引用沿用word/reference-papers.txt，重点为Haselgrove（1955）、Haselgrove与Haselgrove（1960）、Jones与Stephenson（1975）、Budden（1985）、Cervera与Harris（2014）和Coleman（2011）。
+6. 使用PHaRLAP结果的论文或报告必须按D:\pharlap\pharlap_4.7.4\ACKNOWLEDGEMENT.txt保留DST Group要求的工具箱致谢；不得重新分发PHaRLAP程序、库或MEX文件。
+
+四、C0R前差异及修复后的处理边界
+
+1. 地球坐标：C0R前AH3D为局部(x,y,z_cart)和一阶earth-flattening；C0R后正式输入与PHaRLAP统一为球形地心纬度/经度/高度，AH3D直接输出ECEF。正式比较禁止继续使用旧抛物高度逆映射。
+2. 地磁场：AH3D为固定link-frame方向和幅值；PHaRLAP输入B为ECEF Tesla。适配器必须在发射点建立固定正交link frame，把同一b_hat和fH_MHz转换为ECEF恒定向量后填充PHaRLAP Bx/By/Bz网格。
+3. 电子密度单位：项目内部Ne为m^-3；PHaRLAP iono_en_grid为electrons/cm^3。唯一允许转换为Ne_cm3=Ne_m3/1e6，转换前后记录最小值、最大值和SHA-256。
+4. 群路径语义：PHaRLAP ray_path_data.group_range为累计group path km；AH3D tau_ms为群时延。比较时同时保存双方原始字段，并统一用c=299792.458 km/s从group path重算tau_ms，禁止把geometric path或phase path当作group path。
+5. 终止语义：PHaRLAP ray_label=1映射ground，-2映射penetrated，-3映射grid_exit，-4映射max_points，-100映射catastrophic_error。只有双方均ground的轨迹进入落点、反射高度和全程群时延正式门槛；状态不同直接失败。
+6. 分支语义：O和X必须分别运行、分别比较、分别报告；禁止跨branch_id平均或去重。B=0时O/X退化，只运行OX_mode=0并标记magnetoionic_degenerate_single_count。
+7. 插值语义：正式Chapman算例由一个冻结的竖直Ne网格同时供两端使用。AH3D验证Provider必须使用该网格的线性插值，不以解析Chapman值和PHaRLAP网格插值作伪“同输入”比较。
+8. 碰撞语义：A4正式轨迹门槛的碰撞频率严格为零。若后续增加非零碰撞，仅报告吸收诊断，不能改变本阶段轨迹通过状态。
+
+五、统一输入与输出契约
+
+5.1 冻结输入字段
+
+每个case输入MAT文件必须至少包含：
+
+1. schema_version、case_id、case_semantics和created_utc。
+2. frequency_MHz、wave_mode、OX_mode、nhops、PHaRLAP tol。
+3. origin_lat_deg、origin_lon_deg、origin_height_km、elevation_deg和bearing_deg。
+4. earth_model、earth_radius_m、coordinate_mapping_version。
+5. iono_en_grid_cm3、iono_en_grid_5_cm3、collision_freq_Hz和iono_grid_parms。
+6. Bx_T、By_T、Bz_T和geomag_grid_parms。
+7. Chapman参数或Provider metadata、provider_hash、field_hash和代码哈希。
+8. 单位字典、数组轴顺序和数组shape。PHaRLAP网格轴顺序固定记录为(latitude, longitude, height)。
+9. 所有正式数组使用float64；非有限值、负Ne、非单调网格或shape不一致时在调用MEX前拒绝执行。
+
+5.2 PHaRLAP固定运行参数
+
+1. 主函数：raytrace_3d_sp。
+2. nhops=1。
+3. tol=[1e-8, 0.01, 10]，分别表示ODE tolerance、最小步长km和最大步长km。
+4. iono_en_grid_5=iono_en_grid，使Doppler输入静止。
+5. collision_freq=0。
+6. NRT_NUM_THREADS固定并记录；轻量正式算例建议设为1，优先保证可复现，不以并行性能作为验收内容。
+7. 每个case首次调用时显式传入全部Ne、碰撞和B网格；禁止依赖上一次raytrace_3d_sp调用残留的内存网格。
+8. 每个case结束后clear raytrace_3d_sp，防止跨case缓存污染。
+
+5.3 PHaRLAP原始输出字段
+
+MATLAB输出必须保留：
+
+1. ray_data全部原始字段。
+2. ray_path_data中的lat、lon、height、group_range、phase_path、refractive_index、group_refractive_index、electron_density、geomag_x/y/z、geometric_distance和collision_frequency。
+3. ray_state_vec中的ECEF位置、方向、group_path、geometrical_path、phase_path和ODE_step_size。
+4. PHaRLAP版本、MATLAB版本、mexext、which(raytrace_3d_sp)、安装根目录、运行时间和异常信息。
+5. 输入MAT文件SHA-256、MATLAB脚本SHA-256和PHaRLAP关键MEX SHA-256。
+
+5.4 统一比较坐标
+
+1. 两端轨迹统一转换到以发射点为原点的ECEF差分坐标，距离单位km。
+2. AH3D正式输出trajectory_ecef_km；物理高度直接按|r|-R计算。旧earth-flattening逆映射只允许读取历史C0产物，不进入C0R及后续正式比较。
+3. PHaRLAP raytrace_3d_sp输出直接按相同R和地心纬经度转换为ECEF。
+4. 路径按累计几何距离归一化到u in [0,1]，使用单调线性插值重采样到201点。不得按原数组索引逐点相减。
+5. 同时报告trajectory_rms_3d_km、trajectory_max_3d_km、horizontal_rms_km和height_rms_km。
+
+六、算例矩阵
+
+A4-C0：接口与坐标预检，不计入物理门槛
+
+1. Ne=0、B=0、collision=0、OX_mode=0，单条固定仰角和方位的真空轨迹。
+2. 比较双方在共同传播区间内的直线性、坐标变换、几何路径和终止状态映射。
+3. C0失败时停止，不运行后续算例。不得通过平移、旋转或缩放结果曲线掩盖坐标错误。
+
+A4-C1-Prep：Chapman高/低射线等价输入与冻结根准备
+
+1. 详细实施与验收以word/a4_c1_prep_chapman_high_low_implementation_plan.txt为唯一执行清单。
+2. 已完成Prep-0：旧射线、P2P、AH3D-v1/v2、local_2p5d PE、tube/radar及依赖旧坐标的分析/绘图源码迁入legacy/；正式main/main2/models不导入legacy且不保留兼容副本。
+3. 已完成Prep-1：共同Chapman 2 km主网格和1 km复核网格、m^-3/cm^-3同源数组、球面TX/RX、Provider/field/input/code/script/MEX哈希及MATLAB/PHaRLAP版本已冻结，状态passed_input_contract_frozen。
+4. 已完成Prep-2：PHaRLAP完成1至89 deg完整粗扫、触发加密和ground-only有界求根；扩展纬度域后grid_exit=0，冻结两个ground候选，状态passed_pharlap_full_domain_scan。
+5. 已完成Prep-3：AH3D独立完成1至89 deg同域扫描和ground-only有界求根，冻结21.9475659250 deg与39.5793636326 deg两个候选；393条记录为ground=294、upper_boundary=99，无物理域拒绝或灾难错误，状态passed_ah3d_full_domain_scan。
+6. Prep-3追踪Provider只在冻结高度域外增加同Chapman公式ghost continuation以支持事件面中心差分；60至500 km源节点和源哈希不变，源网格与追踪网格哈希分别记录。
+7. 已完成Prep-4：双方各自两个连续ground单转向分支已按较低仰角/较低apex与较高仰角/较高apex标记low_ray/high_ray；联合签名去重后各保留两个唯一根，同标签配对显著优于交叉配对，状态passed_branch_identification_and_joint_dedup。
+8. Prep-4保留四条求解器专属根，不跨求解器合并；配对差值仅用于分支身份诊断，未应用A4-C1误差门。标签属于拓扑一致、文献引导语义，不是光程泛函Hessian直接验证。
+9. 已完成Prep-5：1 km网格复核、四条最终冻结签名、严格checkpoint和可视化均通过；该步骤仅验证各求解器内部1 km/2 km稳定性。
+10. 已完成Prep-6：汇总完整角域、分支路径、原始状态分布和图像来源，形成C1预验收报告，状态passed_c1_prep_admission。
+11. Prep结果只提供C1准入根和等价输入，不应用C1跨求解器误差阈值，不证明外部物理验证通过。
+
+A4-C1：Coleman引导的Chapman F2无磁高/低射线正式门槛
+
+0. A4-C1详细执行、误差定义、双锚点矩阵、停止条件和产物契约以word/a4_c1_chapman_external_validation_implementation_plan.txt为唯一实施清单。
+1. 固定参数：foF2=7 MHz、hmF2=350 km、ymF2=100 km、frequency=10 MHz、B=0、collision=0、target_range=1185.848260273658 km。
+2. 原AH3D local-Cartesian参考角35.33980751304579 deg和39.918776604143765 deg仅作历史说明，不作为新坐标搜索种子、根区间或通过值；az/bearing沿同一球面大圆方向。
+3. PHaRLAP Prep-2已独立完成1至89 deg全域扫描并冻结21.94256452915794 deg和39.54285222940713 deg两个ground候选；AH3D必须在Prep-3以同一完整角域独立扫描和求根，不得直接采用PHaRLAP角度作为自身根。
+4. Prep-4完成双方分支签名匹配后，以完全相同发射角分别运行AH3D和PHaRLAP，比较前向轨迹、落点、apex、几何路径、群路径和群时延；再比较双方独立冻结根的发射角和同分支物理量。
+5. 根搜索语义为full_domain_forward_map_ground_root；它验证当前平滑Chapman算例的全角域可见分支，不证明复杂三维场多径完整性。
+6. Coleman论文只提供约1100 km链路；本项目1185.848260 km为冻结双根距离。因此结果继续标记literature_guided_parameterized_reproduction，不称为严格论文复现。
+
+A4-C2：冻结磁场下O/X单轨迹正式门槛
+
+1. 电子密度继续使用C1同一平滑Chapman网格，避免IRI模型版本差异污染磁离子轨迹比较。
+2. 固定frequency=9.5 MHz、az/bearing沿链路、nhops=1、collision=0；发射仰角须在C1闭环后以新地心坐标算例重新选取并冻结，禁止沿用旧local-Cartesian的35.339807513 deg。
+3. 冻结磁场取当前GEOMAG：fH_MHz=1.197、dip_deg=48.7、decl_deg=-5.5及冻结link_bearing。B幅值按电子回旋频率关系唯一换算为Tesla。
+4. PHaRLAP分别以OX_mode=1和OX_mode=-1运行；AH3D分别以wave_mode=O和X运行。
+5. 两分支在当前内部参考均为ground，适合有限A4正式比较。若实施时前置配置哈希变化导致任一分支不再ground，case状态为input_drift_blocked，不另选“更容易通过”的角度。
+6. 分别报告O和X的路径指标，并报告O-X落点分裂、apex分裂和群时延分裂。O/X单项及分裂量均不得通过跨分支平均隐藏误差。
+
+A4-C3：弱TID三维单轨迹诊断，不作为A4硬门槛
+
+1. 仅在C1和C2通过后执行。
+2. 使用固定Provider哈希和固定seed的弱斜向TID，选择一条远离cutoff、双方终止状态明确的O波轨迹；X波可记录但不要求进行全角域搜索。
+3. 同一三维Ne网格导出给PHaRLAP，并由AH3D验证Provider读取同一冻结数据；禁止两端分别生成TID。
+4. 报告横向偏转、落点差、轨迹差和群时延差。由于有限网格映射及当前固定磁场近似，C3只输出difference_distribution，无虚假严格阈值。
+5. C3不得被解释为TID O/X P2P模式召回、P2-6H替代品或三维散射验证。
+
+A4-C4：WGS84和位置相关IGRF差异记录，不在当前有限门槛内
+
+1. PHaRLAP raytrace_3d可使用WGS84和空间B网格；C0R后的AH3D为球面ECEF及冻结磁场。
+2. 可用与C2相同发射条件运行一个PHaRLAP WGS84诊断，量化raytrace_3d与raytrace_3d_sp差异。
+3. 结果标记earth_model_diagnostic_only。它不能直接用于判定AH3D公式错误，也不能被称为“同一输入严格对照”。
+4. 若后续要求position_dependent_IGRF正式验证，必须先升级AH3D的B(x,y,z)查询、Hamiltonian空间导数和坐标模型，并新增独立收敛测试；该升级不在当前有限A4中暗中实施。
+
+七、实施步骤和每步停止条件
+
+A4-0 PHaRLAP环境预检
+
+1. 在D:\Matlab\PHaRLAP创建本项目脚本，不修改D:\pharlap\pharlap_4.7.4。
+2. MATLAB启动时先addpath(D:\pharlap\pharlap_4.7.4\mex)，再genpath添加src\matlab，保证mex目录优先。
+3. 设置DIR_MODELS_REF_DAT=D:\pharlap\pharlap_4.7.4\dat。
+4. 检查which raytrace_3d_sp、which raytrace_3d、mexext、MATLAB版本和PHaRLAP发布说明；运行官方轻量示例或单射线调用确认MEX可加载。
+5. 检查免责声明、发布限制和致谢要求；输出preflight JSON/MAT记录。
+6. 硬门槛：raytrace_3d_sp.mexw64必须可加载且最小调用无catastrophic_error。失败则A4状态=blocked_pharlap_runtime，不进入A4-1。
+
+A4-1 输入契约、转换器和机器可读产物
+
+1. Python端生成冻结MAT输入，MATLAB端只读取并调用PHaRLAP，不在MATLAB中重新生成Ne或B。
+2. MATLAB脚本验证单位、shape、单调网格、finite和模式值，保存原始输出MAT及运行日志。
+3. Python端读取PHaRLAP输出，完成终止状态、坐标、群路径和分支语义转换。
+4. 对同一输入重复运行两次；PHaRLAP关键标量和轨迹点数必须一致，浮点轨迹差异应达到保存精度内一致。
+5. 硬门槛：输入哈希、数组shape、单位、模式、坐标和重复性全部通过，才进入A4-2。
+
+A4-2 执行C0和C1
+
+1. 先运行C0，确认适配层无轴交换、单位倍率或坐标方向错误。
+2. 运行C1固定发射角前向对照，再运行两个已知区间的有界局部根搜索。
+3. C1所有门槛分别计算，不允许只给综合平均分。
+4. C0失败立即停止；C1失败则先完成差异归因，不运行C2。
+
+A4-3 执行C2 O/X正式对照
+
+1. 使用同一Ne、同一冻结磁场和同一发射条件运行O、X。
+2. 比较单分支指标及O-X分裂量，检查PHaRLAP和AH3D的分支标签没有互换。
+3. 若单分支满足阈值但分裂量方向相反，判branch_semantics_failed，不得按绝对值判通过。
+
+A4-4 执行C3/C4诊断
+
+1. C3弱TID最多运行少量固定轨迹，不运行高密度ray fan、P2P全角域或多级细化。
+2. C4最多运行一个WGS84条件，不进入正式门槛。
+3. 不简化Appleton-Hartree或Hamiltonian方程；节省时间只通过减少非门槛样本数量实现。
+
+A4-5 自动验收和差异归因
+
+1. 自动验证脚本读取冻结输入、双方原始输出和比较结果，逐case产生pass/fail/not_gated。
+2. 每个超阈值结果必须归入input_difference、coordinate_earth_model_difference、physics_formula_difference、numerical_difference或software_implementation_difference之一。
+3. 无证据时使用unresolved，不得把所有差异笼统归为“软件不同”。
+4. 若需修改AH3D，必须先增加能复现失败的最小测试；修改后重跑内部A1/A2/P5new轻量回归和全部A4正式case。
+
+A4-6 报告、计划状态和下一阶段门
+
+1. 生成word/ah3d_full3d_wave_validation_report.txt，记录配置、版本、哈希、结果、图像、差异归因和剩余风险。
+2. 更新a3rnew_accuracy_first_implementation_plan.txt和ah3d_full3d_wave_upgrade_plan.txt的A4状态。
+3. A4有限通过后，external_validation_status=pharlap_smooth_field_limited_pass，不能写成complex_3d_mode_completeness_pass。
+4. 是否进入B1只在A4报告完成后另行确认；A4不会自动启用完整3D PE或全波开关。
+
+八、正式验收指标
+
+8.1 前置硬条件
+
+1. PHaRLAP 4.7.4和MATLAB R2024a环境预检通过。
+2. 输入、代码、Provider、网格、地磁和输出哈希完整。
+3. C1/C2双方终止状态均为ground，分支一致，无非有限值或MEX错误。
+4. AH3D使用reference积分配置；PHaRLAP使用tol=[1e-8,0.01,10]。
+
+8.2 数值阈值
+
+对C1 low、C1 high、C2 O和C2 X逐条应用：
+
+1. landing_relative_error <= 1%，同时报告landing_absolute_error_km。
+2. apex_height_absolute_error <= 2 km。
+3. group_path_relative_error <= 1%。
+4. group_delay_relative_error <= 1%。
+5. trajectory_rms_3d_error <= 2 km。
+6. trajectory_max_3d_error <= 5 km。
+7. C1 PHaRLAP与AH3D独立全域冻结的同分支根，其launch_elevation_absolute_error <= 0.1 deg。
+8. O-X landing/apex/group-delay splitting的符号必须一致；分裂量相对误差只作诊断，不因分母接近零设置不稳定硬阈值。
+
+8.3 总状态判定
+
+1. passed：A4-0/A4-1通过，C0无转换错误，C1和C2全部硬指标通过，报告和哈希完整。
+2. failed：任一C1/C2硬指标失败、分支错误、终止状态不一致或输入等价性被破坏。
+3. blocked：PHaRLAP/MATLAB不可运行、MEX缺依赖、安装许可限制阻止运行或关键输入无法构造。
+4. diagnostic_only：仅C3/C4结果，不参与正式通过率。
+5. 当前A4通过语义固定为pharlap_smooth_field_limited_pass；P2-6H仍为deferred_full_completeness_audit。
+
+九、计划文件和产物
+
+9.1 MATLAB脚本目录D:\Matlab\PHaRLAP
+
+1. a4_pharlap_preflight.m：环境、路径、版本、MEX和最小调用检查。
+2. a4_pharlap_run_case.m：读取一个冻结MAT输入，调用raytrace_3d_sp或诊断性raytrace_3d，保存完整原始输出。
+3. a4_pharlap_seeded_roots.m：仅执行C1已知高/低区间的有界局部根搜索；不承担全域模式发现。
+
+9.2 Python和验收文件
+
+1. tests/_run_a4_pharlap_validation.py：生成冻结输入、调用MATLAB、转换和比较结果、生成图像与报告。
+2. tests/_verify_a4_pharlap_validation.py：检查schema、哈希、case状态、阈值和语义禁止项。
+3. 不新增生产级PHaRLAP抽象层，不把外部程序接入main.py/main2.py；A4只属于验证工具链。
+
+9.3 输出目录code/output2/a4_pharlap
+
+1. preflight/pharlap_preflight.mat和pharlap_preflight.json。
+2. inputs/<case_id>.mat及对应SHA-256。
+3. raw/<case_id>_pharlap.mat和<case_id>_ah3d.json。
+4. a4_pharlap_validation.json。
+5. trajectory_<case_id>.png、residual_<case_id>.png和branch_split_c2.png。
+6. run.log、matlab_diary.txt和failure_diagnostics.json。
+
+9.4 报告
+
+1. word/ah3d_full3d_wave_validation_report.txt。
+2. 报告必须区分raw PHaRLAP output、统一坐标后的comparison metrics和最终gate status。
+3. 图题必须写明单程、场景、B模型、O/X、地球模型、碰撞关闭、AH3D/PHaRLAP版本及校准状态。
+
+十、主要风险与预定处置
+
+1. MEX兼容风险：4.7.4针对R2024a构建，与当前MATLAB一致；仍可能缺Intel Fortran运行库。预检失败时安装官方要求的运行库，不改MEX。
+2. 受控发布风险：PHaRLAP不得重新分发。Git只记录本项目脚本、输入摘要、结果和哈希，不提交D:\pharlap内容。
+3. 坐标迁移风险：旧earth-flattening调用者或Provider若残留，会在约1200 km路径形成系统差异。C0R以调用清单和静态检查阻止残留；超阈值时不得修改R或轨迹后处理使其“对齐”。
+4. 地磁风险：当前AH3D不是位置相关IGRF。C2只验证midpoint_IGRF_derived_frozen_field；位置相关B(x,y,z)保留为明确升级项。
+5. 插值风险：PHaRLAP要求Ne/B及梯度平滑连续。正式Chapman场必须采用足够分辨率并由两端读取同一冻结网格；网格收敛至少比较一次高度步长减半结果。
+6. 分支风险：不同软件O/X符号约定可能混淆。以PHaRLAP文档OX_mode=1/-1和AH branch_id为唯一映射，并用B->0退化及分裂方向复核。
+7. 终止事件风险：ground、penetrated和grid_exit边界处理不同。状态不同不能继续比较落点；先扩大计算域排除边界不足，再判断公式差异。
+8. 群时延风险：group path、phase path、geometric path字段容易混淆。保存原始字段并用统一c重算时延。
+9. 模式完整性风险：C1双方均执行当前B=0平滑Chapman算例的独立全角域前向映射搜索，但这不等价于复杂三维场全模式搜索。报告不得据此声称PHaRLAP验证了P2-6H完整性。
+10. near-cutoff风险：A4正式case选择远离cutoff的稳定ground轨迹。该选择是限定射线理论适用范围，不表示near-cutoff问题已解决。
+11. 运行时间风险：正式case仅含少量轨迹和两个局部角度区间，不运行高密度二维O/X角域。不得通过降低方程精度、关闭正式分支或放宽阈值节省时间。
+12. 内部循环验证风险：AH3D输入生成器和比较器可能共享错误。PHaRLAP原始输出必须保留，关键转换增加独立解析自检，不只检查最终JSON。
+
+十一、禁止项
+
+1. 禁止让PHaRLAP和AH3D分别调用IRI生成“看似相同”的电离层后直接比较。
+2. 禁止把m^-3直接传给PHaRLAP，或把PHaRLAP electrons/cm^3当作m^-3读取。
+3. 禁止将AH局部Cartesian坐标与PHaRLAP纬经度数组按索引直接相减。
+4. 禁止在双方终止状态不同、分支不同或输入哈希不同的情况下计算正式通过率。
+5. 禁止以平均误差掩盖某一高/低射线或某一O/X分支失败。
+6. 禁止通过改变Chapman参数、目标距离、发射角、地球半径或磁场方向制造通过结果。
+7. 禁止把C3弱TID单轨迹称为复杂三维场模式完整性验证。
+8. 禁止把PHaRLAP射线对照称为完整3D PE、Maxwell全波或散射真实性验证。
+9. 禁止把当前冻结磁场写成position_dependent_IGRF。
+10. 禁止把A4有限通过写成绝对功率或实测传播真实性已校准。
+
+十二、参考文献与引用维护
+
+1. 本方案未新增未经核验论文。完整论文格式统一维护在word/reference-papers.txt，不在每个阶段报告重复复制全部参考文献。
+2. A4直接依据的已有真实文献为：
+
+Haselgrove, J. (1955). Ray theory and a new method for ray tracing. In The Physical Society (Ed.), The Physics of the Ionosphere (pp. 355-364). London: Physical Society.
+
+Haselgrove, C. B., & Haselgrove, J. (1960). Twisted ray paths in the ionosphere. Proceedings of the Physical Society, 75(3), 357-363.
+
+Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. U.S. Department of Commerce, Office of Telecommunications, OT Report 75-76.
+
+Budden, K. G. (1985). The Propagation of Radio Waves: The Theory of Radio Waves of Low Power in the Ionosphere and Magnetosphere. Cambridge: Cambridge University Press.
+
+Cervera, M. A., & Harris, T. J. (2014). Modeling ionospheric disturbance features in quasi-vertically incident ionograms using 3-D magnetoionic ray tracing and atmospheric gravity waves. Journal of Geophysical Research: Space Physics, 119(1), 431-440. https://doi.org/10.1002/2013JA019247
+
+Coleman, C. J. (2011). Point-to-point ionospheric ray tracing by a direct variational method. Radio Science, 46(5), RS5016. https://doi.org/10.1029/2011RS004748
+
+3. PHaRLAP软件版本、发布限制、MATLAB兼容性和致谢要求以本地00README.txt、MATLAB_INSTALL_NOTES.txt、RELEASE_NOTES.txt、RELEASE_LIMITATION.txt和ACKNOWLEDGEMENT.txt为准；这些属于软件随附文档，不伪装成期刊论文引用。
+
+十三、A4完成定义
+
+1. A4-0至A4-6均有机器可读状态和可复核哈希。
+2. C1高/低射线和C2 O/X单轨迹分别满足正式阈值，无输入或分支语义冲突。
+3. C3/C4结果若执行，只以诊断状态进入报告。
+4. 验证报告明确列出球形ECEF坐标、旧earth-flattening历史结果隔离、固定磁场、P2-6H延期、near-cutoff理论边界和非全波属性。
+5. 最终状态只能是pharlap_smooth_field_limited_pass、failed或blocked，不使用含糊的completed。
+6. 达到pharlap_smooth_field_limited_pass后，可整理B1待确认事项；未经用户确认不得直接实施B1。

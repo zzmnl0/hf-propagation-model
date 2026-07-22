@@ -1,0 +1,253 @@
+复杂电离层 HF 混合传播模型 update2 更新方案
+生成日期：2026-07-02
+适用对象：code/word/hf_hybrid_propagation_technical_report_paperstyle.docx 及当前 code/ 模型实现
+
+一、更新目标与边界
+
+本文档整理当前文章中已经暴露出的“可升级/更新”和“后续应完善/追加的功能”，目标不是重写现有模型，而是在保持现有计算链正确性的基础上，把后续版本的物理闭环、数值验证和论文支撑补齐。当前模型已经完成 IRI 背景、TID、Es、bubble、Spread-F、2D/3D 射线追踪、P2P、流管雷达、D 层吸收、O/X 后处理、Born/Rytov/MPS 散射诊断和论文级结果输出。update2 应优先解决四类问题：第一，O/X 仍是三维各向同性轨迹上的后处理近似；第二，散射诊断尚未闭环改写功率-时延谱；第三，结果分析仍以少量场景为主，缺少多频率、多时刻、多扰动强度和不确定性扫描；第四，文献、公式与验证脚本之间需要形成可追踪的“理论-实现-测试”链条。
+
+二、文献与理论基线
+
+1. IRI 背景场
+IRI 官方说明将 International Reference Ionosphere 定义为 COSPAR/URSI 支持的经验标准电离层模型，输入位置、日期和时间后给出电子密度、电子温度、离子温度和离子组成等月平均量。IRI 官方页还列出 IRI-2016 文献：Bilitza et al., 2017, Space Weather, doi:10.1002/2016SW001593，以及 IRI 综述：Bilitza et al., 2022, Reviews of Geophysics, doi:10.1029/2022RG000792。当前模型以 iri2016 作为背景场是合理的，但后续应明确 IRI 是气候态/月平均经验模型，不能直接代表暴时或短时实况。
+来源：https://irimodel.org/
+
+2. IGRF 地磁场
+NOAA/NCEI 说明 IGRF 是描述地球主磁场的标准数学模型，由 IAGA 维护；IGRF-14 系数已于 2024 年 11 月定稿，并提供系数、程序和计算器。其标量势形式为：
+V(r, phi, theta, t) = a * sum_l sum_m (a/r)^(l+1) * [g_lm(t) cos(m phi) + h_lm(t) sin(m phi)] * P_lm(cos theta),
+B = -grad(V).
+因此，O/X、Es 各向异性散射、场向 bubble 和流管雷达均应统一从同一个地磁场接口获得 B、磁倾角 I、磁偏角 D 和 gyrofrequency fH，避免不同模块使用不一致的地磁参数。
+来源：https://www.ncei.noaa.gov/products/international-geomagnetic-reference-field
+
+3. Appleton-Hartree 磁离子折射率
+Appleton-Hartree 方程描述冷磁化等离子体中的电磁波折射率。常用无量纲量为 X = wp^2 / w^2、Y = wH / w、Z = nu / w，theta 为 k 与 B 的夹角。无碰撞近似下可写为：
+n^2 = 1 - X(1-X) / [1 - X - 0.5 Y^2 sin^2(theta) +/- sqrt((0.5 Y^2 sin^2(theta))^2 + (1-X)^2 Y^2 cos^2(theta))].
+当前 O/X 后处理已经能估计同一路径上的群延迟分裂，但完整模型应把 AH dispersion relation 放入三维 Hamiltonian 射线方程，使 O/X 分支在传播过程中拥有独立轨迹、独立反射点和独立焦散。
+来源：https://en.wikipedia.org/wiki/Appleton%E2%80%93Hartree_equation
+
+4. 三维射线追踪与 Haselgrove/Jones-Stephenson 传统
+IONORT 文献说明现代 ionospheric magnetoplasma ray tracing 程序继承 Jones and Stephenson 1975 三维射线追踪程序，并用于真实地理坐标下的 2D/3D 表示。现有 RefractiveIndex3D 已具备三维轨迹框架，下一步应从各向同性 n^2(x,y,z) 升级到磁离子 Hamiltonian H(r,k)=0。
+来源：https://arxiv.org/abs/1009.1837
+
+5. 散射与闪烁
+电离层闪烁来自折射率随机起伏引起的相位扰动与干涉，通常用相位方差、Fresnel 尺度、S4、sigma_tau 等指标表征。当前 Born/Rytov/MPS 诊断字段已经可用于判断散射 regime，但强散射下仍需把多相位屏或 PE/SSF 输出耦合回 P-D 谱，而不是只输出诊断。
+参考理论：Rino 1979 power-law phase screen；Yeh and Liu 1982 ionospheric scintillation review；Knepp 1983 multiple phase-screen calculation；当前文献条目建议在下一版报告中用 DOI/数据库核验后正式列入参考文献。
+
+三、优先升级项
+
+U1. 完整三维 Appleton-Hartree O/X 射线追踪
+
+现状问题：当前 O/X 场景沿三维各向同性轨迹重新积分 AH 折射率，因此只能给出 O/X 群路径差和时延差的快速诊断，不能描述 O/X 分支的独立弯曲、横向偏移、反射高度差和焦散差异。
+
+理论依据：磁离子介质中的射线应由 dispersion relation D(r,k,w)=0 或 Hamiltonian H(r,k)=0 推导。几何光学下：
+dr/ds = partial H / partial k,
+dk/ds = -partial H / partial r.
+对于冷等离子体，H 可由 Appleton-Hartree n^2(X,Y,Z,theta) 构成，其中 theta = arccos((k dot B)/(|k||B|))。若保留碰撞频率，n 为复数，实部控制相位和轨迹，虚部控制吸收。
+
+实现建议：新增 models/ray_tracer_ah_3d.py，提供 RefractiveIndexAH3D 或 MagnetoIonicHamiltonian3D；接口接收 Ne(x,y,z)、B(x,y,z)、freq_MHz、collision_model、wave_mode='O'/'X'。在 point_to_point_3d.py 中增加 AH shooting 入口，输出 O/X 独立的 x_land_km、y_land_km、az_deflect_deg、h_reflect_km、group_path_km、geom_path_km、tau_ms 和 branch_status。
+
+正确性验证：新增 tests/_verify_AH3D.py。测试应包括：当 fH -> 0 时 O/X 结果退化到各向同性冷等离子体；当 B 与 k 平行或垂直时分支符号与标准 AH 极限一致；O/X 的 tau 差与现有后处理在弱磁化近似下同阶；near-cutoff 区域不产生负 n^2 或非物理跳变。
+
+优先级：P0。该项直接对应正文第 5 章中“严格的 O/X 分支轨迹分离仍需要完整三维 Appleton-Hartree 射线追踪”的局限。
+
+U2. D/E 区碰撞吸收与复折射率功率链闭环
+
+现状问题：当前 3D _add_power_3d() 已有 D 层吸收诊断，但吸收仍是功率链附加项，未统一进入复 AH 折射率和路径积分。强 D/E 区碰撞、太阳耀斑或短时突发吸收情况下，单一经验 dB 修正不足以支撑论文级结论。
+
+理论依据：Appleton-Hartree 中 Z = nu / omega 表示碰撞项；若 n = n_r - i n_i，则场强沿路径衰减约为 exp(-k0 integral n_i ds)，功率吸收为：
+L_abs_dB = 8.686 * 2 * k0 * integral n_i(s) ds,
+其中 k0 = 2*pi/lambda。若采用有效碰撞频率 nu_e(z, t) 和电子密度 Ne(z,t)，吸收应随频率、太阳天顶角、D 区增强和双程/单程路径自动变化。
+
+实现建议：新增 models/absorption_collision.py，统一提供 electron_collision_frequency(z, Ne, Te, neutral_proxy) 和 absorption_integral(ray, n_complex)。当前 abs_dB、abs_total_dB 字段保留，但计算源改为路径积分。通信链路采用单程积分，雷达链路采用双程积分或显式 inbound/outbound 两段积分。
+
+正确性验证：新增 tests/_verify_complex_absorption.py。测试包括：nu -> 0 时 abs_total_dB -> 0；同一路径下雷达双程吸收约为通信单程两倍；频率升高时吸收总体下降；与现有经验吸收在默认场景下差异不超过预设容差。
+
+优先级：P0。该项保证功率计算正确性，也是后续太阳耀斑、D 区扰动和实测链路对比的基础。
+
+U3. IRI-2020/IRTAM/GNSS-TEC 或电离图同化接口
+
+现状问题：当前背景场是 IRI-2016 气候态。论文第 5 章已经指出后续应补充多时刻和实测对比。若不引入观测约束，模型很难说明真实链路误差来自传播模型还是背景 Ne 偏差。
+
+理论依据：IRI 官方说明 IRI 可由 foF2、hmF2、B0/B1、foE 等观测量调整，且官方列出 IRTAM 作为 GIRO digisonde data 的实时同化映射。可采用乘性校正或形函数校正：
+Ne_assim(x,z,t) = Ne_IRI(x,z,t) * C_TEC(x,t) + delta_Ne_shape(x,z,t),
+C_TEC = TEC_obs / TEC_IRI,
+TEC = integral Ne dz.
+对于电离图，可约束 foF2 与 NmF2 的关系：
+foF2_MHz = 8.98e-6 * sqrt(NmF2_m3).
+
+实现建议：新增 models/assimilation.py 与 analysis/compare_observation.py。第一阶段只做 TEC scale assimilation 和 foF2/hmF2 单点约束；第二阶段再做沿链路横向插值。输出新增字段 bg_source、assim_method、TEC_scale、foF2_obs_MHz、hmF2_obs_km。
+
+正确性验证：新增 tests/_verify_assimilation.py。测试包括：C_TEC=1 时结果与原 IRI 一致；给定 TEC_obs 后垂直积分匹配；foF2/hmF2 约束不会导致 Ne 负值或剖面不连续；同化前后主模 tau 变化方向与 TEC 增减的物理预期一致。
+
+优先级：P0。该项直接支撑论文正式投稿时的实测对比和模型可信度。
+
+U4. 散射诊断到 P-D 谱的闭环耦合
+
+现状问题：scatter_coupler 默认只附加 Born/Rytov/MPS 诊断，不直接改写 Pr_W。这个设计有利于保持主射线功率链稳定，但强散射条件下，P-D 谱的展宽、衰落和多径尾部无法仅靠诊断字段体现。
+
+理论依据：弱散射可用 Born 或 Rytov 近似，强散射应进入多相位屏或 PE/SSF。相位屏思想可写为：
+E_{m+1}(x) = P_DeltaZ{ E_m(x) * exp[i phi_m(x)] },
+S4 = sqrt(<I^2> - <I>^2) / <I>,
+sigma_tau 可由强度-延迟分布或相位频率导数估计。P-D 谱应由主射线 delta-like 分量和散射展宽核卷积：
+PD_out(tau) = sum_j Pr_j * K_j(tau - tau_j; S4_j, sigma_tau_j, regime_j).
+
+实现建议：新增 models/pd_scatter_kernel.py，将 Born/Rytov/MPS 结果转换为 tau spread kernel 与 power redistribution。HybridPropagationModel 增加 scatter_apply_to_pd=False 默认开关；论文实验中可同时输出 diagnostic-only 与 coupled 两套 P-D 谱。
+
+正确性验证：新增 tests/_verify_pd_scatter_kernel.py。测试包括：scatter_apply_to_pd=False 时旧结果完全一致；S4=0 或 sigma_tau=0 时 kernel 退化为 delta；卷积后总功率守恒或按指定损耗模型单调下降；MPS_required 时不得误用 Born 弱散射公式。
+
+优先级：P1。该项是把“散射诊断”升级为“传播结果”的关键。
+
+U5. PE/SSF 与射线/P2P 的双向混合接口
+
+现状问题：当前 PE/SSF 已用于 bubble 散射，但与射线主模、P2P 求解和 P-D 谱之间仍偏松耦合。复杂不规则体环境中，射线适合大尺度折射，PE/SSF 适合小角前向散射；二者需要明确交换面和能量归一化。
+
+理论依据：抛物方程可由 Helmholtz 方程在主传播方向近轴近似得到：
+partial u / partial x = i/(2 k0 n0) * partial^2 u / partial z^2 + i k0 [n(x,z)-n0] u.
+Split-Step Fourier 的自由传播步和介质相位步分别处理衍射和折射。射线到 PE 的边界场可由 Gaussian beam 或局部相位曲率构造，PE 输出可反向生成散射损耗、角谱和延迟展宽。
+
+实现建议：新增 hybrid_ray_pe.py。输入主射线局部坐标、曲率和场强，生成 PE 初始场；PE 输出 angle spectrum、delay spread、loss_dB，再回写 mode dict。先做二维 PE 闭环，再扩展到 2.5D 横向谱。
+
+正确性验证：新增 tests/_verify_ray_pe_energy.py。测试包括：均匀介质中 PE 传播功率守恒；弱扰动下 PE 主瓣方向与射线方向一致；网格步长减半时结果收敛；PE 回写的 loss_dB 不与 D 层吸收重复计算。
+
+优先级：P1。
+
+U6. 多频率、多时刻、多扰动强度参数扫描与不确定性评估
+
+现状问题：当前结果章节已经增强，但主要基于典型场景。正式论文需要说明结论是否只对 10 MHz、2020-06-01 12:00 UTC 和当前扰动参数成立。
+
+理论依据：HF 反射条件由 f、fp、入射角和 Ne 剖面共同决定。等离子体频率满足：
+fp_Hz = (1/(2*pi)) * sqrt(Ne e^2/(epsilon0 m_e)),
+常用近似为 fp_MHz = 8.98e-6 * sqrt(Ne_m3)。扰动灵敏度可定义为：
+S_q = partial q / partial p,
+或归一化灵敏度：
+S_qp = (p/q) * partial q / partial p.
+不确定性可通过 Monte Carlo 或 Latin Hypercube 采样传播：
+Var(q) ~= J Cov(p) J^T.
+
+实现建议：新增 analysis/parameter_sweep.py 和 output/update2_sweep_*.csv。扫描维度包括 freq_MHz、local_time、season、TID amplitude、TID lambda_h、Es peak density/thickness、bubble delta_max、scatter Cs_rel、D-layer absorption scale。输出均值、标准差、5/50/95 分位数和失锁比例。
+
+正确性验证：新增 tests/_verify_sweep_reproducibility.py。固定 random seed 时输出完全可复现；单参数扫描曲线不出现非物理突跳，除非模式切换发生且被标注；所有输出字段单位一致。
+
+优先级：P0。该项是从“示例结果”升级为“论文证据”的核心。
+
+U7. Es 层各向异性散射与方位敏感性升级
+
+现状问题：当前 Es 可生成低高度模式，并有 Booker-Gordon 诊断，但结果章节尚未系统展示 Es 方位角、场向尺度和薄层厚度对 sigma_v、Pr 和 tau 的影响。
+
+理论依据：Es 和场向不规则体散射具有强各向异性。设不规则体相关长度为 L_parallel 和 L_perp，谱权重可随 aspect angle alpha 快速衰减。一般可写成：
+Phi_Ne(k_perp, k_parallel) = C_N^2 * (k_perp^2 + (L_perp/L_parallel)^2 k_parallel^2 + k0_i^2)^(-p/2).
+当射线波矢与 B 的 Bragg 匹配角接近时，体散射截面显著增大。
+
+实现建议：扩展 models/es_model.py 的参数扫描接口，增加 es_aspect_scan.py。输出 aspect_deg、sigma_v、valid_BG、Pr_dBW、mode_label、Bragg_mismatch 等字段。论文中新增 Es 方位敏感性图。
+
+正确性验证：新增 tests/_verify_es_anisotropy_scan.py。测试包括：L_parallel >> L_perp 时小 aspect angle 响应最强；aspect angle 远离场向时 sigma_v 单调下降或进入无效标志；Es 模式反射高度保持在 E/Es 合理范围。
+
+优先级：P1。
+
+U8. 三维场向 bubble 与 Spread-F 随机场的物理一致性升级
+
+现状问题：当前 bubble 使用场向椭球耗空，Spread-F 使用幂律相位屏。后续需要把二者从“场景扰动”升级为可控制的三维随机介质：包括背景漂移、场向拉伸、谱指数、外尺度、内尺度和时间演化。
+
+理论依据：场向不规则体可表示为：
+Ne(r,t) = Ne_bg(r,t) * [1 - delta(r_perp, r_parallel, t)] + deltaNe_rand(r,t),
+delta(r) = delta_max exp(-|r_perp|^2/sigma_perp^2 - r_parallel^2/sigma_parallel^2).
+随机扰动谱应满足：
+<deltaNe(k) deltaNe*(k')> = Phi_Ne(k) delta(k-k').
+时间演化可用冻结流假设：
+deltaNe(r,t) = deltaNe_0(r - V_drift t).
+
+实现建议：新增 models/irregularity_3d.py，统一 bubble、Spread-F 和随机谱生成。加入 drift_velocity_mps、seed、inner_scale_m、outer_scale_km、spectral_index、anisotropy_ratio。将随机场采样写入 NetCDF/npz 以便复现实验。
+
+正确性验证：新增 tests/_verify_irregularity_spectrum.py。测试包括：随机场均值、方差和谱斜率符合输入参数；相同 seed 可复现；Ne_tot >= 0；冻结流下相邻时刻相关峰移动距离等于 V_drift * dt。
+
+优先级：P1。
+
+U9. 雷达流管模型与 OTH clutter/Bragg 回波耦合
+
+现状问题：当前流管雷达给出仰角-双程时延-功率关系，但未把地/海面散射截面、Bragg 海杂波、多普勒和距离-多普勒谱完整连入。
+
+理论依据：当前雷达功率链可保留：
+Pr = Pt Gt Gr lambda^2 sigma0 A_tube / [(4*pi)^3 P_one^4] * focusing * absorption.
+后续 OTH clutter 应把 sigma0 扩展为 sigma0(f, grazing_angle, surface_state, Bragg_condition)，并引入 Doppler：
+f_D = 2 v_radial / lambda,
+range = c tau_2way / 2.
+
+实现建议：新增 models/radar_clutter.py，支持 ground clutter、sea clutter 和简单 Bragg 谱。analysis/report_results.py 增加 range-Doppler 图输出。tube_tracer_3d 输出 grazing angle、surface intercept、doppler_Hz、clutter_class。
+
+正确性验证：新增 tests/_verify_radar_clutter.py。测试包括：sigma0=0 时 Pr=0；同一单程路径下 tau_2way=2*tau_oneway；速度为零时 Doppler 为零；功率随 P_one^-4 单调下降。
+
+优先级：P2。
+
+U10. 数值正确性与可追踪验证体系升级
+
+现状问题：当前已有多项 verify 脚本，但缺少一份自动汇总“公式、模块、字段、测试、论文图表”的 traceability matrix。后续任何物理公式改动，都应自动影响测试与报告自查。
+
+理论依据：数值模型的可信度来自守恒性、极限退化、网格收敛和交叉实现一致性。对本项目而言，至少应长期保持以下不变量：
+group_path_km = integral(ds/n),
+tau_ms = group_path_km / c_km_per_ms,
+geom_path_km = integral(ds),
+Pr_W >= 0,
+Ne_m3 >= 0,
+n2 >= n2_floor,
+radar tau_2way_ms = 2 * tau_oneway_ms,
+scatter diagnostic-only 模式不改写 Pr_W.
+
+实现建议：新增 tests/_verify_update2_all.py、analysis/build_traceability_matrix.py 和 code/word/model_traceability_update2.md。矩阵列包括 theory、formula、module、output_field、test_script、report_section、reference。每次运行 main.py 和 report_results.py 后自动生成 validation_update2.txt。
+
+正确性验证：CI 或本地批处理执行全部 verify 脚本；失败时输出失败模块、公式编号和建议检查文件。重要数值测试设置相对误差和绝对误差双阈值，避免接近零时误判。
+
+优先级：P0。该项不直接增加物理功能，但保证后续升级不会破坏现有正确性。
+
+四、推荐实施顺序
+
+第一阶段（P0，正确性与论文可信度）：先完成 U10 traceability matrix、U6 参数扫描与不确定性、U3 观测同化接口、U1 完整 AH3D 的最小可用版本。此阶段应产出 update2_validation.txt、update2_sweep_summary.csv 和 O/X 独立轨迹图。
+
+第二阶段（P1，物理闭环）：完成 U2 复折射率吸收、U4 散射到 P-D 谱闭环、U5 ray-PE/SSF 混合接口、U7 Es 方位敏感性和 U8 三维随机不规则体。此阶段应产出 coupled vs diagnostic-only 对比图、能量守恒测试和散射展宽图。
+
+第三阶段（P2，应用扩展）：完成 U9 OTH radar clutter/Bragg 回波、多站链路与多接收点成像接口。此阶段服务工程应用和后续雷达专题论文。
+
+五、建议新增文件与脚本
+
+models/ray_tracer_ah_3d.py：完整三维 Appleton-Hartree Hamiltonian 射线追踪。
+models/absorption_collision.py：碰撞频率、复折射率吸收和路径积分。
+models/assimilation.py：TEC、foF2、hmF2 约束和背景场校正。
+models/pd_scatter_kernel.py：Born/Rytov/MPS 到 P-D 谱展宽核。
+models/hybrid_ray_pe.py：射线到 PE/SSF 的边界场与回写接口。
+models/irregularity_3d.py：三维 bubble、Spread-F 和随机谱统一生成。
+models/radar_clutter.py：OTH clutter、Bragg Doppler 和 sigma0 模型。
+analysis/parameter_sweep.py：多频率、多时刻、多参数扫描。
+analysis/build_traceability_matrix.py：公式-代码-字段-测试-图表追踪矩阵。
+tests/_verify_AH3D.py、tests/_verify_complex_absorption.py、tests/_verify_assimilation.py、tests/_verify_pd_scatter_kernel.py、tests/_verify_ray_pe_energy.py、tests/_verify_es_anisotropy_scan.py、tests/_verify_irregularity_spectrum.py、tests/_verify_radar_clutter.py、tests/_verify_update2_all.py。
+
+六、论文更新建议
+
+下一版 Word 或论文应在“模型与方法”中新增一个“理论一致性与验证矩阵”小节，把每个公式对应到代码模块和测试脚本。在“结果”中新增参数扫描和不确定性结果，而不仅是典型场景结果。在“讨论”中明确区分三类结论：已闭环进入传播结果的物理量、只作为诊断输出的物理量、仍属于后续功能的物理量。参考文献部分应替换“待核验参考文献”为已核验 DOI/URL 列表，至少覆盖 IRI、IGRF、Appleton-Hartree/磁离子理论、Haselgrove/Jones-Stephenson 3D ray tracing、HF absorption、Rino/Yeh-Liu/Knepp scintillation、Coleman OTH radar flux-tube、PE/SSF 和 Es anisotropic scattering。
+
+七、最低验收标准
+
+1. 所有新增物理公式必须有至少一个极限退化测试。例如 AH3D 在 fH=0 时退化到各向同性射线；复吸收在 nu=0 时吸收为 0；散射核在 S4=0 时退化为原始 P-D 谱。
+2. 所有新增输出字段必须写入 modes_*.csv 和 report_mode_details.csv，字段缺失时为空，不破坏旧场景。
+3. 所有会改写 Pr_W 或 P-D 谱的模块必须提供开关，默认保持旧结果可复现。
+4. 所有随机模块必须显式记录 seed、谱指数、外尺度、内尺度和网格间隔。
+5. 所有论文图件必须由脚本从 CSV/npz 生成，不手工录入数值。
+6. 正式报告中凡是使用“完整 O/X 轨迹”“强散射功率修正”“实测验证”等表述，必须对应已经实现并通过测试的功能；若仍未完成，只能表述为“后续升级方向”。
+
+八、已联网核验的公开出处
+
+IRI 官方说明与参考文献列表：https://irimodel.org/
+NOAA/NCEI IGRF 官方说明、IGRF-14 发布与公式：https://www.ncei.noaa.gov/products/international-geomagnetic-reference-field
+Appleton-Hartree 方程定义与变量说明：https://en.wikipedia.org/wiki/Appleton%E2%80%93Hartree_equation
+IONORT 三维磁等离子体射线追踪及 Jones-Stephenson 传统：https://arxiv.org/abs/1009.1837
+IRI-2016 Python 接口项目，用于确认当前软件依赖生态：https://github.com/space-physics/iri2016
+
+九、仍需正式核验的关键文献条目
+
+Rino, C. L. (1979). A power law phase screen model for ionospheric scintillation. Radio Science.
+Yeh, K. C., and Liu, C. H. (1982). Radio wave scintillations in the ionosphere. Proceedings of the IEEE.
+Knepp, D. L. (1983). Multiple phase-screen calculation of the temporal behavior of stochastic waves. Proceedings of the IEEE.
+Coleman, C. J. (1997, 1998). HF sky-wave radar ray tracing, clutter and flux-tube formulations. Radio Science.
+Pederick, L. H., and Cervera, M. A. (2014). HF ionospheric absorption modeling. Radio Science.
+Hao et al. (2017). Sporadic-E electron density profile/model used by the current Es module.
+Galushko et al. (2013). Born approximation treatment for HF scattering. Radio Science.
+
+这些条目应在下一轮写作更新中通过 DOI、出版社页面或 Web of Science/ADS/Semantic Scholar 逐条核验后进入正式参考文献。当前 update2 只把它们作为理论路线的待核验支撑，不应在正式投稿稿件中直接声称已核验。

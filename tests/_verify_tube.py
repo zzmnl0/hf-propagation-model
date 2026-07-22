@@ -20,10 +20,10 @@ import config as cfg
 from config import (BG_X, BG_Z, TX_POS, RX_POS, FREQ_MHZ,
                     PT_W, GT, GR, RADAR, TID, P2P, RT)
 from models.ionosphere_model import IonosphereModel
-from models.ray_tracer import RefractiveIndex
-from models.point_to_point import find_all_rays_p2p, classify_mode
-from models.tube_tracer import TubeRayTracer
-from models.hybrid_model import HybridPropagationModel
+from legacy.models.ray_tracer import RefractiveIndex
+from legacy.models.point_to_point import find_all_rays_p2p, classify_mode
+from legacy.models.tube_tracer import TubeRayTracer
+from legacy.models.hybrid_model import HybridPropagationModel
 from utils import radar_equation_W, to_dBW
 
 

@@ -1,0 +1,157 @@
+A3R P0未通过项解决与验收计划（P0R）
+日期：2026-07-15
+
+执行状态（2026-07-15）：P0R-0至P0R-3及正式运行时闭环已完成；P0R-4/5因有效算例均低于7200 s目标而未触发。high_low经规定距离审计确认case_physics_not_demonstrated，按第八、九节停止，P1门保持closed。实测结果见a3r_p0_validation_report.txt。
+
+一、目的与边界
+
+本计划只解决a3r_p0_validation_report.txt记录的P0运行时阻塞，并完成可重复冻结参考。不得修改电子密度场、Appleton-Hartree色散关系、O/X分支、发射仰角物理范围、P2P命中容差、central_reference Jacobian或research/reference积分精度。
+
+P0R不是P1 Jacobian方程修正、P2焦散/完整二维角域搜索或P4十倍性能优化。P0R通过前，p1_gate保持closed。
+
+二、未通过项与关闭条件
+
+F1 smooth_layer_high_low超时：O波第143次射线调用后仍未完成，X波未开始。
+关闭条件：O/X均完成；单次运行以7200 s为性能目标、9000 s为硬上限；连续三次模式集合一致；至少识别同一磁离子分支上的一组低射线和高射线。若当前冻结参数不能形成高低射线，不得把单模结果记为通过，按第八节处理算例有效性。
+
+F2 tid_3d超时：O波完成，X波第111次总射线调用处超时。
+关闭条件：O/X均完成；单次运行以7200 s为性能目标、9000 s为硬上限；连续三次模式集合一致；Provider组件明确包含TID，Provider及配置哈希三次一致。7200--9000 s记为performance_warning，但不单独否决P0物理/数值参考。
+
+F3 多模和TID参考缺失：无法形成P0全局回归基准。
+关闭条件：四类算例均写入同一个完整JSON；selected_run_complete=true且p0_reference_complete=true；每个正式模式convergence_status=passed、branch_status=ground、p2p_jacobian_effective=central_reference。
+
+F4 方位候选审计固定为0度：这是已知完整性风险，不是本次运行时阻塞。
+处理：继续记录candidate_scan_azimuth_domain_deg=[0,0]和p2_full_azimuth_audit_required=true；P2完成二维发射角域、焦散和模式分岔审计。P0R不得把该限制改写为“完整三维模式集合”。
+
+三、不可采用的提速方式
+
+1. 不得改用smoke结果作为冻结模式。
+2. 不得关闭X波、减少O/X任一分支或合并O/X模式。
+3. 不得缩小[2 deg, 88 deg]求解边界或当前候选扫描仰角域。
+4. 不得放宽tol_km、Jacobian步长/误差阈值、DOP853容差、Hamiltonian残差、research/reference一致性阈值。
+5. 不得降低8个仰角样本；P0的中等密度限制保持不变。
+6. 不得用多进程吞吐掩盖单进程算法超时。
+
+四、实施顺序
+
+P0R-0 冻结输入并建立可定位的剖析基线
+
+1. 保持现有三个哈希不变：benchmark_config_hash、provider_hash、provider_config_hash。任何哈希变化立即停止性能对比，先说明变化来源。
+2. 在tests/_benchmark_p2p_ah3d.py增加阶段计时，不改变求解流程。至少分别记录candidate_fan、local_solve、formal_research、formal_reference、dedup及Provider查询时间；每个阶段记录ray_calls、nfev和accepted_steps。
+3. 对smooth_layer_high_low执行一次O波单重复剖析。代表局部候选固定为8点审计中第一个目标落点符号变化区间的中点；若不存在符号变化，使用abs(x_land-x_rx)最小的候选。记录cProfile累计时间前20项。
+4. 对tid_3d用同一规则执行一次X波单重复剖析。剖析运行只定位成本，不计入三次正式验收。
+5. 输出output2/a3r_benchmark/a3r_p0r_profile.json。必须能回答：单射线积分、central Jacobian、重复候选局部求解、正式research及其reference复算各占多少时间。
+
+P0R-1 删除完全重复的射线计算
+
+1. 将当前_shoot_ah_3d内部smoke trace缓存提升为“单分支、单次find_all_rays_ah_3d调用”共享缓存。缓存键必须完整包含(beta_deg, az_deg, with_sensitivity, profile, t)；频率、分支、Provider和积分配置由缓存作用域固定，不跨调用复用。
+2. 缓存只允许精确浮点键命中，不允许按角度四舍五入近似复用。缓存结果按只读处理，写输出字段前复制字典，避免候选间相互污染。
+3. 正式research/reference结果不得由smoke缓存替代。相同分支、完全相同收敛角的正式结果可复用一次。
+4. 增加cache_hits、cache_misses、avoided_ray_calls字段。验收要求优化前后同一输入的候选角、有效模式和状态字段一致。
+
+P0R-2 在正式积分前合并同一收敛根
+
+1. 将局部求解与正式验证分成两个已有流程阶段：局部阶段只返回收敛角、smoke落点和求解诊断；所有局部候选结束后才执行research正式轨迹。
+2. 仅当候选属于同一wave_mode、具有相同smoke终止状态和反射次数，且同时满足以下条件时判为同一数值根：
+   abs(delta_beta)<=1e-3*d_beta；
+   abs(delta_az)<=1e-3*d_az；
+   smoke落点二维距离<=1e-3 km；
+   abs(delta_apex)<=1e-3 km；
+   abs(delta_tau)<=1e-6 ms。
+   当前角度和落点阈值为5e-5 deg、1e-4 deg和1 m。任一条件不满足即保留两个根。附加约束用于避免焦散附近数值相近但传播历史不同的模式被提前合并。
+3. 每组同根候选保留smoke落点误差最小者，仅对该候选执行一次research；research会继续自动执行reference一致性检查。
+4. 输出local_root_count、formal_root_count、merged_root_count及每个合并组的原始seed。不得跨O/X合并。
+5. 增加一个回归检查：构造两个超过上述任一阈值的候选，确认不会合并；构造同一根的重复候选，确认只执行一次正式积分。
+
+P0R-3 审计并条件删除候选发现中的已覆盖nearest种子
+
+1. _candidate_seeds必须给每个候选记录provenance：crossing、fold或nearest，以及其8点审计支撑单元索引。
+2. 所有目标落点符号变化crossing候选和所有局部极值fold候选无条件保留。
+3. 不得仅依据“位于同一支撑单元”直接删除nearest。先在P0R-0剖析或一次独立shadow审计中保留并求解这些nearest；仅当其全部收敛到已由对应crossing/fold候选覆盖的同一数值根，且满足P0R-2全部根等价条件时，才允许在正式运行中删除并记录covered_by_candidate_id与shadow_root_id。未收敛、收敛到不同根或未完成审计的nearest必须保留。
+4. candidate_nearest配置值保持不变：high_low仍为3，single_mode和tid仍为1。该值表示最多补充多少个“未被物理特征候选覆盖”的nearest种子。
+5. 输出candidate_raw_count、candidate_retained_count、candidate_removed_as_covered和完整映射。验收要求每个删除项都有唯一覆盖候选及shadow审计证据；没有覆盖关系或证据时禁止删除。若P0R-1至P0R-2已使全部算例达到7200 s目标，则P0R-3只保留审计记录，不启用候选删除。
+
+P0R-4 降低不影响轨迹解的Python开销
+
+仅在P0R-1至P0R-3后任一正式算例仍超过7200 s性能目标时实施；是否实施不等待9000 s硬超时：
+
+1. 局部smoke轨迹增加return_trajectory=false，只保留积分过程中已计算的落点、最高点、路径、时延、状态和Jacobian；正式research输出仍保留trajectory_3d。
+2. research内部reference复算设置return_trajectory=false，因为它只用于落点、高度和群时延收敛检查。不得删除reference复算。
+3. 将geom_path_km改为积分过程中累计或对轨迹一次性np.diff后求和，删除当前循环内重复np.diff的二次复杂度写法。优化前后差异要求：落点<=1e-9 km、反射高度<=1e-9 km、群时延相对差<=1e-12；geom_path只允许浮点求和次序造成的1e-12相对差。
+4. 不改变DOP853接受步、D=0投影、事件定位或群速度计算。
+
+P0R-5 单射线内部精确复用（条件步骤）
+
+仅当P0R-4后剖析显示RefractiveIndexAH3D.root、appleton_hartree_roots或Provider.get_Ne占单射线累计时间50%以上，且任一算例仍超过7200 s性能目标，才实施：
+
+1. 在单条射线作用域内缓存完全相同(x,y,z,kx,ky,kz,t,wave_mode)的root结果；不四舍五入，不跨射线复用，不缓存带previous_n2的分支连续性选择。
+2. 同一个RHS/投影调用中复用基准状态的Ne和root；空间/波矢有限差分扰动点仍分别求值。
+3. 禁止在P0R中改写Hamiltonian导数为解析导数、自动微分或降低有限差分点数；这些会改变P1验证对象。
+4. 输出root_cache_hits和provider_queries_avoided。优化前后必须逐字段满足P0R-4的数值等价阈值。
+
+五、正式重跑顺序
+
+1. 先运行smooth_layer_single_mode一次，确认已冻结的O/X模式签名不变。墙钟时间以原中位数7023.704 s为目标，允许机器波动至9000 s；模式签名或数值等价性变化时立即停止，单纯处于7200--9000 s只记performance_warning并继续定位。
+2. 运行smooth_layer_high_low三次。每次单进程、单线程、seed=0、n_init=8、candidate_nearest=3、central Jacobian、research/reference、O/X、continuation=false；每次以7200 s为目标并必须在9000 s硬上限内完整结束。
+3. 运行tid_3d三次。参数同上，但candidate_nearest=1；每次以7200 s为目标并必须在9000 s硬上限内完整结束。
+4. 最后执行完整四算例一次一致性汇总，不重复已完成的三次轨迹；汇总只能读取哈希一致的冻结结果。
+5. 每个repeat结束后原子写checkpoint，文件先写.tmp再替换正式JSON；中断不得覆盖已完成repeat。超时单独记录case、repeat、branch、ray_call、阶段和最后候选ID。
+
+六、模式集合一致性判定
+
+1. 模式主键为(wave_mode, branch_id, beta_deg_tx, az_deg_tx, tau_ms)。O/X分别比较。
+2. 三次重复的模式数量必须相同；角度比较绝对差<=1e-6 deg，群时延绝对差<=1e-6 ms。所有模式均须convergence_status=passed和branch_status=ground。
+3. high_low中，同一分支的低/高射线按反射高度和群时延共同区分；反射高度差或群时延差至少一项达到现有去重阈值clust_h_km/clust_tau_ms，禁止用标签文本代替数值判定。
+4. tid_3d输出必须保留scenario=tid、provider_components中的TID类型、provider_hash和provider_config_hash；不得退化为baseline Provider。
+5. 模式集合一致但哈希不一致，结果仍判失败。
+
+七、P0最终通过判据
+
+以下条件必须同时满足：
+
+1. vacuum、single_mode、high_low、tid_3d四类结果完整。
+2. single_mode、high_low和tid_3d各有三次一致结果。
+3. 所有非真空正式运行单次墙钟时间<=9000 s；其中超过7200 s的运行必须标记performance_warning并保留实测耗时，不得表述为达到原性能目标。
+4. 所有正式模式通过research/reference收敛检查，Jacobian语义为central_reference。
+5. benchmark_config_hash及各算例Provider哈希一致，未降低任何第三节约束。
+6. a3r_p0_validation_report.txt更新为implementation_status=complete、single_mode_reference_status=passed、multi_mode_reference_status=passed、tid_3d_reference_status=passed、p0_reference_complete=true、p0_overall_status=passed、p1_gate=open。
+
+任何一项不满足，p0_overall_status保持runtime_blocked或对应failed状态，P1不得开始。P0R以7200 s为性能目标、9000 s为硬上限完成闭环，不承担P4的10倍加速目标。
+
+八、算例有效性异常处理
+
+若high_low完整运行后未得到同一分支的高低射线：
+
+1. 标记high_low_case_status=case_physics_not_demonstrated，不得记为求解器通过或失败。
+2. 固定原Provider、频率集合和完整仰角域，仅用8点candidate_fan审计扫描RX距离候选，不在每个距离执行局部求解或research积分；距离按100 km步长在[600, 1600] km内搜索，每完成一个距离即写checkpoint。
+3. 选择首个具有至少两个目标交叉/折叠候选的距离，再用research/central完成一次确认。若没有距离满足，停止并将算例构造问题提交P2，不继续盲目扩大扫描。
+4. 更换距离会产生新的benchmark_config_hash；旧结果保留，不与新结果计算性能比。新算例仍须按第五至第七节完成三次验收。
+
+九、风险与停止条件
+
+1. 8点中等密度扫描仍可能漏掉窄焦散模式；P0冻结的是moderate_density_central_numerical_reference，不是完整物理真值。
+2. azimuth=0候选审计不能证明完整二维角域模式召回；由P2处理。
+3. 若完成P0R-5仍有任一算例超过9000 s硬上限，停止继续微优化，状态记为p0r_performance_failed；若均低于9000 s但仍超过7200 s，P0可按performance_warning闭环，性能债务转入P4。下一步不得降低精度强行通过。
+4. Provider、SciPy、NumPy、地磁或积分配置变化会使冻结结果失效。
+5. 精确浮点缓存可能命中率较低；只记录实测收益，不允许为提高命中率引入量化键或容差缓存。
+6. cProfile会扰动墙钟时间；剖析结果只用于定位热点，正式验收必须关闭cProfile并使用阶段计时。
+7. nearest shadow审计增加一次性成本，但可避免候选预删除造成漏模；缺少审计证据时宁可保留重复计算。
+8. 按9000 s硬上限估算，single_mode一次及high_low、tid_3d各三次的正式运行最坏约17.5小时，另加剖析时间；必须依赖逐repeat原子checkpoint恢复，不以长时间无输出判断死锁。
+
+十、理论与实现依据
+
+1. 轨迹物理保持Haselgrove Hamiltonian射线框架、Jones-Stephenson三维磁离子实现和Budden磁离子传播理论。
+2. O/X色散保持Appleton-Hartree关系；P0R只消除数值上完全重复的求值，不近似介质或色散。
+3. 局部有界最小二乘继续使用Branch、Coleman和Li（1999）的trust-region reflective方法。
+4. 高低射线候选和模式完整性风险依据Nosikov等（2020）；crossing/fold候选优先于无物理特征的nearest补充种子。
+5. 自适应积分继续使用DOP853；误差控制与非刚性常微分方程数值基础见Hairer、Nørsett和Wanner（1993）。完整引用见word/reference-papers.txt。
+
+十一、实施文件最小范围
+
+1. models/point_to_point_ah_3d.py：共享精确缓存、局部根/正式轨迹分阶段、候选覆盖去冗余。
+2. models/ray_tracer_ah_3d_v2.py：仅在触发P0R-4/5时修改非物理输出开销或单射线精确复用。
+3. tests/_benchmark_p2p_ah3d.py：阶段计时、逐repeat原子checkpoint、P0R字段和验收汇总。
+4. 一个最小回归脚本或现有验证脚本：检查重复根合并、非重复根保留和数值等价。
+5. word/a3r_p0_validation_report.txt与word/a3r_p0_benchmark_implementation_notes.txt：实施后记录实测结果、剩余风险和P1门状态。
+
+不得为P0R新建求解器、缓存框架或并行框架。

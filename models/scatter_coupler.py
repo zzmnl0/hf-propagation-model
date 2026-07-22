@@ -18,14 +18,17 @@ from .scatter_selector import scatter_phase_variance, select_scatter_method
 
 def _estimate_ne0_from_ray(mode: dict, n3d, fallback: float) -> float:
     """Estimate Ne0 from samples along a 3-D trajectory."""
-    traj = mode.get("trajectory_3d")
-    if not traj:
-        return float(fallback)
+    traj = mode.get("trajectory_ecef_km")
+    if traj is None or len(traj) == 0:
+        raise ValueError("formal scatter diagnostics require trajectory_ecef_km")
+    if not hasattr(n3d, "get_Ne_ecef"):
+        raise TypeError("formal scatter sampling requires an ECEF NeProvider")
     samples = traj[::max(len(traj) // 64, 1)]
     vals = []
     for s in samples:
         try:
-            vals.append(float(n3d.Ne_at(float(s[0]), float(s[1]), float(s[2]))))
+            vals.append(float(n3d.get_Ne_ecef(
+                np.asarray(s)[:3], float(mode["earth_radius_km"]))))
         except Exception:
             pass
     if not vals:
@@ -75,6 +78,7 @@ def apply_scatter_regime_3d(modes: list,
             "scatter_power_applied": False,
             "scatter_solver_dimensionality": "statistical_diagnostic",
             "scatter_validity": "born_rytov_mps_regime_diagnostic",
+            "scatter_path_coordinate_model": "spherical_ECEF",
             "theory_reference": "Rino 1979; Yeh and Liu 1982; Knepp 1983",
         })
 

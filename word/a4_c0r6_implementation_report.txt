@@ -1,0 +1,28 @@
+A4-C0R-6 配置与主入口迁移实施报告
+日期：2026-07-20
+状态：passed
+
+一、完成内容
+
+1. config.py建立正式球面地心坐标契约：TX/RX为lat_deg、lon_deg、height_km，发射方向为elevation/bearing，地球半径显式记录为6371 km。外部Ne入口固定coordinate_system=geocentric_spherical、axis_order=latitude,longitude,height，并要求显式单位、R和NPZ路径。
+2. ScenarioProviderFactory改用GeocentricNeProvider3D体系。现有IRI背景和TID/Spread-F/Es/bubble方程未改；range/cross坐标仅由球面位置派生后供参数化分量和图像使用，不再作为射线状态。
+3. unified_hybrid_pipeline正式求解器固定为ah3d_ecef：O/X ray fan调用ECEF Appleton-Hartree Hamiltonian、DOP853、自适应积分和物理事件；P2P调用RX ENU残差、多尺度中心差分Jacobian和有界TRF seeded局部根。任何legacy solver请求直接报错，无自动fallback。
+4. main.py与main2.py正式AH3D调用迁移至统一pipeline。正式吸收沿trajectory_ecef_km及物理高度积分；散射沿ECEF Provider采样。旧link-local flux-tube/tube radar不在本阶段重写，已从自动入口移除并由正式同名入口显式拒绝。
+5. 图像与CSV增加earth_model、earth_radius_km、coordinate_model、coordinate_semantics、plot_coordinate_semantics、one-way/two-way、O/X、Ray-PE和scatter耦合状态。图像路径坐标为由geocentric轨迹派生的great-circle ground range/physical height。
+
+二、验证结果
+
+1. tests/_verify_a4_c0r6_entry_migration.py：8项，0 fail(s)。正式配置、Provider、main2请求、legacy拒绝、ECEF/geocentric轨迹、traceability、CSV和非空图像全部通过。
+2. tests/_verify_a4_c0r2_provider.py：0 fail(s)。tests/_verify_a4_c0r5_downstream.py：15项，0 fail(s)。tests/_verify_main_output_semantics.py与tests/_verify_main2_scenario_fields.py均为0 fail(s)。
+3. py_compile与git diff --check通过。机器报告：output2/a4_pharlap/c0r6_entry_validation.json；图像：output2/a4_pharlap/c0r6_ecef_entry_smoke.png。
+
+三、语义边界与风险
+
+1. 本阶段只证明正式入口坐标流、轻量ECEF ray及输出语义，不证明PHaRLAP轨迹一致；C0R-7仍为下一硬门。
+2. P2P仍是seeded局部根，不替代全域模式完整性审计。Ray-PE仍为local_2p5d，不是完整3D PE/全波。
+3. 旧link-local flux-tube、tube radar和历史测试/文档仍保留，不能作为正式C0R输出；C0R-8需静态清理，或仅在A4确有需要时先迁移。
+4. 固定地磁方向已由TX局部declination/dip映射到ECEF；PHaRLAP磁场分量约定仍必须在C2-Prep独立核验。
+
+四、下一步建议
+
+建议进入C0R-7 PHaRLAP真空复验。正式输入、状态、事件、下游消费和主入口已统一，现可在无配准、无拟合条件下直接比较共同ECEF轨迹。C0R-7通过后再执行C0R-8回归与旧入口清理；A4-C1继续阻断。

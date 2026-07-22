@@ -1,0 +1,38 @@
+A4-C0R-2 Geocentric/ECEF NeProvider实施记录
+日期：2026-07-20
+状态：passed
+
+一、范围与语义
+
+1. 本阶段只统一电子密度Provider的坐标、轴、单位、插值、边界和哈希契约；未迁移AH3D Hamiltonian、事件、P2P、Ray-PE、main.py或main2.py。
+2. 正式Provider只接受geocentric latitude/longitude/height或带显式球半径的ECEF位置，不提供含糊get_Ne((x,y,z))入口。
+3. 原models/ne_provider.py仍服务未迁移调用链，但模块、基类和三类3D元数据均标记legacy_coordinate_reference_only；C0R-8前保留，禁止解释为新生产接口。
+
+二、实现
+
+1. 新增models/ne_provider_geocentric.py，提供GeocentricNeProvider3D、GeocentricGridNeProvider3D、ExternalGeocentricNeProvider3D、VacuumGeocentricNeProvider3D、ChapmanGeocentricNeProvider3D和GeocentricParameterizedIonosphere3DProvider。
+2. 网格轴固定(latitude,longitude,height)，Ne内部单位固定m^-3；线性插值、区域外fill值、东经周期等价、球半径、网格shape和SHA-256均写入metadata。
+3. 外部NPZ必须显式包含Ne、latitude_deg、longitude_deg、height_km、units、coordinate_system、axis_order、earth_radius_km和longitude_periodic_complete。允许m^-3或cm^-3并显式记录转换；区域经度网格与完整周期经度网格分别处理，不猜测覆盖类型；不允许缺字段、轴猜测、单位猜测、重复周期端点、负Ne或非有限值。
+4. ECEF查询先使用C0R-1共享内核转换到同一球面位置；查询球半径与Provider球半径不一致时直接拒绝。ECEF梯度使用三轴中心差分，单位m^-3 km^-1。
+5. 参数化Provider通过TX球面位置和链路bearing构造方位等距派生坐标：x为沿链路距离、y为横链路距离、z为球面物理高度。TID、bubble、Spread-F和Es继续调用原组件类，未重写或替换扰动方程。
+
+三、验收结果
+
+1. 真空Ne及ECEF梯度均为0；Chapman峰值、geocentric/ECEF同点查询相对误差均为0。
+2. 网格geocentric/ECEF同点差为0；轴交换、shape错误和球半径冲突均显式拒绝。
+3. 外部cm^-3到m^-3转换值为1.001205e11 m^-3；等价经度181 deg与-179 deg查询差为0；缺字段、错轴序、错单位、错坐标系和非布尔周期标志五类外部契约全部拒绝。
+4. 球面派生沿链路误差2.109424e-13 km，横链路误差7.318590e-13 km。
+5. 同一派生坐标、背景、参数及seed下，新Provider与旧组件引擎的Ne相对差为0；TID、bubble、Spread-F和Es四类组件均参与检查。
+6. tests/_verify_a4_c0r2_provider.py结果为0 fail(s)，机器报告及源码SHA-256见output2/a4_pharlap/c0r2_provider_validation.json。
+7. 旧tests/_verify_ne_provider_3d.py结果为0 fail(s)；旧irregularity物理回归的TID、bubble、Spread-F和组件工厂均通过，最后的旧NPZ临时文件测试受当前Windows临时目录DACL阻断。同等单位/插值功能已由C0R-2可写目录验收通过，不将该环境错误记为物理失败。
+
+四、理论与引用
+
+参数化扰动方程及参数未变化，继续使用现有Hines TID、Kelley bubble、Rino/Yeh-Liu Spread-F和Haldoupis/Booker-Gordon Es依据；完整引用统一维护于word/reference-papers.txt。本阶段未新增未经核验文献。
+
+五、风险与下一步
+
+1. 正式Provider已建立，但ray_tracer_ah_3d_v2、P2P和主入口尚未调用它；C0R-2通过不等于传播路径已切换ECEF。
+2. 区域经度网格允许周期等价查询；跨日期变更线数据必须提供严格递增的unwrapped longitude轴，不能提供重复-180/180端点。
+3. 当前严格外部契约面向静态3D Ne；若后续外部输入增加时间轴，应新增显式(time,latitude,longitude,height)契约，不复用或猜测本3D轴顺序。
+4. 下一步为C0R-3：AH3D状态、Hamiltonian有限差分和D=0投影迁移到ECEF，并只使用本阶段正式Provider。

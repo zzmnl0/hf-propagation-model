@@ -13,25 +13,31 @@ from typing import Any
 import numpy as np
 
 import config as cfg
-from utils import free_space_loss_dB, radar_equation_W, to_dBW
-from .hybrid_model import build_pd_spectrum, identify_main_mode
-from .ne_provider import BaseNeProvider
-from .point_to_point_3d import annotate_mode_causes_3d, find_all_rays_3d
-from .ray_tracer_3d import RefractiveIndex3D, shoot_rays_fan_3d
+from utils import (enu_basis, free_space_loss_dB, haversine_km,
+                   radar_equation_W, to_dBW)
+from .pd_spectrum import build_pd_spectrum, identify_main_mode
+from .ne_provider_geocentric import GeocentricNeProvider3D
+from .point_to_point_ah_3d_ecef import find_seeded_rays_ah3d_ecef
+from .ray_tracer_ah_3d_ecef import (
+    RefractiveIndexAH3DECEF,
+    trace_ray_ah3d_ecef,
+)
 
 
 @dataclass
 class UnifiedPropagationRequest:
     scenario: str
-    provider: BaseNeProvider
-    tx_pos: tuple = cfg.TX_POS
-    rx_pos: tuple = cfg.RX_POS
+    provider: GeocentricNeProvider3D
+    tx_geocentric: tuple = cfg.TX_GEOCENTRIC
+    rx_geocentric: tuple = cfg.RX_GEOCENTRIC
+    bearing_deg: float = cfg.LINK_BEARING_DEG
+    earth_radius_km: float = cfg.RE_KM
     freq_MHz: float = cfg.FREQ_MHZ
     x_km: Any = field(default_factory=lambda: cfg.BG_X)
     z_km: Any = field(default_factory=lambda: cfg.BG_Z)
     rt_config: dict = field(default_factory=lambda: dict(cfg.RT_3D))
     p2p_config: dict = field(default_factory=lambda: dict(cfg.P2P_3D))
-    solver: str = "iso3d_legacy"
+    solver: str = "ah3d_ecef"
     observable_type: str = "communication_oneway"
     pd_method: str = "gaussian"
     pd_delay_key: str = "tau_ms"
@@ -59,6 +65,115 @@ class UnifiedPropagationResult:
     mode_summary: dict
     traceability: dict
     warnings: list[str]
+
+
+def _annotate_mode_causes(modes: list, p2p_params: dict,
+                          environment: str | None) -> None:
+    """Attach coordinate-independent branch semantics to formal ECEF modes."""
+    low_max = float(p2p_params.get("launch_low_max_deg", 25.0))
+    high_min = float(p2p_params.get("launch_high_min_deg", 55.0))
+    seed = str(p2p_params.get("seed_source", "internal_scan"))
+    env = str(environment or "").lower()
+    for mode in modes:
+        beta = float(mode.get("elevation_tx_deg", mode.get("beta_deg_tx", 0.0)))
+        launch = ("low_elevation" if beta <= low_max else
+                  "high_elevation" if beta >= high_min else "medium_elevation")
+        height = float(mode.get("apex_height_km", mode.get("h_reflect_km", 0.0)))
+        label = str(mode.get("label", ""))
+        if label.startswith("Es") or height < float(cfg.MODE["h_Es_km"]):
+            layer = "Es"
+        elif height < float(cfg.MODE["h_E_km"]):
+            layer = "E"
+        else:
+            layer = "F1" if height < 300.0 else "F2"
+        wave_mode = str(mode.get("wave_mode", "iso"))
+        if wave_mode in ("O", "X"):
+            mechanism = "magnetoionic_split"
+        elif bool(mode.get("pe_coupled", False)):
+            mechanism = "ray_pe_coupled"
+        elif layer == "Es":
+            mechanism = "layered_reflection"
+        elif env in ("bubble", "spreadf", "full") and mode.get("scatter_method"):
+            mechanism = "irregularity_scatter"
+        else:
+            mechanism = "elevation_branch"
+        summary = f"{layer} {launch.replace('_', '-')} branch"
+        if mechanism in ("magnetoionic_split", "irregularity_scatter", "ray_pe_coupled"):
+            summary += f" ({mechanism})"
+        mode.update({
+            "cause_layer": layer, "cause_launch": launch,
+            "cause_mechanism": mechanism,
+            "cause_summary": summary,
+            "p2p_seed_source": seed,
+        })
+
+
+def _fixed_geomagnetic_direction_ecef(tx_geocentric) -> np.ndarray:
+    """Map the configured local declination/dip direction into TX ECEF."""
+    decl = np.radians(float(cfg.GEOMAG.get("decl_deg", 0.0)))
+    dip = np.radians(float(cfg.GEOMAG.get("dip_deg", 0.0)))
+    east, north, up = enu_basis(
+        float(tx_geocentric[0]), float(tx_geocentric[1]), cfg.RE_KM).T
+    direction = (np.cos(dip) * np.sin(decl) * east
+                 + np.cos(dip) * np.cos(decl) * north
+                 - np.sin(dip) * up)
+    return direction / np.linalg.norm(direction)
+
+
+def _ah_model(request: UnifiedPropagationRequest, wave_mode: str,
+              profile: str) -> RefractiveIndexAH3DECEF:
+    return RefractiveIndexAH3DECEF(
+        request.provider, earth_radius_km=request.earth_radius_km,
+        freq_MHz=request.freq_MHz, wave_mode=wave_mode,
+        gyro_MHz=float(cfg.GEOMAG.get("fH_MHz", 0.0)),
+        b_ecef_hat=_fixed_geomagnetic_direction_ecef(request.tx_geocentric),
+        integration_profile=profile)
+
+
+def _trace_fan(request: UnifiedPropagationRequest, wave_mode: str,
+               profile: str = "smoke") -> list:
+    model = _ah_model(request, wave_mode, profile)
+    elevations = np.linspace(
+        float(request.rt_config["beta_min"]),
+        float(request.rt_config["beta_max"]),
+        int(request.rt_config["n_fan"]))
+    max_path_km = float(request.rt_config.get(
+        "max_path_km",
+        request.rt_config.get("max_steps", 4000)
+        * request.rt_config.get("ds_max_km", 2.0)))
+    rays = []
+    for elevation in elevations:
+        try:
+            rays.append(trace_ray_ah3d_ecef(
+                model, tx_lat_deg=float(request.tx_geocentric[0]),
+                tx_lon_deg=float(request.tx_geocentric[1]),
+                tx_height_km=float(request.tx_geocentric[2]),
+                elevation_deg=float(elevation),
+                bearing_deg=float(request.bearing_deg),
+                h_stop_km=float(request.rt_config["z_stop_km"]),
+                max_path_km=max_path_km, profile=profile))
+        except (ValueError, RuntimeError, FloatingPointError):
+            continue
+    return rays
+
+
+def _nearest_ground_seeds(rays: list, rx_geocentric, count: int) -> list:
+    ranked = []
+    for ray in rays:
+        landing = ray.get("landing_geocentric_lat_lon_height")
+        if ray.get("termination_status") != "ground" or landing is None:
+            continue
+        error = haversine_km(
+            float(landing[0]), float(landing[1]),
+            float(rx_geocentric[0]), float(rx_geocentric[1]))
+        ranked.append((error, ray))
+    ranked.sort(key=lambda item: item[0])
+    return [{
+        "seed_id": "ecef_fan_{:02d}".format(index),
+        "elevation_deg": float(ray["elevation_tx_deg"]),
+        "bearing_deg": float(ray["bearing_tx_deg"]),
+        "semantics": "new_coordinate_coarse_fan_seed",
+    } for index, (_, ray) in enumerate(ranked[:max(int(count), 1)])]
 
 
 def _provider_components(meta: dict) -> str:
@@ -115,12 +230,17 @@ def _tag_common_semantics(modes: list, request: UnifiedPropagationRequest,
         m["ray_pe_dimensionality"] = m.get("pe_solver_dimensionality", "off")
         m["scatter_status"] = m.get("scatter_method", "diagnostic/off")
         m["calibration_status"] = "reference_uncalibrated"
-        m["solver_is_legacy"] = bool(request.solver == "iso3d_legacy")
-        if request.solver == "ah3d":
-            m.setdefault("ox_solver", "ah3d_hamiltonian")
-            m.setdefault("group_index_model", "ah3d_fd_dn_df")
-            m.setdefault("group_path_definition", "integral_n_g_ds")
-            m.setdefault("theory_reference", "Appleton-Hartree; Haselgrove Hamiltonian; Jones-Stephenson 3D ray tracing")
+        m["solver_is_legacy"] = False
+        m.setdefault("ox_solver", "ah3d_ecef_hamiltonian")
+        m.setdefault("group_index_model", "ah3d_dispersion_Dk_Domega")
+        m.setdefault("group_path_definition", "c*t_group")
+        m.setdefault("earth_model", "sphere")
+        m.setdefault("coordinate_model", "geocentric_spherical_ECEF_state")
+        m.setdefault("coordinate_semantics", (
+            "input=geocentric_lat_lon_height;state=ECEF;plot=derived_ground_range_height"))
+        m.setdefault("plot_coordinate_semantics",
+                     "derived_great_circle_ground_range_physical_height")
+        m.setdefault("theory_reference", "Appleton-Hartree; Haselgrove Hamiltonian; Jones-Stephenson 3D ray tracing")
 
 
 def _tag_communication_modes(modes: list) -> None:
@@ -163,13 +283,9 @@ def _add_power(modes: list, n3d, request: UnifiedPropagationRequest) -> None:
         abs_diag = {"abs_status": "disabled"}
         complex_cfg = cfg.UPDATE2.get("ABSORPTION_COMPLEX", {})
         if complex_cfg.get("enable", False):
-            from .absorption_collision import complex_absorption_path_dB
-            path = m.get("trajectory_3d", m.get("points", []))
-            sampler = lambda x, y, z: n3d.Ne_at(x, y, z)
-            abs_diag = complex_absorption_path_dB(
-                path, request.freq_MHz, sampler, complex_cfg,
-                two_way=bool(radar_mode), wave_mode=m.get("wave_mode", "O"),
-                geomag=cfg.GEOMAG)
+            from .absorption_collision import complex_absorption_ecef_ray_dB
+            abs_diag = complex_absorption_ecef_ray_dB(
+                m, n3d, complex_cfg, two_way=bool(radar_mode))
             abs_oneway_dB = float(abs_diag.get("abs_complex_dB", 0.0))
             abs_total_dB = float(abs_diag.get("abs_total_dB", abs_oneway_dB))
             abs_model = "appleton_hartree_collision_path"
@@ -192,37 +308,6 @@ def _add_power(modes: list, n3d, request: UnifiedPropagationRequest) -> None:
         _tag_point_target_modes(modes)
     else:
         _tag_communication_modes(modes)
-
-
-def _apply_ray_pe_reference(modes: list, Ne_2d: np.ndarray,
-                            irregularity_params: dict | None) -> None:
-    if not modes:
-        return
-    from .hybrid_ray_pe import apply_ray_pe_coupling_3d
-    from .pe_propagator import PEPropagator
-    pe_cfg = dict(cfg.UPDATE2.get("PE_COUPLING", {}))
-    pe_cfg.update({
-        "enable": True,
-        "apply_to_power": bool(cfg.UPDATE2.get("PE_COUPLING", {}).get("apply_to_power", False)),
-        "mode": "local_2p5d",
-        "q_boundary": 1.0,
-    })
-    pe = PEPropagator(freq_MHz=cfg.FREQ_MHZ)
-    params = dict(irregularity_params or {})
-    for m in modes:
-        Pr_in = float(m.get("Pr_W", 0.0))
-        Pr_out, diag = apply_ray_pe_coupling_3d(
-            pe, m, Ne_2d, cfg.BG_X, cfg.BG_Z, Pr_in,
-            pe.k0, params, pe_cfg)
-        m.update(diag)
-        m["pe_solver_dimensionality"] = "local_2p5d_reference"
-        m["pe_validity"] = "reference_only"
-        if bool(diag.get("pe_apply_to_power", False)):
-            m["Pr_W"] = float(Pr_out)
-            m["Pr_dBW"] = to_dBW(m["Pr_W"])
-        m["delta_tau_ms"] = (
-            float(m.get("delta_tau_ms", 0.0)) +
-            float(diag.get("pe_delta_tau_ms", 0.0)))
 
 
 def _add_scatter_diagnostics(modes: list, n3d, request: UnifiedPropagationRequest) -> None:
@@ -283,58 +368,87 @@ def _build_pd_for_delay(modes: list, request: UnifiedPropagationRequest):
 
 
 def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagationResult:
+    if request.solver != "ah3d_ecef":
+        raise ValueError("C0R production pipeline accepts only solver='ah3d_ecef'")
+    if not isinstance(request.provider, GeocentricNeProvider3D):
+        raise TypeError("C0R production pipeline requires GeocentricNeProvider3D")
+    if float(request.earth_radius_km) != float(cfg.EARTH_MODEL["radius_km"]):
+        raise ValueError("request Earth radius differs from config EARTH_MODEL")
+    if request.apply_ray_pe_reference:
+        raise RuntimeError(
+            "formal ECEF pipeline rejects archived local_2p5d PE; migrate it before use")
     provider_meta = request.provider.get_metadata()
-    Ne_2d = request.provider.get_Ne_grid(request.x_km, request.z_km)
-    n3d = RefractiveIndex3D(
-        Ne_2d, request.x_km, request.z_km, request.freq_MHz,
-        earth_flat=True, ne_provider=request.provider)
+    Ne_2d = request.provider.sample_link_plane(
+        request.tx_geocentric, request.bearing_deg,
+        request.x_km, request.z_km)
+    n3d = request.provider
+    fan_by_mode = {}
     rays3d = []
     if request.make_ray_fan:
-        if request.solver == "ah3d":
-            from .ray_tracer_ah_3d import RefractiveIndexAH3D, shoot_rays_fan_ah_3d
-            rays3d = []
-            wave_modes = (("O", "X") if cfg.UPDATE2.get("RAY_FAN_INCLUDE_X", False)
-                          else ("O",))
-            for wave_mode in wave_modes:
-                n_ah = RefractiveIndexAH3D(
-                    n3d, request.freq_MHz, wave_mode=wave_mode, geomag=cfg.GEOMAG,
-                    integration_profile="smoke")
-                rays3d.extend(shoot_rays_fan_ah_3d(
-                    request.tx_pos, n_ah, request.freq_MHz, request.rt_config))
-        else:
-            rays3d = shoot_rays_fan_3d(
-                request.tx_pos, n3d, request.freq_MHz, request.rt_config)
+        wave_modes = (("O", "X") if cfg.UPDATE2.get("RAY_FAN_INCLUDE_X", False)
+                      else ("O",))
+        for wave_mode in wave_modes:
+            fan_by_mode[wave_mode] = _trace_fan(request, wave_mode)
+            rays3d.extend(fan_by_mode[wave_mode])
+        for ray in rays3d:
+            ray["coordinate_semantics"] = (
+                "input=geocentric_lat_lon_height;state=ECEF;plot=derived_ground_range_height")
+            ray["plot_coordinate_semantics"] = (
+                "derived_great_circle_ground_range_physical_height")
+            ray["oneway_or_twoway"] = (
+                "two_way" if request.pd_delay_key == "tau_2way_ms" else "one_way")
+            ray["ray_pe_dimensionality"] = (
+                "archived_local_2p5d_not_in_production_chain")
+            ray["scatter_status"] = (
+                "power_coupled" if request.apply_scatter_to_pd else "diagnostic_only")
 
     if not request.make_p2p:
         modes = []
-    elif request.solver == "ah3d":
-        from .point_to_point_ah_3d import find_all_rays_ah_3d
-        modes = find_all_rays_ah_3d(
-            request.tx_pos, request.rx_pos, n3d, request.freq_MHz,
-            request.p2p_config, wave_mode="both", geomag=cfg.GEOMAG,
-            rays_fan=rays3d)
-        for m in modes:
-            m["ox_solver"] = "ah3d_hamiltonian"
-            m["physics_basis"] = "3d_appleton_hartree_hamiltonian"
-            m["freq_MHz"] = float(request.freq_MHz)
     else:
-        modes = find_all_rays_3d(
-            request.tx_pos, request.rx_pos, n3d, request.freq_MHz,
-            request.p2p_config)
-        for m in modes:
-            m["ox_solver"] = "iso3d_legacy"
-            m["physics_basis"] = m.get("physics_basis", "3d_haselgrove_isotropic_legacy")
-            m["group_index_model"] = m.get("group_index_model", "cold_plasma_ng_approx_legacy")
-            m["freq_MHz"] = float(request.freq_MHz)
+        modes = []
+        for wave_mode in ("O", "X"):
+            candidate_fan = fan_by_mode.get(wave_mode)
+            if candidate_fan is None:
+                candidate_fan = _trace_fan(request, wave_mode)
+            seeds = _nearest_ground_seeds(
+                candidate_fan, request.rx_geocentric,
+                request.p2p_config.get("candidate_nearest", 3))
+            if not seeds:
+                continue
+            model = _ah_model(request, wave_mode, "reference")
+            roots = find_seeded_rays_ah3d_ecef(
+                model, tx_geocentric=request.tx_geocentric,
+                rx_geocentric=request.rx_geocentric, seeds=seeds,
+                h_stop_km=float(request.rt_config["z_stop_km"]),
+                max_path_km=float(request.rt_config.get("max_path_km", 8000.0)),
+                profile="reference", tol_km=float(request.p2p_config["tol_km"]),
+                max_nfev=int(request.p2p_config["max_iter"]),
+                d_elevation_deg=float(request.p2p_config["d_beta"]),
+                d_bearing_deg=float(request.p2p_config["d_az"]),
+                jacobian_scales=request.p2p_config.get("jacobian_scales", (0.5, 1.0, 2.0)),
+                jacobian_scale_rtol=float(request.p2p_config.get("jacobian_scale_rtol", 1.0e-2)),
+                jacobian_condition_max=float(request.p2p_config.get("jacobian_condition_max", 1.0e10)),
+                dedup_launch_deg=float(request.p2p_config.get("clust_launch_deg", 0.02)),
+                dedup_trajectory_rms_km=float(request.p2p_config.get("clust_trajectory_rms_km", 1.0)),
+                dedup_apex_km=float(request.p2p_config.get("clust_h_km", 10.0)),
+                dedup_tau_ms=float(request.p2p_config.get("clust_tau_ms", 0.05)))
+            for index, m in enumerate(roots, start=1):
+                m["label"] = "{}-ECEF-{:02d}".format(
+                    wave_mode, len(modes) + index)
+                m["h_reflect_km"] = float(m.get("apex_height_km", 0.0))
+                m["beta_deg_tx"] = float(m["elevation_tx_deg"])
+                m["az_deg_tx"] = float(m["bearing_tx_deg"])
+                m["branch_status"] = "ok"
+                m["ox_solver"] = "ah3d_ecef_hamiltonian"
+                m["physics_basis"] = "3d_appleton_hartree_hamiltonian_ECEF"
+                m["freq_MHz"] = float(request.freq_MHz)
+            modes.extend(roots)
 
     if modes:
         _add_power(modes, n3d, request)
-        if request.apply_ray_pe_reference:
-            _apply_ray_pe_reference(modes, Ne_2d, request.pe_irregularity_params)
         _add_scatter_diagnostics(modes, n3d, request)
         _apply_p3_energy_closure(modes, request.apply_scatter_to_pd)
-        annotate_mode_causes_3d(modes, request.p2p_config,
-                                environment=request.environment)
+        _annotate_mode_causes(modes, request.p2p_config, request.environment)
         _tag_common_semantics(modes, request, provider_meta)
 
     if request.make_pd and modes:
@@ -346,6 +460,18 @@ def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagati
         main_mode, ranked, summary = None, [], {}
     traceability = {
         "scenario": request.scenario,
+        "earth_model": "sphere",
+        "earth_radius_km": float(request.earth_radius_km),
+        "coordinate_model": "geocentric_spherical_ECEF_state",
+        "coordinate_semantics": (
+            "TX_RX=lat_lon_height;launch=elevation_bearing;state=ECEF;"
+            "plot=derived_great_circle_range_physical_height"),
+        "oneway_or_twoway": (
+            "two_way" if request.pd_delay_key == "tau_2way_ms" else "one_way"),
+        "reflection_model": "AH3D_Appleton_Hartree_Hamiltonian_ECEF",
+        "ray_pe_coupling": "off_archived_local_2p5d_not_in_production_chain",
+        "scatter_power_coupling": (
+            "on" if request.apply_scatter_to_pd else "diagnostic_only"),
         "provider_name": provider_meta.get("name", ""),
         "provider_components": _provider_components(provider_meta),
         "provider_hash": provider_meta.get("provider_hash", ""),
@@ -359,10 +485,6 @@ def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagati
         "p2p_wave_modes": sorted({str(m.get("wave_mode", "iso")) for m in modes}),
     }
     warnings = []
-    if request.apply_ray_pe_reference:
-        warnings.append("Ray-PE is local_2p5d_reference, not full 3-D PE/full-wave.")
-    if request.solver == "iso3d_legacy":
-        warnings.append("iso3d_legacy is a baseline/performance fallback, not the P2 AH3D research mainline.")
     bad_status = sorted({
         str(m.get("branch_status", ""))
         for m in modes

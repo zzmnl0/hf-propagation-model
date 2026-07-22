@@ -1,0 +1,247 @@
+A3R P2P风险闭环与M2验收详细实施计划
+文档语义：原A3R历史实施与性能路线记录。2026-07-16后续执行以a3rnew_accuracy_first_implementation_plan.txt为准；本文件保留用于追溯P0/P0C/P1结果、风险来源及延期的P1A/P4性能任务。
+生成日期：2026-07-14
+修订日期：2026-07-16（明确A4前高低射线参考准入要求）
+
+一、阶段定位
+
+A3R位于A3与A4之间，用于处理A3实时记录中的风险和未完成项。A3R完成前不得把M2标记为完成，也不得以当前P2P结果进入A4外部软件一致性结论。
+
+本阶段不改变AH3D的物理定义，不减少发射角搜索域，不删除O/X分支，不放宽研究级收敛阈值。优化目标是在相同物理输入、搜索域、输出精度和模式完整性条件下减少计算成本。
+
+当前状态与下一步顺序（2026-07-15）：
+
+1. P0R运行时闭环已通过；真空、平滑单模和TID三次参考均稳定且低于7200 s目标。
+2. 原smooth_layer_high_low在600--1600 km审计范围内不存在真实fold或双交叉，属于算例物理构造无效，不是求解器超时或漏模。P0整体状态为case_physics_not_demonstrated，P1门保持closed。
+3. 下一步固定为P0C“高低射线参考算例重构与冻结”。P0C通过后才开启P1；不得继续增加原算例重复次数，也不得为通过验收而放宽阈值。
+4. P0C只建立可证明的高低射线拓扑参考。完整三维磁离子二维角域、焦散、near-cutoff和分支出生/消失仍由P2闭环。
+5. 更新后的实施顺序为P0C -> P1 -> P1A -> P2 -> P3 -> P4 -> P5。P1A用于关闭P1已确认的仰角列离散切线误差，详见a3r_p1a_jacobian_error_closure_plan.txt。
+6. 进入ah3d_full3d_wave_upgrade_plan.txt的A4外部验证前，必须先完成P0C。A4使用PHaRLAP验证三维磁离子轨迹，不能替代P0C对P2P高/低射线双根发现能力的独立验收。
+
+二、实施必要性
+
+1. 当前变分Jacobian在smoke平滑退化算例中与稳定尺度中心差分仍有百分量级差异。研究级1e-3阈值依靠中心差分回退保证，因此正确性有保护，但变分加速可能失效。
+2. caustic、截止和模式分岔处终端落点映射可能不可微或病态。普通Newton和参数continuation不能单独保证高低射线、新生模式及消失模式的完整识别。
+3. 尚无固定硬件、线程、搜索域、模式数和精度条件下的性能基准，不能证明A3计划要求的至少10倍算法加速。
+4. 尚未完成Nosikov等文献高低射线算例复现。内部回归只能证明实现自洽，不能证明P2P模式识别符合主流外部方法。
+5. A4验证路径、O/X和群时延时需要可信的P2P模式集合。若先进入A4，外部差异将无法区分为AH3D轨迹误差、P2P漏模、Jacobian误差或输入差异。
+
+三、理论与实现依据
+
+1. Hamiltonian射线及动态射线灵敏度：Haselgrove（1955）、Jones与Stephenson（1975）、Budden（1985）。切线方程必须与实际离散主方程、色散投影和事件定位一致。
+2. 高低射线与多解识别：Nosikov et al.（2020）。单个局部Newton收敛结果不能代表模式完整。
+3. 有界非线性最小二乘：Branch、Coleman与Li（1999）。保留trust-region reflective求解器和发射角物理边界。
+4. 焦散与折叠：以终端映射Jacobian的奇异值、条件数和落点映射折叠作为诊断；病态区使用全域扫描、局部加密和必要的伪弧长延拓，不强行假设普通参数映射可微。
+5. 外部三维磁离子射线参考：Cervera and Harris（2014）PHaRLAP。使用本地已安装的 MATLAB/PHaRLAP 作为 A4 三维磁离子射线交叉验证基准；该对照不能替代 A3R 的 P2P 模式完整性验收。
+
+四、统一输出语义
+
+1. ray_fan：全域候选发现或可视化射线，不等于接收点命中模式；默认O波，显式开关启用X波。
+2. p2p_candidate：进入局部求解的候选，不等于有效传播模式。
+3. p2p_mode：通过命中、分支、传播状态和research/reference收敛检查的接收点模式；P2P始终分别计算O/X。
+4. jacobian_variational：同步切线方程得到的离散落点Jacobian。
+5. jacobian_central_reference：稳定尺度中心差分参考Jacobian。
+6. jacobian_fallback：变分Jacobian非有限、相对误差大于1e-3或条件数大于1e10时采用的研究级保护路径。
+7. algorithmic_speedup：固定单进程、固定线程条件下，相对冻结基准的算法加速比。
+8. throughput_speedup：O/X、频点或候选并行后的吞吐量加速，必须与algorithmic_speedup分开报告。
+9. mode_recall：相对固定中等密度全域扫描、物理特征区自适应加密及独立有界根共同形成的冻结参考模式集合的有效模式召回率。
+10. external_reproduction：文献参数可唯一恢复时的复现；参数不足时只能标记partial_reproduction_with_assumptions。
+
+五、P0 冻结可复现实验基准（最高优先级）
+
+目标：建立后续正确性和性能比较的唯一参考，避免不同配置之间比较加速比。
+
+实施：
+
+1. 新增A3R专用基准脚本，不改变main.py和main2.py默认研究输出。
+2. 固定CPU型号、逻辑核数、单进程线程数、Python/NumPy/SciPy版本、随机seed和计时方法；计时使用高分辨率单调时钟。
+3. 固定Provider哈希、频率、TX/RX坐标、地磁模型、O/X分支、全发射仰角域、方位角域、积分profile、P2P命中容差和最大传播距离。
+4. 建立至少四类算例：真空/均匀介质退化、平滑分层单模、具有独立物理依据的高低射线多模、一个三维扰动场。原smooth_layer_high_low不得继续作为多模参考。near-cutoff算例在P1/P2加入，不作为首轮性能基准。
+5. 使用固定中等密度全域扫描、物理特征区间自适应加密和中心差分reference求解形成冻结模式集合；不得用全域无差别加密换取完整性。保存发射角、分支、落点、反射高度、几何路径、群时延、命中误差和收敛状态。
+6. 分别记录墙钟时间、CPU时间、射线调用数、RHS调用数、候选数、有效模式数、回退次数和峰值内存。
+7. 基准结果写入机器可读文件和简短文本摘要；配置哈希不一致时拒绝计算加速比。
+
+验收：
+
+1. 同机重复三次所得有效模式集合一致；时间报告中位数及离散范围。
+2. 每个参考模式均为convergence_status=passed，失败模式不进入冻结真值。
+3. 单进程算法时间与并行吞吐时间字段完全分离。
+
+五-A、P0C 高低射线参考算例重构与冻结（当前下一步）
+
+目标：替换物理构造无效的smooth_layer_high_low，在不修改AH3D求解器和验收阈值的前提下，建立至少一组可独立证明并可重复冻结的同分支低射线/高射线参考。
+
+已有算例与采用结论：
+
+1. 原1169 km、10 MHz smooth_layer_high_low仅得到每个O/X分支各一条射线；600--1600 km扫描及700 km O波正式确认均未发现dx_land/dbeta变号形成的真实fold，禁止继续作为高/低射线参考。
+2. 已核对Nosikov et al.（2020）论文PDF：正文给出双层模型参数N1=0.2x10^6 cm^-3、N2=1.0x10^6 cm^-3、z1=110 km、z2=300 km、Delta_z1=30 km、Delta_z2=75 km及12 MHz频率，但简化高/低射线算例未完整给出发射端/接收端坐标或确定距离、地球几何约定；三维扰动算例的完整剖面与图示还依赖IEEE补充材料。因此现有PDF不足以唯一恢复冻结算例，只保留为partial_reproduction_with_assumptions，不作为P0C真值。
+3. P0C确定采用Coleman（2011）公开的Chapman F2层梯度算例作为冻结参考；该PDF给出foF2=7 MHz、hmF2=350 km、ymF2=100 km、10 MHz、低射线30度、高射线43度及约1100 km落点范围和Haselgrove对照结果，不再依赖无法提供PDF的Croft--Hoogasian准抛物层。
+4. P0C只验证确定性分层介质中的真实fold、同分支双根及生产P2P召回，不宣称完成三维磁离子焦散或全参数域模式完整性。
+
+理论边界：
+
+1. Nosikov et al.（2020）现有论文PDF参数核对结论为“不足以唯一复现”，只记录partial_reproduction_with_assumptions，不将图中反推或猜测参数作为冻结真值。
+2. 采用Coleman（2011）Chapman层梯度算例作为确定性基准；该算例用于验证高低射线拓扑和P2P多根识别，不用于宣称真实三维IRI、磁离子焦散或完整O/X传播。
+3. Chapman层复用现有BaseNeProvider3D接口，以基准脚本内最小实现明确记录foF2、hmF2、ymF2、梯度、地球半径、频率、碰撞和地磁设置及单位；不新增生产求解器或Provider抽象，禁止从当前IRI场反向拟合到“恰好通过”。
+
+实施顺序：
+
+P0C-0 文献参数与输入冻结
+
+1. 将Nosikov参数核对结果记录为：剖面层参数和工作频率已给出；简化算例端点几何、地球几何约定及补充材料中的完整输入缺失；结论为partial_reproduction_with_assumptions。
+2. 按Coleman（2011）Chapman层参数和梯度算例冻结Provider配置和哈希，再进行射线搜索；搜索后不得修改剖面参数以制造双根。
+3. 使用无碰撞、无吸收基准隔离几何光学多根拓扑；吸收和功率不属于P0C验收量。
+
+P0C-1 独立构造真实fold和目标距离
+
+1. Chapman层梯度路径先用文献算例和独立Haselgrove参考定位可能的fold区间，再生成固定仰角域的中等密度一维落点映射x_land(beta)，仅在参考fold或斜率变号区间自适应加密；只接受ground终止且Hamiltonian/research检查通过的轨迹。
+2. fold必须由相邻有效区间的dx_land/dbeta斜率变号确认；abs(x_land-x_rx)局部最小不得作为fold。
+3. 目标距离必须位于fold两侧落点值的公共内部区间，并与fold边界至少保持该区间宽度的20%，避免把数值退化点当成两条稳定射线。
+4. 对两个符号变化区间分别使用有界标量根求解形成独立参考，不调用待验收的生产候选发现逻辑。固定选择规则为：满足条件的最低频率，其后取最短目标距离；并列时取较小仰角fold。
+5. 若冻结文献剖面在预先声明的频率/距离域内无fold，状态记case_physics_not_demonstrated并停止，不扩大搜索域或改变剖面后静默重试。
+
+P0C-2 AH3D数值确认与冻结
+
+1. 将P0C-1得到的两组发射角分别执行research及reference积分，保存发射角、落点、顶点高度、几何路径、群路径、群时延、终止状态和数值残差。
+2. 两条射线必须属于同一物理分支和相同地面接收目标，但按现有clust_h_km或clust_tau_ms至少一项可区分；分别标记low_ray和high_ray。
+3. Chapman各向同性基准中不把O/X重合轨迹计为两个独立传播模式，标记为magnetoionic_degenerate；现有磁离子O/X正确性继续由single_mode和tid_3d算例约束。
+4. 对积分容差和仰角根容差各收紧一次；落点、顶点高度和群时延必须呈收敛趋势，不允许通过放宽P2P命中阈值获得通过。
+5. 同机重复三次，模式签名、Provider哈希和配置哈希一致；继续使用原子checkpoint和断点恢复。
+
+P0C-3 准入判定
+
+1. 仅当真空、single_mode、P0C high_low和tid_3d四类参考完整，且所有正式模式通过research/reference检查时，设置p0_reference_complete=true、p0_overall_status=passed和p1_gate=open。
+2. 若只缺P0C高低射线，保持p0_overall_status=case_physics_not_demonstrated；若运行超过9000 s，标记runtime_blocked；两种状态不得混用。
+3. P0C通过仅代表确定性分层基准中的高低射线参考成立。输出必须保留p2_full_azimuth_audit_required=true和magnetoionic_caustic_validation_required=true，交由P2处理。
+
+P0C验收：
+
+1. 存在同分支low_ray/high_ray各一条，均命中同一目标且通过正式收敛检查。
+2. 独立有界根参考与生产P2P结果一一匹配，无伪模式、无漏模。
+3. 三次模式集合一致，单次不超过9000 s；7200--9000 s只记performance_warning。
+4. 新增最小回归检查覆盖：真实fold识别、伪fold拒绝、B=0 O/X退化不重复计数和P1门状态。
+
+六、P1 变分Jacobian离散一致性修正
+
+目标：定位百分量级误差根因，使变分Jacobian在平滑、良态区域达到研究阈值，减少不必要的中心差分回退。
+
+实施：
+
+1. 将误差拆分为Hamiltonian RHS方向导数、D=0投影导数、地面事件插值导数和终端坐标转换导数四部分，逐项与中心差分比较。
+2. 对中心差分步长进行尺度扫描，识别截断误差和舍入误差平台；reference步长不得由单一经验常数确定。
+3. 保证切线方程使用与实际主积分器完全相同的接受步、投影、事件插值和终端转换；禁止比较不同离散轨迹得到的导数。
+4. 优先修正已有有限差分方向导数的尺度和离散一致性。若仍无法达到1e-3，再评估解析偏导或自动微分；不为性能提前引入新依赖。
+5. 分别验证发射仰角列和方位角列，输出每列相对误差、奇异值和条件数，避免总范数掩盖单列错误。
+6. 在真空、平滑分层、三维扰动和远离截止的O/X算例中执行；near-cutoff只验证回退和状态语义，不要求Jacobian保持良态。
+7. 保留现有非有限、误差大于1e-3或条件数大于1e10的中心差分回退规则。
+
+验收：
+
+1. 平滑良态算例两列Jacobian相对误差均不超过1e-3。
+2. 离散步长/容差收紧后Jacobian误差呈收敛趋势。
+3. 病态和near-cutoff算例正确触发fallback，不产生伪收敛模式。
+
+停止条件：若主方程有限差分Hamiltonian导数决定了误差下限，记录根因并采用中心差分reference；不得放宽1e-3阈值。当前P1定点验收已确认仰角列仍超阈值，因此先执行P1A分项闭环；P1A通过前P2门保持closed。此时M2性能可能不通过，但物理正确性优先。
+
+七、P2 焦散、截止和模式分岔完整性
+
+目标：确保continuation和局部求解不会漏掉高低射线、新生/消失模式或O/X分支。
+
+实施：
+
+1. 在粗落点映射中记录相邻落点变化、局部极值、折叠、Jacobian最小奇异值和条件数。
+2. 对折叠、目标交叉、局部最近点和分支状态变化区间自适应加密；禁止全局无差别加密作为唯一方案。
+3. continuation只作为候选种子。每个频率/距离批次保留全域审计，审计周期和触发原因写入输出。
+4. 当普通频率或距离参数延拓在折叠处失败时，最小化实现伪弧长延拓；仅覆盖已证实需要跨越的病态区，不扩展为通用框架。
+5. O/X候选、模式匹配和去重始终按branch_id分离；不得以轨迹接近合并不同磁离子分支。
+6. 模式匹配同时使用发射角、轨迹距离、反射高度、群时延和分支，不仅使用落点距离。
+7. 构造高低射线、接近焦散、near-cutoff和频率连续扫描测试，检查模式出生、消失和分裂语义。
+
+验收：
+
+1. 对P0C确定性高低射线参考mode_recall=100%；对P2新增磁离子二维角域高密度审计参考同样mode_recall=100%，且无未通过收敛检查的伪模式。不得把P0C的一维退化参考称为完整三维模式真值。
+2. continuation开关前后有效模式集合一致，只允许计算成本不同。
+3. caustic/branch_lost/near_cutoff/evanescent状态均被显式记录，不进入正常模式排序。
+
+八、P3 文献与解析算例复现
+
+目标：在A4软件交叉验证前，证明P2P高低射线识别符合解析退化规律及公开文献方法。
+
+实施：
+
+1. 从本地文献和reference-papers.txt核对Nosikov et al.（2020）的电子密度、频率、链路、地球模型和边界条件。
+2. 参数足够时复现其高低射线和多解结果；比较模式数、发射角、反射高度、路径和群时延。
+3. 参数不能唯一恢复时，列出缺失参数和采用假设，输出标记partial_reproduction_with_assumptions；不得声称严格数值一致。
+4. 增加Chapman平滑分层梯度算例，用文献表格和独立Haselgrove高精度数值参考检查低射线、高射线和临界频率趋势。
+5. 文献复现与 PHaRLAP 对照分离：前者验收 P2P 模式识别，后者留在 A4 验收三维磁离子轨迹实现。PHaRLAP 对照应统一电子密度网格、地磁场、碰撞频率、坐标系、频率和 O/X 模式定义，并比较落点、顶点高度、群路径、群时延及方位偏转。
+
+验收：
+
+1. 能获得完整参数的算例不得遗漏文献报告的有效高低射线。
+2. 解析退化算例的模式变化趋势、反射条件和群时延符合理论。
+3. 所有输入差异、实现差异和数值误差分别记录。
+
+九、P4 基于剖析的性能优化
+
+目标：在P0-P3正确性保持不变的前提下，争取达到同搜索域、同精度至少10倍算法加速。
+
+实施：
+
+1. 先profiling，按累计时间排序处理瓶颈；不预设缓存、并行或重写一定有效。
+2. 优先减少重复Ne/梯度/地磁/色散中间量查询和相同候选轨迹重算；缓存键必须包含Provider哈希、频率、分支、初值和积分profile。
+3. continuation复用已收敛模式作为种子，但不能替代P2全域审计。
+4. 仅在结果独立时并行O/X、频点或候选；并行收益计入throughput_speedup，不计入单进程algorithmic_speedup。
+5. 每项优化后立即运行模式完整性、Jacobian和收敛回归；结果变化时撤销该优化，不调整物理阈值迁就性能。
+6. 不通过减少角域、降低射线密度、关闭X波、改用smoke结果或减少reference检查获得加速。
+
+验收：
+
+1. P0相同配置下mode_recall=100%，模式参数差异满足既有research/reference阈值。
+2. algorithmic_speedup目标不低于10倍，报告固定硬件、线程、模式数、射线调用数和误差。
+3. 未达到10倍时如实标记performance_failed，不影响已通过的正确性结论，也不得将M2标记为完成。
+
+十、P5 M2验收与A4准入
+
+必须同时报告：
+
+1. correctness_status：Jacobian、命中误差、收敛和状态语义。
+2. completeness_status：模式召回率、伪模式数、高低射线及O/X完整性。
+3. performance_status：单进程算法加速和并行吞吐加速。
+4. literature_status：完整复现或带假设的部分复现。
+5. residual_risks：有限差分Hamiltonian导数、near-cutoff不可微性及未覆盖参数域。
+
+A4准入条件：
+
+1. P0C及P0-P3正确性与完整性全部通过；必须存在独立参考证明的同分支low_ray/high_ray，原smooth_layer_high_low结果不得用于替代。
+2. P4达到10倍时M2标记complete，可直接进入A4。
+3. P4未达到10倍时M2保持performance_failed；停止以降低精度换速度。是否进入A4必须由用户再次明确确认，A4报告需携带该未完成状态。
+4. 默认主入口在A3R验收前不切换到实验性性能实现。
+
+十一、建议新增或更新文件
+
+1. tests/_benchmark_p2p_ah3d.py：复用现有入口，替换无效high_low算例并冻结P0C结果；不新增第二套基准驱动。
+2. tests/_verify_p0c_high_low_reference.py：最小回归检查真实/伪fold、退化分支计数和P1门状态。
+3. tests/_verify_p2p_jacobian_components.py：RHS、投影、事件和终端转换分项导数验证。
+4. tests/_verify_p2p_mode_completeness.py：高低射线、焦散、分岔和continuation审计。
+5. tests/_verify_p2p_literature_cases.py：解析及Nosikov文献算例。
+6. word/a3r_p2p_validation_report.txt：实施后记录配置、结果、差异和M2状态。
+
+文件名可在实施时根据现有测试命名最小调整，不新建重复求解器或无必要抽象。
+
+十二、完整参考文献
+
+Haselgrove, J. (1955). Ray theory and a new method for ray tracing. In The Physical Society (Ed.), The Physics of the Ionosphere (pp. 355-364). London: Physical Society.
+
+Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. U.S. Department of Commerce, Office of Telecommunications, OT Report 75-76.
+
+Budden, K. G. (1985). The Propagation of Radio Waves: The Theory of Radio Waves of Low Power in the Ionosphere and Magnetosphere. Cambridge: Cambridge University Press.
+
+Nosikov, I. A., Klimenko, M. V., Zhbankov, G. A., Podlesnyi, A. V., Ivanova, V. A., & Bessarab, P. F. (2020). Generalized force approach to point-to-point ionospheric ray tracing and systematic identification of high and low rays. IEEE Transactions on Antennas and Propagation, 68(1), 455-467. https://doi.org/10.1109/TAP.2019.2938817
+
+Branch, M. A., Coleman, T. F., & Li, Y. (1999). A subspace, interior, and conjugate gradient method for large-scale bound-constrained minimization problems. SIAM Journal on Scientific Computing, 21(1), 1-23. https://doi.org/10.1137/S1064827595289108
+
+Cervera, M. A., & Harris, T. J. (2014). Modeling ionospheric disturbance features in quasi-vertically incident ionograms using 3-D magnetoionic ray tracing and atmospheric gravity waves. Journal of Geophysical Research: Space Physics, 119(1), 431-440. https://doi.org/10.1002/2013JA019247
+
+Nosikov, I. A., Klimenko, M. V., Bessarab, P. F., & Zhbankov, G. A. (2017). Application of the nudged elastic band method to the point-to-point radio wave ray tracing in IRI modeled ionosphere. Advances in Space Research, 60(2), 491-497. https://doi.org/10.1016/j.asr.2016.12.003
+
+Coleman, C. J. (2011). Point-to-point ionospheric ray tracing by a direct variational method. Radio Science, 46(5), RS5016. https://doi.org/10.1029/2011RS004748

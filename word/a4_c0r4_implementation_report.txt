@@ -1,0 +1,40 @@
+A4-C0R-4 球面物理事件与输出实施记录
+日期：2026-07-20
+状态：passed
+
+一、范围与语义
+
+1. 本阶段在C0R-3严格ECEF Hamiltonian和DOP853循环中增加球面地面、上边界、Provider域退出、转向/apex定位及完整路径输出。
+2. 事件只读取ECEF物理位置、ECEF波矢、径向群速度和统一Provider域，不使用旧z_cart、抛物高度或global z方向。
+3. 本阶段未迁移P2P、Ray-PE、吸收、散射、模式去重、绘图、main.py、main2.py或unified pipeline；这些仍属于C0R-5/C0R-6。
+
+二、实现
+
+1. models/ray_tracer_ah_3d_ecef.py新增trace_ray_ah3d_ecef，复用integrate_fixed_path_ah3d_ecef及同一Hamiltonian RHS。事件模式和C0R-3固定路径模式由明确integration_scope区分。
+2. 地面事件为g_ground=|r|-R，仅在轨迹已离开发射面且径向群速度向下时接受。地表向下发射直接拒绝，不把初始点误记为返回地面。
+3. 上边界事件为g_upper=|r|-R-h_stop；Provider域退出使用Provider自身signed domain margin并单独返回grid_exit，不混写为upper_boundary或mode_lost。
+4. models/ne_provider_geocentric.py新增domain_margin_geocentric/domain_margin_ecef。无界真空和解析Chapman返回inf；规则网格按纬度、区域经度和高度边界返回有符号margin；完整周期经度不引入日期变更线边界；参数化Provider继承背景域。
+5. 转向判据为v_g与径向单位矢量的内积由正变负；apex由该零点确定。所有事件均使用当前DOP853步骤的dense output二分定位，定位后重新执行D=0投影并检查Hamiltonian残差。
+6. 输出显式记录trajectory_ecef_km、wavevector_ecef_km^-1、trajectory_geocentric_lat_lon_height、trajectory_physical_height_km、事件历史、apex、落点、geom_path_km、group_path_km和tau_ms。非ground终止不生成伪落点；无trajectory_3d、x_land_km或z_land_km兼容别名。
+
+三、验收结果
+
+1. tests/_verify_a4_c0r4_events.py共17项检查，结果0 fail(s)。
+2. 真空35 deg上行射线在100 km球面上边界终止，解析路径误差2.8302338e-10 km，高度误差1.5916157e-10 km。
+3. 10 km高度、-30 deg真空下行射线在球面地面终止，解析路径误差2.5192293e-11 km，落点高度误差1.3642421e-11 km。
+4. 地表向下发射被离地条件拒绝；未把发射点误判为ground事件。
+5. 零密度有限规则网格在20 km高度独立返回grid_exit，边界高度误差2.1918822e-10 km，未混写为upper_boundary。
+6. Chapman F2无磁O波35 deg射线返回ground，识别1个turning/apex；apex高度264.1312389 km，apex径向群速度5.8804289e-8 km/s，落点高度8.0945028e-11 km。
+7. 四类算例最大dense-output定位区间5.8207661e-10 km；Chapman轨迹最大归一Hamiltonian残差7.8900005e-11。
+8. C0R-1、C0R-2、C0R-3回归均为0 fail(s)，语法检查和git diff whitespace检查通过。机器结果见output2/a4_pharlap/c0r4_event_validation.json。
+
+四、理论与引用
+
+事件定义继续依据Haselgrove、Jones-Stephenson和Budden所述Hamilton射线与群速度理论；球面坐标约定与PHaRLAP raytrace_3d_sp保持一致。完整引用已维护于word/reference-papers.txt，本阶段无需联网补充文献，也未增加重复引用。
+
+五、风险、未完成项与下一步
+
+1. grid_exit表示离开Provider声明的插值域。外部Ne网格必须覆盖TX和预期传播域；缺少覆盖时应修正输入网格或明确物理边界，不能自动回退旧local Provider。
+2. 本阶段验证静态球形Provider和固定ECEF磁场。位置相关IGRF、WGS84及PHaRLAP磁场分量仍按A4-C2-Prep处理。
+3. Chapman单射线通过只证明事件和输出闭环，不证明高/低射线完整召回、near-cutoff稳定性、复杂三维模式完整性、全波散射或绝对功率正确。
+4. 建议进入C0R-5，迁移P2P到TX/RX纬经高与RX ENU残差，并逐项迁移Ray-PE局部框架、吸收、散射路径采样、模式去重和绘图。旧P2P formal recheck风险必须在新坐标迁移中重新验收，不能沿用旧local通过状态。

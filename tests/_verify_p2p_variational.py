@@ -8,9 +8,9 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
-from models.ray_tracer_3d import RefractiveIndex3D
-from models.ray_tracer_ah_3d import RefractiveIndexAH3D, trace_single_ray_ah_3d
-from models.point_to_point_ah_3d import _candidate_seeds
+from legacy.models.ray_tracer_3d import RefractiveIndex3D
+from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D, trace_single_ray_ah_3d
+from legacy.models.point_to_point_ah_3d import _candidate_seeds
 
 
 def run():
@@ -52,7 +52,8 @@ def run():
         "finite_jacobian": tangent.shape == (2, 2) and np.all(np.isfinite(tangent)),
         "smoke_central_agreement": relative <= 3e-2,
         "fan_default_o_only": cfg.UPDATE2["RAY_FAN_INCLUDE_X"] is False,
-        "p2p_default_both_contract": cfg.P2P_3D["jacobian"] == "variational",
+        "p2p_accuracy_default": (
+            cfg.P2P_3D["jacobian"] == "central_reference_multiscale"),
         "research_fallback_threshold": cfg.P2P_3D["jacobian_rtol"] == 1e-3,
         "full_domain_candidates": audit_count == len(fake_fan)
                                   and len(candidate_seeds) >= 3,

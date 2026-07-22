@@ -1,0 +1,41 @@
+A4-C1 Prep-3 AH3D独立全仰角扫描实施报告
+
+日期：2026-07-22
+状态：passed_ah3d_full_domain_scan
+语义：AH3D独立候选根冻结；不是PHaRLAP跨求解器误差验收，不是low_ray/high_ray变分语义确认
+
+一、实施内容
+
+1. 使用Prep-1冻结Chapman F2输入、球形地心纬经高端点和ECEF AH3D，在1至89 deg完整仰角域执行0.5 deg粗扫，并在状态边界、目标邻近和映射折叠区域执行0.1 deg自适应加密。
+2. 保持生产DOP853、自适应积分、D=0投影和多尺度中心差分；根只从连续ground-ground有符号沿程残差变号区间产生，并以有界Brent求解，cross-track独立验收。
+3. 输出完整扫描CSV、候选根CSV、根轨迹NPZ、四面板PNG、机器JSON和冻结manifest；全部产物记录输入、Provider、求解器、脚本和数据哈希。
+
+二、边界差分修复
+
+首轮99条高仰角样本在接近500 km事件面时被误判physics_domain_rejected。原因不是射线物理失稳，而是中心差分正向采样越过冻结网格后读取fill_value=0，产生非物理Ne跃变和伪梯度。追踪Provider在冻结域外采用同一Chapman公式增加-2 km至60 km及502/504 km ghost continuation；60至500 km冻结Ne节点逐位不变，源网格与追踪网格哈希分别保存。该修复未修改Hamiltonian、Appleton-Hartree色散、DOP853、投影方程或根门槛。
+
+三、结果
+
+1. 粗扫177条，自适应216条，共393条；ground=294，upper_boundary=99，physics_domain_rejected=0，catastrophic_error=0，全部样本constraint_ok=true。
+2. 候选1：elevation=21.9475659250 deg，apex=203.176958 km，tau=4.426593 ms，沿程残差0.006429 km，cross-track=-0.000355 km。
+3. 候选2：elevation=39.5793636326 deg，apex=302.602535 km，tau=5.465126 ms，沿程残差0.023970 km，cross-track=-0.000075 km。
+4. 最大Hamiltonian残差9.98494e-11；多尺度空间差分组合稳定比最大0.579750；ground样本最大cross-track 0.001207 km。
+5. 可视化尺寸2400x3450，像素有限、非空白、来源哈希完整；冻结复验返回A4-C1-Prep-3 frozen: OK。
+6. 恢复链审计通过：首轮复用ground记录的最大apex为336.603182 km，距500 km边界超过163 km，远大于2 km最大积分步与1 km差分半径之和；上边界continuation不改变这些轨迹的查询域。后续恢复已要求脚本、求解器、Provider和追踪网格哈希一致，否则拒绝。
+
+四、产物
+
+目录：output2/a4_pharlap/c1_prep/prep3/
+- a4_c1_prep3_scan.csv
+- a4_c1_prep3_roots.csv
+- a4_c1_prep3_root_trajectories.npz
+- a4_c1_prep3_ah3d_full_domain_scan.png
+- a4_c1_prep3_validation.json
+- a4_c1_prep3_freeze_manifest.json
+
+五、风险与下一步
+
+1. 两根当前仅为较低/较高仰角ground候选；Coleman极小值/鞍点及low_ray/high_ray连续分支语义尚未验收。
+2. B=0水平分层算例不能验证O/X分裂、复杂三维场模式完整性、散射或全波传播。
+3. 同公式ghost continuation仅用于事件面数值差分支持，不能被解释为扩展了正式PHaRLAP比较高度域。
+4. 建议进入Prep-4，按termination、turning_count、连续发射角分支、ECEF轨迹、apex、几何/群路径和群时延联合识别、匹配与去重；通过后再进入Prep-5网格稳定性复核。

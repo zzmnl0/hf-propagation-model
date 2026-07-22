@@ -9,8 +9,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
 from models.dispersion_ah import C_KM_S, appleton_hartree_roots, dispersion_D
-from models.ray_tracer_3d import RefractiveIndex3D
-from models.ray_tracer_ah_3d import RefractiveIndexAH3D, group_velocity_ah3d
+from legacy.models.ray_tracer_3d import RefractiveIndex3D
+from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D, group_velocity_ah3d
 
 
 def check(label, value):

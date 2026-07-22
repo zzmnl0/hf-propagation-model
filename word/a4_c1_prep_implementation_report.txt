@@ -1,0 +1,33 @@
+A4-C1-Prep实施与预验收报告
+
+日期：2026-07-23
+机器状态：passed_c1_prep_admission
+语义：仅确认Chapman F2、B=0、碰撞关闭算例的等价输入、完整角域分支可见、冻结根稳定和A4-C1准入；不是AH3D-PHaRLAP正式跨软件误差验收，也不是外部物理验证通过。
+
+一、冻结输入与扫描
+
+1. Prep-1至Prep-5的报告、manifest及其冻结产物哈希均复验通过；图像来源短哈希：7e10006f39e5。
+2. PHaRLAP和AH3D均覆盖1至89 deg、0.5 deg步长的177个粗扫角度，无空终止状态。
+3. 原始状态分布：PHaRLAP={'ground': 81, 'penetrated': 96}；AH3D={'ground': 81, 'upper_boundary': 96}。penetrated与upper_boundary保留各求解器原始语义，未伪映射为共同状态。
+
+二、分支与稳定性
+
+1. 两端各保留low_ray和high_ray两个独立ground、单转向根；当前算例无额外有效根被删除。
+2. 最大仰角变化=0.0076477517809 deg，门槛0.02 deg；最大apex变化=0.0832001943982 km，门槛0.5 km。
+3. 最大群时延相对变化=0.00992912891111%，门槛0.2%；最大沿程/横程端点残差分别为0.00688016795926/5.14559683471e-05 km，门槛1 km。
+4. low/high标签为拓扑一致、文献引导语义；未计算光程泛函Hessian，不能宣称直接验证高射线极小值和低射线鞍点。
+
+三、可视化与结论
+
+1. 已生成双方完整角域落点图、冻结Ne背景上的低/高路径图和原始状态分布图；三图均通过尺寸、有限像素、非空白及来源哈希检查。
+2. Ne背景只读refined_1km冻结网格，使用jet、alpha=0.5；未重新生成Chapman场。
+3. Prep第五节全部门槛通过，允许进入A4-C1正式外部误差验收。C1仍须分别执行固定同角前向轨迹比较和双方独立冻结根同分支比较。
+
+四、风险与未完成项
+
+1. B=0水平分层算例不能验证O/X分裂、位置相关磁场、复杂三维扰动模式完整性或全波散射。
+2. PHaRLAP penetrated与AH3D upper_boundary事件定义不同；C1只比较双方均ground且同分支的轨迹。
+3. Prep只证明各求解器内部1 km/2 km网格稳定，尚未应用C1轨迹、落点、apex、群时延和发射角跨软件门槛。
+4. low/high变分Hessian直接分类仍未实施，不影响本次拓扑分支准入，但不得扩大论文表述。
+
+可视化硬检查：[{"path": "D:\\code11\\IRI01\\IRI03\\TID\\code\\output2\\a4_pharlap\\c1_prep\\prep6\\a4_c1_prep6_full_domain_landing.png", "sha256": "0c9153b339c1f8fffaf73690ef8a7affcd848dc2c5c0d65813fe90dd2c6c5c6e", "width_px": 2340, "height_px": 1044, "finite_pixels": true, "pixel_std": 0.12856628000736237, "passed": true}, {"path": "D:\\code11\\IRI01\\IRI03\\TID\\code\\output2\\a4_pharlap\\c1_prep\\prep6\\a4_c1_prep6_high_low_paths.png", "sha256": "eb18ddbe397e35dfe4b6b0467700e960f3ef8acb99d0e95d0d52434fd4905d14", "width_px": 2340, "height_px": 1080, "finite_pixels": true, "pixel_std": 0.22214384377002716, "passed": true}, {"path": "D:\\code11\\IRI01\\IRI03\\TID\\code\\output2\\a4_pharlap\\c1_prep\\prep6\\a4_c1_prep6_status_distribution.png", "sha256": "f2b958e8eab82eab5f543100429c36fac87ce728801461651af80ed800134639", "width_px": 1980, "height_px": 1007, "finite_pixels": true, "pixel_std": 0.3191888928413391, "passed": true}]

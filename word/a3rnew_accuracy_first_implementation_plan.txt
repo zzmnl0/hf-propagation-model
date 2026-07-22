@@ -1,0 +1,186 @@
+A3Rnew 三维磁离子P2P精度优先实施方案
+生成日期：2026-07-16
+状态：P0C、P1、P2-6L、P3、P5new已完成；A4有限范围准入已开放（更新于2026-07-20）
+
+一、语义与原A3R区分
+
+1. A3Rnew是“精度优先、不以提速为验收条件”的新执行路线。
+2. 原a3r_p2p_risk_closure_implementation_plan.txt保留为A3R历史实施、风险来源和性能路线记录，不删除、不覆盖。
+3. P0C、P1已有结果仍有效：P0C高低射线参考已通过；P1已证明中心差分fallback可保护正确性，但变分Jacobian仰角列未达到1e-3。
+4. a3r_p1a_jacobian_error_closure_plan.txt保留为延期性能研究，不再阻塞P2或A4。
+5. A3Rnew不把local_2p5d PE称为完整三维PE/全波，也不把Hamiltonian射线用于near-cutoff、隧穿或强散射全波现象。
+
+二、采用方法
+
+1. 三维传播路径采用Haselgrove/Jones--Stephenson Hamiltonian磁离子射线追踪。
+2. O/X波分别使用Appleton--Hartree色散分支，禁止跨branch_id合并。
+3. 主积分器采用DOP853自适应积分，并保留D=0色散面投影、research/reference收敛检查和显式传播状态。
+4. P2P研究级Jacobian采用多尺度中心差分；不再以变分Jacobian作为生产主路径。
+5. 模式发现采用全发射角域扫描、物理特征区自适应加密、独立有界根和必要的局部trust-region求解；continuation只提供种子，不能替代全域审计。
+6. 三维磁离子外部验证采用本地MATLAB/PHaRLAP，统一Ne、地磁、碰撞、坐标、频率和O/X定义后比较。
+
+三、新总执行顺序
+
+A0 -> A1 -> A2 -> A3
+-> A3Rnew(P0C[已完成] -> P1[已完成] -> P2-6L[有限验收已通过] -> P3[已完成] -> P5new[已完成，a4_limited_scope_ready])
+-> A4 PHaRLAP外部验证
+-> B1 -> B2 -> B3 -> B4 -> B5
+
+延期项：P1A变分Jacobian闭环、原P4十倍算法加速。延期项不作为P2、P5new或A4准入条件，但必须继续列入residual_risks。
+
+四、实施阶段
+
+A3Rnew-1 P1中心差分定版（已实施，2026-07-16）
+
+1. 将研究级P2P默认Jacobian明确设为central_reference_multiscale；保留variational仅作实验诊断，不参与正式精度结论。
+2. 中心差分扫描多个尺度，要求存在截断误差/舍入误差稳定平台；无稳定平台时标记jacobian_reference_unstable并拒绝该局部根。
+3. 保留非有限、条件数大于1e10、near-cutoff和掠射事件状态，不把病态结果作为正常模式。
+4. main.py/main2.py只在明确使用AH3D P2P时继承该研究级设置；ray fan不使用P2P Jacobian语义。
+
+验收：P0C模式集合不变；中心差分尺度收紧后落点Jacobian稳定；正式模式均通过research/reference积分检查。
+
+A3Rnew-2 P2模式完整性（P2-0至P2-5已实现；P2-6L有限验收已通过；P2-6H延期）
+
+P2-0 冻结配置与语义
+
+1. 扫描完整发射域beta=[2,88] deg、az=[-180,180) deg；az按周期边界处理，禁止在-180/180接缝处重复或漏掉候选。
+2. O/X分别建立落点图、候选、局部根、模式匹配和去重，禁止跨branch_id合并。
+3. 冻结频率、TX/RX、Provider哈希、地磁、碰撞、积分profile、命中容差和最大传播距离；配置变化必须产生新的reference_id。
+4. P2冻结场景限定为：P0C Chapman高低射线、平滑磁离子baseline、固定Provider哈希的斜向TID三维场。Spread-F、Es和Bubble不作为模式完整性真值。
+5. P2高密度结果是同一AH3D求解器下的数值完整性参考，不是外部物理真值；外部轨迹真实性仍由A4 PHaRLAP验收。
+
+P2-1 二维全域落点审计
+
+1. 初始网格采用delta_beta约5 deg、delta_az约15 deg；每个节点记录(beta,az)、落点残差(dx,dy)、branch_id、branch_status、顶点高度、群时延、转向点数和积分状态。
+2. 在二维网格单元边界计算残差向量绕数/拓扑度，用于发现孤立接收点根；仅有一维符号交叉不得作为二维完整性依据。
+3. 同时记录局部残差极小值、相邻落点变化、det(J)变号、Jacobian最小奇异值、条件数、落点折叠、局部极值和branch状态变化。
+4. 对branch_lost、near_cutoff、evanescent、resonance_excluded、under_resolved_Ne和积分失败分别计数并保存网格位置，禁止静默丢弃。
+
+P2-2 风险驱动自适应加密
+
+1. 对非零拓扑度、目标邻近、残差局部极小、det(J)变号、小奇异值、折叠、状态变化和near-cutoff邻域触发二维单元二分。
+2. 最多执行三级二分；若相邻两级有效模式集合尚未稳定，则本算例标记audit_not_converged，不得用最大级结果冒充完整参考。
+3. 防止同一单元内成对出生的根具有零边界拓扑度：拓扑度必须与残差极小值、Jacobian奇异值和折叠检测联合使用。
+4. branch状态边界上的残差映射可能不连续；跨状态单元只做细化和状态分类，不直接套用连续映射拓扑根结论。
+5. near-cutoff处映射可能不可微；只输出边界/病态候选和状态，不进入普通模式集合或功率排序。
+
+P2-3 独立有界根与正式积分
+
+1. 每个候选单元分别启动带(beta,az)单元边界的TRF局部求根；生产Jacobian继续使用P1的central_reference_multiscale。
+2. 无稳定Jacobian平台、非有限、条件数大于1e10、扰动射线非ground或命中误差超限时拒绝局部根并保留原因。
+3. smoke仅用于全域筛选和局部求根；收敛根必须重新通过research/reference积分，失败结果不得进入正式模式集合。
+4. 普通延拓在已确认折叠处无法保持模式集合时，才实施最小伪弧长延拓；不预先扩展为通用延拓框架。
+
+P2-4 模式匹配、去重与continuation
+
+1. 替换当前仅按反射高度和群时延的最终去重；匹配必须联合branch_id、发射beta/az、三维轨迹距离、顶点高度、群时延、转向点数和传播状态。
+2. 同一几何轨迹上的O/X必须保留为两个磁离子模式；不同三维路径不得因高度/时延接近而误合并。
+3. continuation只增加候选种子，不得替代任一频率/距离批次的二维全域审计。
+4. 对相同冻结配置分别关闭和开启continuation；有效模式集合必须一一匹配，只允许运行时间、射线调用数和初值来源不同。
+
+P2-5 Checkpoint与长时运行
+
+1. 输出目录固定为output2/a3rnew_p2；按reference_id/场景/分支/方位角行保存JSON元数据及NPZ数值网格。
+2. checkpoint记录已完成网格单元、加密层级、触发原因、配置哈希、Provider哈希和代码版本；恢复时哈希不一致必须拒绝续算。
+3. 先建立单进程确定性冻结参考；允许小时级运行。暂不以并行结果作为冻结真值，也不得因耗时缩小扫描域、关闭X波、降低正式积分精度或放宽阈值。
+4. 每完成一个branch/az行输出简短进度和累计状态计数，避免长时间无反馈无法区分正常计算与逻辑停滞。
+
+P2-6L 参考算例有限验收（当前阶段门槛，已通过 2026-07-19）
+
+1. 验收语义固定为reference_case_limited_pass，不是复杂三维场全模式完整性证明。轻量审计仍覆盖beta=[2,88] deg、az=[-180,180)，采用delta_beta=15 deg、delta_az=60 deg、最多一级风险二分；O/X、周期方位、central_reference_multiscale、ground、命中容差和research/reference正式复核均不放宽。
+2. P0C Chapman B=0高/低射线以O支路运行上述轻量二维审计；全域落点图完成后，以独立高/低参考根和B=0方位对称切片作为种子，在包含该根的最细风险单元高程范围内作窄方位有界正式求解。相对独立根mode_recall=100%，既有高/低射线签名保持可区分。其余风险候选只记录为unresolved_not_evaluated，不判定额外正式根；因此该项不构成盲发现全模式证明。
+3. P0C不覆盖磁离子分裂。低成本平滑AH O/X直接参考必须通过B=0退化、弱磁场O/X分裂、截止状态及群速度检查；其语义仅为AH色散/分支回归，不是O/X P2P全域模式召回。
+4. 所有P0C正式根必须满足ground、命中误差<5 km、central_reference_multiscale稳定平台及research/reference收敛。周期接缝、检查点哈希和多尺度Jacobian结构验证必须通过。
+5. baseline、固定Provider哈希TID的模式召回、连续两级稳定、continuation前后集合比较及复杂场O/X完整性均标记not_run/not_verified，仅记录历史观测、候选拒绝链和未完成原因；不得因其结果通过或失败P2-6L。
+6. P2-6L通过后允许进入P3以及A4的单轨迹/分支PHaRLAP对照；P5new必须报告completeness_status=reference_case_limited_pass。不得据此宣称复杂三维场全域模式完整性已验证。
+
+P2-6H 延期高密度完整性审计（不作为当前P3/A4准入条件）
+
+1. 保留原delta_beta约5 deg、delta_az约15 deg、最多三级风险二分、baseline和斜向TID O/X全域审计、连续两级集合稳定及相对冻结二维参考mode_recall=100%的要求。
+2. 若未来计算资源、独立加速或外部模式真值具备，P2-6H重新执行；在此之前，其状态为deferred_full_completeness_audit，而不是passed。
+
+P2主要风险与处置
+
+1. 计算量风险：二维O/X高密度扫描和多尺度Jacobian可能小时级运行；当前以P2-6L保留物理/积分精度并降低采样密度，P2-6H作为延期项，不能将轻量结果表述为全域完整性。
+2. 成对根漏检风险：联合拓扑度、残差极小值、Jacobian奇异值和折叠检测，不依赖单一符号交叉。
+3. 非连续状态风险：branch边界只分类和细化，不把连续拓扑判据强行用于非连续残差场。
+4. near-cutoff理论风险：明确标记为射线理论边界，不把不可微、隧穿或模式转换现象解释为普通AH3D模式。
+5. 误去重风险：采用分支和三维轨迹联合签名，保留路径接近但物理分支或拓扑不同的模式。
+6. 内部参考循环验证风险：P2只验收模式发现完整性，不替代A4 PHaRLAP和后续实测验证。
+
+A3Rnew-3 P3文献与解析复现（已实施并通过，2026-07-19）
+
+1. 保留Coleman（2011）Chapman F2高低射线复现，比较发射角、落点、顶点高度、几何路径和群时延。
+2. Nosikov等（2020）输入不完整的算例继续标记partial_reproduction_with_assumptions，不声称严格复现。
+3. 增加真空、平滑分层、各向同性B=0退化、远离截止O/X分裂和频率连续性检查。
+4. 文献复现只验收内部规律和P2P模式识别；PHaRLAP对照保留到A4。
+
+验收：完整参数算例不得漏掉已知有效模式；解析退化和频率趋势符合理论；输入差异、实现差异和数值误差分开记录。
+
+实施结果：
+
+1. 新增tests/_run_a3rnew_p3_validation.py与tests/_verify_a3rnew_p3_validation.py；冻结结果为output2/a3rnew_p3/a3rnew_p3_validation.json，状态passed。
+2. Coleman（2011）结果语义固定为literature_guided_parameterized_reproduction，不是严格复现：论文链路约1100 km，而冻结接收距离为在双根区间内独立选取的1185.848260 km。三次P0C结果均召回高/低两根；最大仰角、顶点高度、几何路径、群时延差分别为2.51e-6 deg、0.060 km、2.74e-4 km、2.74e-6 ms，最大Hamiltonian残差9.85e-11，均通过既定阈值。
+3. Nosikov等（2020）仅记录已给出的双层密度参数和12 MHz频率；因端点几何、地球/坐标约定、补充三维输入及完整边界设置不足，状态固定为partial_reproduction_with_assumptions/partial_not_matched，未通过反演调参制造一致。
+4. 真空n2=1及群速c、B=0时O/X退化、各向同性群速、截止状态、8--14 MHz共121点色散分支连续性均通过；另在8、9.5、11、12.5、14 MHz对固定发射角O/X各追踪一次，分支标识未静默切换，ground与upper_boundary状态显式区分。
+5. 图像只表达内部验证：Coleman图为B=0、单程AH3D高/低轨迹；频率图中的高度为apex/terminal height，时延为截至ground或upper_boundary终止点的累计单程群时延，不把upper_boundary解释为反射。
+6. P3只证明内部解析规律和文献引导参数化参考的一致性；不替代A4 PHaRLAP外部验证，也不改变P2-6H仍延期的复杂场模式完整性状态。
+
+A3Rnew-4 P5new精度验收与A4准入（已实施，2026-07-20）
+
+必须分别报告：
+
+1. trajectory_accuracy_status：Hamiltonian残差、D=0投影、积分收敛、落点和群时延。
+2. p2p_correctness_status：中心差分稳定平台、命中误差和正式积分状态。
+3. completeness_status：模式召回率、伪模式、O/X、高低射线和全域审计。
+4. literature_status：严格复现或带假设的部分复现。
+5. performance_status：仅记录运行时间和资源，不设十倍加速门槛。
+6. residual_risks：变分Jacobian未闭合、near-cutoff不可微、有限差分Hamiltonian、未完成全波和绝对功率未校准。
+
+A4准入条件：P0C、P1、P2-6L和P3正确性检查通过，P5new报告完成；A4仅先对照可识别单轨迹/分支，不将其解释为复杂场模式完整性验证。P2-6H仍为延期风险；不要求P1A或原P4通过。若未来执行P2-6H，禁止减少搜索域、关闭X波、放宽收敛阈值或使用smoke结果替代正式结果。
+
+实施结果：
+
+1. 新增tests/_run_a3rnew_p5_acceptance.py与tests/_verify_a3rnew_p5_acceptance.py；机器可读结果为output2/a3rnew_p5/a3rnew_p5_acceptance.json，报告为word/a3rnew_p5_accuracy_acceptance_report.txt。
+2. P5new只聚合P0C、P1、P2-6L和P3冻结证据并运行AH物理、频率连续性、积分收敛、多尺度中心差分、P0C、P2-6L和P3七项短时回归；不重新运行P2-6H、高密度复杂场O/X角域、仰角精细分层或性能长算例。计算方程、DOP853积分、D=0投影和既定精度阈值均未简化。
+3. 冻结前置文件、P3代码、P2检查点、Provider和配置哈希链全部一致；七项回归均通过，结构验证为0 fail(s)。
+4. 最大Hamiltonian残差9.842825e-11；research/reference最大落点差0.000335 km、反射高度差0.059852 km、群时延相对差5.524969e-7；P2P最大命中误差0.011029 km；Coleman高/低射线参考召回率100%。
+5. 最终状态固定为trajectory_accuracy_status=internal_reference_pass、p2p_correctness_status=reference_case_pass、completeness_status=reference_case_limited_pass、literature_status=literature_guided_and_partial、performance_status=recorded_not_gated、external_validation_status=not_run_until_A4。
+6. 当前gate_status=a4_limited_scope_ready，而非无条件passed。A4只准入平滑场和可识别单轨迹/O-X分支PHaRLAP对照；P2-6H、baseline/TID复杂场O/X完整性、两级模式稳定性、continuation等价性和变分Jacobian闭环继续保留为风险。
+
+五、A4 PHaRLAP验证要求
+
+1. 使用同一三维Ne网格或可证明等价的插值场、同一IGRF地磁、碰撞模型、地球半径、坐标系、频率、TX/RX和O/X定义。
+2. 分别比较发射角、落点、顶点高度、三维轨迹偏差、群路径、群时延、终止状态和分支。
+3. 先验证平滑分层和单模，再验证TID等三维扰动；不得直接用复杂场差异反推内部实现错误。
+4. PHaRLAP用于外部三维磁离子轨迹交叉验证，不替代内部P2P模式完整性审计。
+
+六、明确不实施/延期内容
+
+1. 不继续以P1A变分Jacobian达到1e-3作为当前目标；保留现有代码和诊断记录供后续提速研究。
+2. 不实施原P4“至少10倍algorithmic_speedup”验收；不得把并行吞吐称为算法加速。
+3. 不因速度删除全域角域、X波、正式积分或中心差分尺度检查。
+4. 不在A3Rnew内升级完整三维PE/全波、散射功率、绝对功率校准或外部Ne数据接入。
+
+七、改动量预估
+
+1. P1中心差分定版：小到中等，约3--6个现有文件，以配置、P2P求解和验证记录为主。
+2. P2二维角域模式完整性：中到较大，是A3Rnew主要工程量，涉及候选审计、自适应加密、模式状态和测试。
+3. P3复现与P5new验收：中等，以测试、机器可读结果和报告为主。
+4. 代码量低于继续开发解析/自动微分变分Jacobian，但正式二维角域O/X中心差分计算时间会明显增加，允许小时级运行并要求checkpoint/进度记录。
+
+八、理论依据
+
+Haselgrove, J. (1955). Ray theory and a new method for ray tracing. In The Physics of the Ionosphere, 355-364.
+
+Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. OT Report 75-76.
+
+Budden, K. G. (1985). The Propagation of Radio Waves. Cambridge University Press.
+
+Coleman, C. J. (2011). Point-to-point ionospheric ray tracing by a direct variational method. Radio Science, 46(5), RS5016. https://doi.org/10.1029/2011RS004748
+
+Nosikov, I. A., Klimenko, M. V., Zhbankov, G. A., Podlesnyi, A. V., Ivanova, V. A., & Bessarab, P. F. (2020). Generalized force approach to point-to-point ionospheric ray tracing and systematic identification of high and low rays. IEEE Transactions on Antennas and Propagation, 68(1), 455-467. https://doi.org/10.1109/TAP.2019.2938817
+
+Cervera, M. A., & Harris, T. J. (2014). Modeling ionospheric disturbance features in quasi-vertically incident ionograms using 3-D magnetoionic ray tracing and atmospheric gravity waves. Journal of Geophysical Research: Space Physics, 119(1), 431-440. https://doi.org/10.1002/2013JA019247
+
+完整引用格式继续以word/reference-papers.txt为统一记录；本方案未新增未经核验的物理参数。

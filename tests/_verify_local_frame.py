@@ -10,14 +10,14 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
-from models.local_frame import (
+from legacy.models.local_frame import (
     local_to_global,
     make_boundary_field_descriptor,
     make_fdtd_adapter_descriptor,
     make_ray_local_frame,
     sample_Ne_local_cross_section,
 )
-from models.ray_tracer_3d import RefractiveIndex3D
+from legacy.models.ray_tracer_3d import RefractiveIndex3D
 
 
 def _straight_ray():

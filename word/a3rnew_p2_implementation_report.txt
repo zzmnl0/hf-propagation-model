@@ -1,0 +1,32 @@
+A3Rnew-P2 模式完整性实施记录
+日期：2026-07-16
+
+一、实施范围
+
+P2-0 至 P2-5 已写入代码：完整 beta=[2,88]、az=[-180,180) 角域配置；方位周期归一化；O/X 分支独立；Provider、配置和代码哈希；二维落点图风险审计；风险单元自适应二分；单元边界约束 TRF 局部求根；JSON/NPZ 检查点及哈希拒绝恢复；三维轨迹联合去重。
+
+P2-6 原高密度冻结物理场长算例调整为延期 P2-6H，不再作为当前阶段门槛。P2-6L reference_case_limited_acceptance 已于2026-07-19通过：P0C Chapman高/低射线使用完整轻量角域落点图（36个第0层单元、56个第1层单元、95节点、54风险候选），仅对由独立P0C根支持的2个最细单元做正式求解。两根均通过ground、<5 km命中、central_reference_multiscale稳定平台及research/reference复核。其余52个风险候选标记unresolved_not_evaluated。
+
+二、关键实现
+
+1. models/p2p_mode_audit_3d.py 提供周期二维落点审计。风险判据联合使用残差向量绕数、目标邻近、branch 状态变化、落点映射折叠、Jacobian 条件数和最小奇异值；不以一维符号交叉替代二维审计。
+2. 检查点目录为 output2/a3rnew_p2；每个 reference_id 和 O/X 分支独立保存 audit.json 与 landing_nodes.npz。配置、Provider 或代码哈希不一致时拒绝恢复。
+3. P2P 局部根使用候选单元 beta/az 边界；正式求根仍使用 P1 central_reference_multiscale 和 research/reference 复核。
+4. 最终去重联合 branch_id、branch_status、转向点数、发射角、三维轨迹 RMS、反射高度和群时延，避免跨 O/X 或不同三维路径误合并。
+5. 修复多尺度 Jacobian 细化后 selected_scale 索引使用原始尺度数组的越界错误。
+
+三、验证
+
+1. tests/_verify_a3rnew_p2_audit.py：周期接缝、折叠风险触发和检查点哈希拒绝恢复通过，0 fail(s)。
+2. tests/_verify_p2p_multiscale_reference.py：0 fail(s)。
+3. tests/_verify_p2p_variational.py：0 fail(s)；变分 Jacobian 仍仅为实验诊断。
+4. tests/_verify_p0c_high_low_reference.py：0 fail(s)。
+5. 代码编译和 git diff --check 通过。
+6. tests/_run_a3rnew_p2l_reference.py：P2-6L reference_case_limited_pass；P0C高/低根均召回，AH O/X直接回归、周期审计检查点及多尺度Jacobian结构检查均通过。
+
+四、语义边界与未完成项
+
+1. audit_mode 默认仍为 internal_scan，避免普通 main/main2 启动小时级全域审计；冻结 P2 验收必须显式开启 adaptive_2d。
+2. P2-6L已通过，只能宣称参考算例有限验收完成；P2-6H复杂场高密度模式完整性仍为deferred_full_completeness_audit。baseline此前0 mode的候选拒绝链、TID模式集合、复杂场O/X P2P完整性、两级稳定性和continuation等价性均未验证。
+3. P2 仅验证同一 AH3D 求解器的模式发现完整性，不是 PHaRLAP 外部物理验证，也不是完整三维 PE/全波验证。
+4. near-cutoff、状态不连续、强散射和绝对功率校准仍属于计划中的边界风险。

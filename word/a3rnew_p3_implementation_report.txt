@@ -1,0 +1,46 @@
+A3Rnew-P3 文献与解析复现实施记录
+日期：2026-07-19
+状态：passed
+
+一、范围与语义
+
+1. 本阶段验证AH3D/P2P的内部解析退化规律、文献引导的高低射线参考和分支状态语义；未修改生产求解器、main.py或main2.py。
+2. Coleman（2011）标记为literature_guided_parameterized_reproduction。论文给出约1100 km链路，当前1185.848260 km接收距离由固定Chapman场双根区间独立选取，因此禁止称为严格数值复现。
+3. Nosikov等（2020）标记为partial_reproduction_with_assumptions和partial_not_matched。已知双层密度参数与12 MHz频率被记录，但不虚构缺失端点、坐标/地球约定、补充三维输入和边界设置，也不反演调参。
+4. 本阶段不是PHaRLAP外部验证，不证明复杂三维场模式完整性，不把AH3D称为全波。
+
+二、实现与结果
+
+1. tests/_run_a3rnew_p3_validation.py统一生成机器可读结果、Coleman轨迹图和O/X频率趋势图；记录前置结果、Provider和关键代码SHA-256。
+2. 真空极限n2=1、群速=c；B=0时O/X根退化；各向同性群速关系、near-cutoff/evanescent分类均通过。
+3. Appleton-Hartree色散在8--14 MHz共121点连续扫描中无branch_lost，O/X branch_id保持，最小根间距0.0044144。
+4. 固定发射角在8、9.5、11、12.5、14 MHz分别追踪O/X；10条轨迹均保持请求分支。ground与upper_boundary是允许且显式记录的不同终止状态；upper_boundary不解释为反射模式。
+5. Coleman高/低根为35.339808/39.918777 deg。三次冻结结果均召回两根，最大仰角差2.51e-6 deg、顶点高度差0.060 km、几何路径差2.74e-4 km、群时延差2.74e-6 ms，最大Hamiltonian残差9.85e-11；命中误差均小于5 km。
+
+三、验收产物
+
+1. output2/a3rnew_p3/a3rnew_p3_validation.json：总状态passed。
+2. output2/a3rnew_p3/coleman_high_low_trajectories.png：B=0、单程AH3D Chapman F2高/低轨迹。
+3. output2/a3rnew_p3/ah3d_ox_frequency_trend.png：固定发射角O/X频率审计；纵轴分别是apex/terminal height及截至终止点的累计单程群时延。
+4. tests/_verify_a3rnew_p3_validation.py：结果结构、语义边界、频点和图像存在性回归。
+
+四、风险与下一步
+
+1. P2-6H复杂场高密度完整性仍为deferred_full_completeness_audit；P3通过不改变该状态。
+2. Nosikov（2020）现有输入不足以唯一复现，后续获得补充材料后才能升级复现等级。
+3. near-cutoff隧穿、模式转换和强散射不属于射线模型能力；AH3D仍为Hamiltonian射线追踪，不是完整三维全波。
+4. 下一步按计划实施P5new精度总验收，完成后再进入A4 PHaRLAP单轨迹/分支外部对照。
+
+五、理论依据
+
+Haselgrove, J. (1955). Ray theory and a new method for ray tracing. In The Physical Society (Ed.), The Physics of the Ionosphere (pp. 355-364). London: Physical Society.
+
+Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. U.S. Department of Commerce, Office of Telecommunications, OT Report 75-76.
+
+Budden, K. G. (1985). The Propagation of Radio Waves: The Theory of Radio Waves of Low Power in the Ionosphere and Magnetosphere. Cambridge: Cambridge University Press.
+
+Coleman, C. J. (2011). Point-to-point ionospheric ray tracing by a direct variational method. Radio Science, 46(5), RS5016. https://doi.org/10.1029/2011RS004748
+
+Nosikov, I. A., Klimenko, M. V., Zhbankov, G. A., Podlesnyi, A. V., Ivanova, V. A., & Bessarab, P. F. (2020). Generalized force approach to point-to-point ionospheric ray tracing and systematic identification of high and low rays. IEEE Transactions on Antennas and Propagation, 68(1), 455-467. https://doi.org/10.1109/TAP.2019.2938817
+
+完整文献仍以word/reference-papers.txt为统一记录；P3未新增未经核验的参数或文献。

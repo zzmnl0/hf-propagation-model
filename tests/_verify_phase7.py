@@ -20,8 +20,8 @@ from config import (BG_X, BG_Z, TX_POS, RX_POS, FREQ_MHZ,
                     SCATTER, BUBBLE_3D, TUBE_3D, RT_3D, ES_BG, PHASE_SCREEN,
                     RE_KM, GEOMAG)
 from models.ionosphere_model import IonosphereModel
-from models.ray_tracer_3d import RefractiveIndex3D
-from models.tube_tracer_3d import TubeRayTracer3D
+from legacy.models.ray_tracer_3d import RefractiveIndex3D
+from legacy.models.tube_tracer_3d import TubeRayTracer3D
 from models.es_model import booker_gordon_sigma_v, es_aspect_angle_deg, es_scatter_valid
 from models.scatter_phase_screen import RinoPhaseScreen2D, MultiPhaseScreen
 

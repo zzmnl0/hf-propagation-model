@@ -17,12 +17,41 @@ M_E    = 9.109e-31    # Electron mass   [kg]
 EPS0   = 8.854e-12    # Vacuum permittivity [F/m]
 K_FP   = 8.980        # fp [Hz] = K_FP * sqrt(Ne [m⁻³])
 
-# ── Test link ─────────────────────────────────────────────────────────────────
-TX_LAT    = 30.0           # Transmitter latitude  [°N]
-TX_LON    = 120.0          # Transmitter longitude [°E]
-TX_POS    = (0.0, 0.0)     # TX in 2-D grid (x=0, z=0) [km, km]
-RX_RANGE  = 1169.0         # TX–RX horizontal distance  [km]
-RX_POS    = (1169.0, 0.0)  # RX in 2-D grid [km, km]
+# ── Formal PHaRLAP-compatible spherical link contract ────────────────────────
+EARTH_MODEL = {
+    'name': 'sphere',
+    'radius_km': RE_KM,
+    'coordinate_system': 'geocentric_spherical',
+    'height_reference': 'above_spherical_earth',
+}
+TX_LAT    = 30.0           # Geocentric latitude [deg]
+TX_LON    = 120.0          # East longitude [deg]
+TX_HEIGHT_KM = 0.0
+RX_RANGE  = 1169.0         # Derived great-circle distance [km]
+LINK_BEARING_DEG = 0.0     # Clockwise from geocentric North [deg]
+
+
+def _config_spherical_destination(lat_deg, lon_deg, bearing_deg, distance_km):
+    lat, lon, bearing = np.radians([lat_deg, lon_deg, bearing_deg])
+    angle = float(distance_km) / RE_KM
+    lat2 = np.arcsin(np.sin(lat) * np.cos(angle)
+                     + np.cos(lat) * np.sin(angle) * np.cos(bearing))
+    lon2 = lon + np.arctan2(
+        np.sin(bearing) * np.sin(angle) * np.cos(lat),
+        np.cos(angle) - np.sin(lat) * np.sin(lat2))
+    return float(np.degrees(lat2)), float((np.degrees(lon2) + 180.0) % 360.0 - 180.0)
+
+
+RX_LAT, RX_LON = _config_spherical_destination(
+    TX_LAT, TX_LON, LINK_BEARING_DEG, RX_RANGE)
+RX_HEIGHT_KM = 0.0
+TX_GEOCENTRIC = (TX_LAT, TX_LON, TX_HEIGHT_KM)
+RX_GEOCENTRIC = (RX_LAT, RX_LON, RX_HEIGHT_KM)
+
+# Archived local-link coordinates are retained only for legacy/ reproduction.
+# Formal production entry points must not consume these aliases.
+TX_POS = (0.0, 0.0)
+RX_POS = (RX_RANGE, 0.0)
 FREQ_MHZ  = 10.0           # Operating frequency [MHz]
 PT_W      = 1000.0         # Transmit power [W]
 GT        = 1.0            # TX gain (isotropic, linear)
@@ -175,9 +204,6 @@ RADAR = {
     'sigma0_ground_dB': -20.0,         # Ground normalized RCS [dBsm] (sea: -20, land: -25)
 }
 
-# TX -> target bearing (arbitrary 0 deg for testing; update for real scenario)
-LINK_BEARING_DEG = 0.0   # [deg], clockwise from North
-
 # ── Flux-tube ray tracer (Phase 4 upgrade, Coleman 1997/1998) ─────────────────
 TUBE_TRACER = {
     'delta_beta_deg' : 0.5,    # Fan ray elevation spacing [deg]
@@ -218,8 +244,8 @@ RT_3D = {
     'beta_max':    85.0,
     'n_fan':       33,
     'z_stop_km':   550.0,
+    'max_path_km': 8000.0,
     'max_steps':   4000,
-    'earth_flat':  True,   # apply Jones 1975 Earth-flattening
 }
 
 # P2P_3D: parameters for 3-D P2P Newton shooter
@@ -229,15 +255,34 @@ P2P_3D = {
     'tol_km':      5.0,    # Newton convergence tolerance [km] (looser than 2-D)
     'd_beta':      0.05,   # Jacobian step: elevation [deg]
     'd_az':        0.10,   # Jacobian step: azimuth   [deg]
-    'jacobian':    'variational',  # variational; central/forward are fallbacks
-    'jacobian_rtol': 1.0e-3,       # research acceptance against central reference
+'jacobian':    'central_reference_multiscale',
+'jacobian_scales': (0.5, 1.0, 2.0),
+'jacobian_min_scale': 0.125,     # refine only when 0.5/1/2 has no plateau
+'jacobian_scale_rtol': 1.0e-2,  # adjacent central differences must form a plateau
+'jacobian_condition_max': 1.0e10,
+'jacobian_rtol': 1.0e-3,       # experimental variational/reference diagnostic only
     'max_iter':    20,     # trust-region residual evaluations per candidate
     'candidate_nearest': 3,
     'clust_h_km':  10.0,   # deduplication height tolerance
     'clust_tau_ms': 0.05,  # deduplication delay tolerance
+    'clust_launch_deg': 0.02,
+    'clust_trajectory_rms_km': 1.0,
     'launch_low_max_deg': 25.0,   # cause_launch low/medium threshold
     'launch_high_min_deg': 55.0,  # cause_launch medium/high threshold
     'seed_betas_deg': [],         # used only when seed_source='explicit_list'
+    # A3Rnew-P2 completeness audit.  The normal scenario drivers keep the
+    # established internal scan; frozen validation runs opt in explicitly.
+    'audit_mode': 'internal_scan',  # internal_scan | adaptive_2d
+    'audit_beta_bounds_deg': (2.0, 88.0),
+    'audit_az_bounds_deg': (-180.0, 180.0),
+    'audit_beta_step_deg': 5.0,
+    'audit_az_step_deg': 15.0,
+    'audit_max_refinement': 3,
+    'audit_target_near_km': 150.0,
+    'audit_fold_condition': 1.0e4,
+    'audit_checkpoint_dir': 'output2/a3rnew_p2',
+    'audit_resume': True,
+    'audit_progress': True,
 }
 
 # ── Phase 7 upgrades: 3-D flux-tube, field-aligned bubble, BG Es, phase screen
@@ -313,7 +358,7 @@ ABSORPTION = {
 # ── update2.1 feature gates (default off for backward compatibility) ──────────
 UPDATE2 = {
     'AH3D_ENABLE': False,
-    'AH3D_SOLVER': 'v2',
+    'AH3D_SOLVER': 'ecef_dop853',
     'AH3D_INTEGRATION_PROFILE': 'research',
     'AH3D_INTEGRATION': {
         'smoke': {'rtol': 3.0e-5, 'atol_r_km': 1.0e-3, 'atol_k': 1.0e-7,
@@ -327,7 +372,12 @@ UPDATE2 = {
     'RAY_FAN_INCLUDE_X': False,
     'EXTERNAL_NE_PROVIDER': {
         'enable': False,
-        'source': 'internal_grid',
+        'source': 'internal_parameterized',
+        'path': None,
+        'coordinate_system': 'geocentric_spherical',
+        'axis_order': 'latitude,longitude,height',
+        'units': 'm^-3',
+        'earth_radius_km': RE_KM,
     },
     'PE_COUPLING': {
         'enable': False,

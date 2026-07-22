@@ -1,0 +1,126 @@
+A4-C1-Prep：新坐标Chapman高/低射线等价输入与冻结根实施方案
+
+版本：2026-07-21
+状态：Prep-0至Prep-6已完成，机器状态passed_c1_prep_admission；尚未执行A4-C1正式跨软件误差验收
+前置：A4-C0R-0至C0R-8已通过，状态passed_pharlap_coordinate_contract_closed
+
+一、目标与边界
+
+1. 在PHaRLAP一致的球形地心纬经高输入和ECEF内部状态下，重新建立无磁Chapman F2高/低射线参考，冻结双方完全等价的输入、独立根和可复核签名。
+2. A3Rnew旧local-Cartesian高/低角度只能标记为legacy_coordinate_reference_seed_only，不得作为新根、正式误差基准或通过依据。
+3. Prep只确认输入等价、全仰角域分支可见、根可稳定复现；不执行A4-C1的AH3D-PHaRLAP正式轨迹/群时延误差判定，不宣称外部物理验证通过。
+4. 本算例利用水平分层、B=0的轴对称性固定大圆bearing，仅扫描完整仰角域；这是物理对称性约束，不删减AH3D/PHaRLAP射线方程。
+5. Prep-1至Prep-6每项验证均至少输出一项与本阶段验收量直接对应的PNG；图像必须记录数值来源哈希并通过存在、尺寸、有限像素和非空白检查。缺少可视化产物时该阶段不得通过。
+
+二、理论与语义依据
+
+1. 射线动力学采用Haselgrove Hamiltonian/磁离子射线理论；B=0时O/X退化为单一各向同性分支，记录magnetoionic_degenerate_single_count。
+2. Chapman F2场固定为 Ne=Nmax*exp[0.5*(1-u-exp(-u))]，u=(h-hmF2)/ymF2，Nmax=(foF2*1e6/8.98)^2 m^-3。
+3. Coleman直接变分方法指出高射线对应光学路径泛函局部极小值、低射线对应鞍点；Nosikov等的NEB/广义力方法支持系统区分并保留高、低射线，禁止以单一局部Newton根代表模式完整。
+4. 算例语义固定为literature_guided_parameterized_reproduction：Coleman论文约1100 km链路不是本项目1185.848260273658 km的精确原始接收距离。
+5. 完整引用沿用word/reference-papers.txt中的Haselgrove（1955）、Haselgrove与Haselgrove（1960）、Coleman（2011）、Nosikov等（2017、2020）及Cervera与Harris（2014）。
+
+三、冻结物理输入
+
+1. earth_model=sphere，earth_radius_km严格读取config.EARTH_MODEL并写入输入哈希；禁止PHaRLAP和AH3D分别使用不同半径。
+2. TX=(30.0 deg geocentric latitude, 120.0 deg east longitude, 0.0 km)，bearing=0.0 deg；RX由同一球面正算沿大圆1185.848260273658 km得到，高度0.0 km，禁止用平面x坐标替代。
+3. frequency=10.0 MHz，foF2=7.0 MHz，hmF2=350.0 km，ymF2=100.0 km，B=0，collision=0，nhops=1，静态电子密度场。
+4. 主冻结网格：latitude 28.0至65.0 deg、步长0.25 deg；longitude 118.0至122.0 deg、步长0.25 deg；height 60.0至500.0 km、步长2.0 km，轴顺序(latitude,longitude,height)，float64。纬度上界由Prep-2首次扫描的grid_exit硬门触发扩展。
+5. 网格复核将height步长减半为1.0 km，高度范围60.0至460.0 km以满足PHaRLAP 401层上限，水平输入不变。若轨迹距任一水平边界不足2个网格单元或发生grid_exit，先扩大边界并重新冻结两套输入，不得把grid_exit当ground。
+6. 唯一Ne数组先以m^-3生成并哈希，再严格除以1e6形成PHaRLAP electrons/cm^3数组；AH3D使用同一冻结数组的三线性插值Provider，不直接调用解析Chapman规避网格误差。
+7. PHaRLAP固定raytrace_3d_sp、tol=[1e-8,0.01,10]、NRT_NUM_THREADS=1；每次显式传入Ne/Ne_5/碰撞/B网格并在case后clear raytrace_3d_sp。
+
+四、实施顺序
+
+Prep-0 源码边界整理（已完成）
+
+1. 旧2D/local-Cartesian射线、旧P2P、AH3D-v1/v2、local_2p5d PE、tube/radar及历史参数扫描/2D背景脚本迁入legacy/。
+2. main.py、main2.py及models/生产模块不得导入legacy.*；P-D正式实现独立为models/pd_spectrum.py，不保留models兼容副本。
+3. PE生产入口对已归档local_2p5d请求显式拒绝，不允许静默fallback。
+4. tests/_verify_legacy_source_separation.py作为目录边界硬检查。
+
+Prep-1 生成并冻结等价输入（已完成，2026-07-21）
+
+1. 新建C1专用Python输入生成器和MATLAB预检/运行脚本，不改写C0/C0R历史产物。
+2. 保存schema、全部物理参数、单位、轴顺序、shape、Provider metadata、field/provider/input/code/script/MEX哈希及PHaRLAP/MATLAB版本。
+3. 对同点Ne、峰值Ne、单位往返、RX球面距离、经度范围、数组单调性和非有限值执行前置拒绝检查。
+4. 实现tests/_run_a4_c1_prep1.py；MATLAB预检脚本部署为D:/Matlab/PHaRLAP/a4_c1_prep1_preflight.m。脚本只验证输入和运行环境，不执行射线计算。
+5. 主网格shape=(149,17,221)，复核网格shape=(149,17,401)；共同纬度28至65 deg、经度118至122 deg，复核网格在60至460 km共同高度范围内严格包含主网格全部高度点和Ne值。零B网格shape=(75,9,89)。
+6. RX重新由球面正算得到(40.66458961805238 deg,120.0 deg,0 km)，球面距离误差6.82121e-13 km；Chapman峰值Ne=6.076358748220494e11 m^-3，同点Provider误差0，单位往返相对误差1.00447e-16。
+7. MATLAB R2024a Update 7选择PHaRLAP 4.7.4 raytrace_3d_sp.mexw64；全部Python/MATLAB检查通过，状态passed_input_contract_frozen。冻结清单见output2/a4_pharlap/c1_prep/prep1/a4_c1_prep1_freeze_manifest.json，实施记录见word/a4_c1_prep1_implementation_report.txt。
+
+Prep-2 PHaRLAP完整仰角粗扫
+
+1. 在bearing=0 deg、elevation=1.0至89.0 deg上以0.5 deg间隔执行完整粗扫；保留每条轨迹的原始ray_label、ground range、cross-track、apex、路径和群时延。
+2. 只在相邻ground样本的有符号沿程落点残差发生变号时建立根区间；禁止跨penetrated、grid_exit、max_points或catastrophic_error插值。
+3. 对ground/non-ground状态边界、目标邻近区和映射折叠区以0.1 deg局部加密，用有界Brent求根；不得用旧35.3398/39.9188 deg跳过全域扫描。
+4. 已完成（2026-07-21）：177条0.5 deg粗扫和208条0.1 deg触发加密全部记录，状态ground=286、penetrated=99、grid_exit=0、catastrophic_error=0；ground-ground区间得到两个有界根21.9425645292 deg和39.5428522294 deg，沿程残差分别0.000799 km和0.004137 km，cross-track均小于1e-11 km。
+5. 当前仅称较低/较高仰角ground候选；low_ray/high_ray变分与分支语义留待Prep-4。状态passed_pharlap_full_domain_scan，机器报告位于output2/a4_pharlap/c1_prep/prep2/a4_c1_prep2_validation.json。
+
+Prep-3 AH3D同域独立扫描与求根
+
+1. 使用与PHaRLAP相同角域、冻结网格、TX/RX、频率、B和碰撞条件运行ECEF AH3D；生产积分保持DOP853、自适应步长、D=0投影及多尺度中心差分，不修改方程换取速度。
+2. 采用RX ENU残差，沿程残差求根且cross-track作为独立门槛；只接受termination_status=ground、Hamiltonian/色散约束通过的样本。
+3. PHaRLAP根区间不得直接替代AH3D全域扫描；双方根分别冻结，C1再做同分支比较。
+4. 已完成（2026-07-22）：AH3D独立完成1至89 deg、0.5 deg粗扫及0.1 deg触发加密，共记录393条轨迹；状态ground=294、upper_boundary=99，physics_domain_rejected=0、catastrophic_error=0，全部样本色散/Hamiltonian约束通过。
+5. 冻结两个AH3D ground候选：21.9475659250 deg（apex=203.176958 km，tau=4.426593 ms）和39.5793636326 deg（apex=302.602535 km，tau=5.465126 ms）；沿程残差分别0.006429 km、0.023970 km，cross-track均小于0.001 km。
+6. 首轮高仰角误拒绝定位为500 km冻结网格边界外中心差分采样落入fill_value=0所致。追踪Provider仅在冻结域外增加同一Chapman公式的下/上ghost continuation至-2/504 km，60至500 km源节点逐位不变；该修复不改变Hamiltonian、DOP853、色散投影或冻结比较场。
+7. 最大Hamiltonian残差9.98494e-11，多尺度差分组合稳定比最大0.579750；机器状态passed_ah3d_full_domain_scan，冻结复验通过。机器报告、CSV、根轨迹和PNG位于output2/a4_pharlap/c1_prep/prep3/，实施记录见word/a4_c1_prep3_implementation_report.txt。
+8. 当前两个根仍只称较低/较高仰角候选；low_ray/high_ray变分及连续分支语义必须由Prep-4确认。
+
+Prep-4 分支识别与最终去重
+
+1. 候选根按termination、turning_count、发射角、ECEF轨迹RMS、apex、几何/群路径和群时延联合去重，不按落点单字段去重。
+2. 在当前双根目标中，将较低发射角且较低apex的连续ground分支标记low_ray，将较高发射角且较高apex的连续ground分支标记high_ray；若拓扑不满足则blocked，不强制命名。
+3. 保存完整扫描表和所有额外根；不得为得到“恰好两个根”删除有效分支。
+4. 已完成（2026-07-22）：分别审计PHaRLAP与AH3D的ground-ground变号区间、非退化落点映射和单转向轨迹；两端均独立形成较低仰角/较低apex与较高仰角/较高apex两条连续分支，并分别标记low_ray/high_ray。
+5. 联合签名复用正式ECEF P2P去重字段与阈值：branch/status、turning_count、发射角0.02 deg、ECEF轨迹RMS 1 km、apex 1 km、群时延0.05 ms。PHaRLAP与AH3D各自candidate=2、unique=2；低/高根轨迹RMS分别为82.499506 km和82.668016 km，确认不是重复根。
+6. 两求解器同标签配对的轨迹RMS代价和为0.180559 km，交叉配对为165.167532 km；因此保留四条求解器专属根并建立low-to-low、high-to-high对应关系，不跨求解器去重或平均。
+7. 当前命名语义为topology_consistent_literature_guided：符合Coleman（2011）与Nosikov等（2017、2020）的高/低分支背景，但Prep-4未计算光程泛函Hessian，不能宣称直接验证“高射线极小值、低射线鞍点”。
+8. 状态passed_branch_identification_and_joint_dedup；机器报告、CSV、NPZ、PNG和冻结manifest位于output2/a4_pharlap/c1_prep/prep4/，实施记录见word/a4_c1_prep4_implementation_report.txt。
+
+Prep-5 稳定性复核与冻结签名
+
+1. 用1 km高度网格复核每个根；分别记录仰角、落点、apex、轨迹、几何路径、群路径和群时延变化。
+2. 每个冻结签名至少包含solver、branch_id、elevation、bearing、termination、turning_count、apex、landing geocentric/ECEF/ENU、trajectory_ecef、geom/group path、tau、Provider/输入/代码哈希。
+3. checkpoint恢复时任一配置、Provider、输入、脚本或代码哈希不一致即拒绝恢复。
+4. 已完成：PHaRLAP/AH3D的low_ray与high_ray均在refined_1km网格重新有界求根，四条根均为ground、单转向且端点残差不超过1 km；仰角变化均不超过0.02 deg、apex变化均不超过0.5 km、群时延相对变化均不超过0.2%。
+5. 已冻结四条完整签名及分支独立checkpoint；机器状态passed_1km_grid_stability_and_signatures，冻结复验返回A4-C1-Prep-5 frozen: OK。结果位于output2/a4_pharlap/c1_prep/prep5/，实施记录见word/a4_c1_prep5_implementation_report.txt。
+6. 本结果只表示各求解器内部1 km与2 km高度网格稳定，不应用AH3D-PHaRLAP跨软件误差门；low/high仍为拓扑一致、文献引导标签，不是光程泛函Hessian直接验证。
+
+Prep-6 预验收报告与C1准入
+
+1. 分别输出PHaRLAP和AH3D完整角域落点图、低/高射线路径图及状态分布图；Ne背景只读冻结网格，jet、alpha=0.5，标注单程、B=0、碰撞关闭、求解器、坐标和哈希。
+2. 生成机器JSON/CSV、图像来源清单和a4_c1_prep_implementation_report.txt。
+3. 只有本计划第五节全部通过，才允许进入A4-C1正式外部误差验收。
+4. 已完成（2026-07-23）：严格复验Prep-1至Prep-5报告、manifest及冻结产物哈希；双方1至89 deg、0.5 deg步长的177角完整粗扫、四条冻结根、1 km/2 km稳定性、端点残差、分支去重和旧角度隔离全部通过。
+5. 已输出完整角域落点、refined_1km冻结Ne背景低/高路径和原始状态分布三类PNG；PHaRLAP的penetrated与AH3D的upper_boundary保留原始语义，AH3D无地面落点角度在落点图中显式标为no surface endpoint，未伪造落点。
+6. 机器状态passed_c1_prep_admission，产物位于output2/a4_pharlap/c1_prep/prep6/，总预验收记录见word/a4_c1_prep_implementation_report.txt。该状态只开放A4-C1准入，不应用跨软件误差门，不表示PHaRLAP外部物理验证通过。
+
+五、Prep验收门槛
+
+1. 双方输入的earth radius、TX/RX、频率、Ne/B/碰撞数组及单位转换哈希完全一致；Ne单位往返相对误差<=1e-12。
+2. 双方均完成1至89 deg完整粗扫，无未记录异常；每个冻结低/高根均来自ground-ground有效区间。
+3. 每个冻结根沿程RX残差<=1.0 km、cross-track<=1.0 km，termination=ground，约束状态通过。
+4. 1 km相对2 km网格复核：根仰角变化<=0.02 deg、apex变化<=0.5 km、群时延相对变化<=0.2%；任一不满足则扩大/细化冻结网格后重做Prep，不放宽阈值。
+5. 低/高分支签名不同且去重后稳定；完整扫描中发现的额外有效根全部保留并解释。
+6. 旧角度未作为通过值，所有产物哈希齐全，图像非空且语义完整。
+7. 每个Prep阶段的机器状态必须包含visualization硬检查；可视化只能佐证对应数值，不得覆盖数值门槛失败。
+
+六、主要风险与处置
+
+1. PHaRLAP grid_exit/penetrated与AH3D upper_boundary语义不同：保留原始状态，只映射共同枚举，不跨状态求根。
+2. 水平/垂直网格或Ne单位错误可产生合理外观的错误轨迹：同数组、同点查询、轴序、shape和哈希为硬门。
+3. fold附近落点映射不连续，局部求根可能跨分支：只在连续ground区间使用有界根，结合apex、turning和轨迹签名审计。
+4. 旧角度可能污染新坐标结果：旧值仅在结果完成后用于说明历史差异，不参与扫描范围、区间或收敛判断。
+5. 全角域耗时增加：PHaRLAP可批量粗扫，AH3D可按角度独立并行和断点续算；不得减少1至89 deg覆盖、放宽方程或用插值轨迹代替积分。
+6. 当前B=0平滑层只能验证高/低分支及各向同性退化，不能证明O/X、复杂三维扰动全模式召回或全波散射正确。
+7. 有限冻结网格边界会污染中心差分：事件面外必须保留足以覆盖最大积分试探步和差分半径的同公式ghost continuation；正式比较仍只使用60至500 km冻结节点，并分别记录源网格和追踪网格哈希。
+
+七、后续路线
+
+A4-C1-Prep通过（passed_c1_prep_admission）
+-> A4-C1固定同角前向轨迹比较
+-> A4-C1双方独立冻结根同分支比较
+-> A4-C2-Prep磁场ECEF分量/符号核验
+-> A4-C2冻结磁场O/X外部验证。

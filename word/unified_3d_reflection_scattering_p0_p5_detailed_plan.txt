@@ -1,0 +1,210 @@
+3D复杂电离层统一反射/散射混合传播 P0-P5 细化实施计划
+生成日期：2026-07-09
+
+一、计划目标
+
+本计划用于后续逐阶段实施和验收，目标是把当前“按复杂环境分别运行”的主程序，升级为“任意 3D/4D Ne(x,y,z,t) 输入下统一计算 HF 反射/散射混合传播”的物理闭合流程。阶段1仍允许使用 TID、Spread-F、bubble、Es 等三维参数化模型生成 Ne，但传播计算必须逐步统一到同一 pipeline：NeProvider3D -> 3D AH Hamiltonian ray/P2P -> 复折射率吸收 -> PE/MPS/FDTD 散射耦合 -> P-D 谱 -> 通信/雷达观测方程。
+
+本计划显式处理四个当前风险：ParameterizedIonosphere3DProvider 尚未完整表达 Spread-F 和 Es 三维物理；Ray-PE 仍是 local_2p5d，不能宣称完整三维全波散射；绝对功率缺实测校准；main.py 若继续保留场景分支式传播逻辑，会阻碍外部 Ne 接入。
+
+二、理论与实现参考
+
+1. 反射主链：Appleton-Hartree 磁离子色散关系、Haselgrove Hamiltonian 射线方程、Jones and Stephenson 三维射线追踪、Budden 电离层电波传播理论、IONORT/AU-Ray/PHaRLAP 类射线程序。
+2. 复杂介质：IRI 背景、内重力波/TID 理论、场向 plasma bubble、Spread-F 各向异性幂律谱、Es 薄层和 aspect sensitivity。
+3. 散射/全波：Rino 幂律相位屏、Yeh and Liu 闪烁理论、Knepp 多相位屏、PE/SSF、FARR 复杂电离层 FDTD 混合全波模拟器。
+4. 吸收：复 Appleton-Hartree 折射率虚部路径积分，碰撞频率可参考 NRLMSISE-00 半经验吸收资料。
+5. 雷达观测：Skolnik 雷达方程、Barrick 一阶 HF 海面 Bragg 散射、Coleman OTH flux-tube/backscatter ionogram 思路。
+6. 本地参考路径：D:\0文件\0文献\电离层短波传播，包括 FARR、移动 TID/bubble 波光学、多相屏、Es、吸收、P2P 高低射线识别、AU-Ray 2025 等资料。
+
+三、总体验收原则
+
+1. 同一 NeProvider3D 输入下，不同环境标签不得改变传播算法，只能改变元数据和诊断标签。
+2. 所有会改变 tau、Pr、P-D 或模式排序的模块必须有 feature gate、applied 字段和能量/功率前后值。
+3. 所有输出图像和 CSV 必须区分单程/双程、通信/雷达、O/X、吸收、PE/MPS/FDTD、散射 P-D、clutter 谱核。
+4. legacy、diagnostic、local_2p5d 不得写成完整物理闭合；阶段性保留时必须在输出字段中标明。
+5. 每阶段至少包含极限退化、守恒/单调性、收敛性或可复现性测试。
+
+四、P0：统一 pipeline 与输出语义
+
+目标：先解决 main.py 场景分支重复和语义冲突。P0 不追求新增物理效果，而是把现有实现收敛为统一入口，保证后续外部 Ne 接入时不返工。
+
+现有基础：main.py 已有 baseline、TID、Es、bubble、full、O/X、radar、spread-F、tube radar 多个函数；models/ne_provider.py 已有 BaseNeProvider3D、GridNeProvider3D、ParameterizedIonosphere3DProvider；report2 已区分通信单程、雷达双程、point target 和 clutter；radar_clutter.py 已有 Bragg range-Doppler projection。
+
+问题：main.py 中每个场景仍自行构造 Ne、n3d、P2P、功率、P-D 和绘图；Spread-F、bubble、full 等场景局部开启 PE/散射；外部 Ne 接入后会出现多套传播逻辑。
+
+实施内容：
+
+P0-1 新增 models/unified_hybrid_pipeline.py。定义 UnifiedPropagationRequest 和 UnifiedPropagationResult，输入包括 provider、tx/rx、freq_MHz、geomag、collision、solver_config、scatter_config、observable_config、output_semantics。输出包括 modes、tau_axis、pd_W、traceability、warnings。
+
+P0-2 main.py 场景函数只负责构造 provider 和 observable_config。baseline/TID/Spread-F/bubble/Es/full 不再直接调用 find_all_rays_3d、_add_power_3d、_build_pd；统一调用 run_unified_pipeline(request)。
+
+P0-3 所有场景保留原 CSV/PNG 文件名，但 CSV 增加 provider_name、provider_components、solver_chain、feature_gates、pd_kernel、observable_type、delay_key、oneway_or_twoway。
+
+P0-4 输出图像统一使用 _make_pd_info 和 build_ray_info_text，所有 P-D 图必须标明 delay_key、solver、provider、absorption、Ray-PE、scatter、radar_observable、clutter_pd_model。
+
+P0-5 增加 tests/_verify_unified_pipeline_semantics.py，检查：同一 provider 用通信/雷达观测时传播路径一致但 delay_key 不同；feature gate 默认关闭；临时开启后恢复；旧场景函数不直接改 cfg.UPDATE2 全局默认。
+
+验收：
+
+1. 默认配置下 tests/_verify_update2_all.py、tests/_verify_main_output_semantics.py 通过。
+2. baseline、TID、Spread-F、bubble、Es 至少各有一个统一 pipeline smoke test。
+3. main.py 中传播核心调用收敛到统一 pipeline；场景函数中不得再重复实现功率链。
+4. 旧输出文件名保留，CSV 新增语义字段。
+
+五、P1：完整三维 NeProvider 与复杂环境物理表达
+
+目标：解决 ParameterizedIonosphere3DProvider 目前对 Spread-F 和 Es 仍不完整的问题。阶段1的不同复杂环境应统一为 NeProvider3D 的不同生成组件，而不是传播算法分支。
+
+现有基础：ParameterizedIonosphere3DProvider 已能组合 background、TID、bubble，并输出 metadata；Spread-F 和 Es 当前在 provider 中偏 diagnostic，实际物理主要散落在 IonosphereModel、spread_f_model.py、es_model.py 和 main.py 场景流程中。
+
+理论依据：TID 应符合内重力波扰动和传播方向；bubble 应符合场向延展耗空、漂移和背景梯度；Spread-F 应为沿磁场强各向异性的三维随机谱介质，至少记录谱指数、外尺度、内尺度、方差、seed 和漂移；Es 应为低高度薄层和场向不规则体，并支持 aspect sensitivity 和 Bragg 匹配诊断。
+
+实施内容：
+
+P1-1 扩展 models/parameterized_ionosphere_3d.py，不再只是导出 ne_provider 类，而是提供 ParameterizedIonosphere3DFactory。输入为 components 列表，输出 provider 和 metadata。
+
+P1-2 完善 TID3DComponent。支持多方向、多频率、多垂直包络、时间演化、相位、传播速度，输出最大相对扰动、主波矢、有效高度范围。
+
+P1-3 完善 Bubble3DComponent。用 IGRF/geomag 方向定义场向坐标，支持 field-aligned Gaussian/depletion tube、漂移、耗空深度、横向/场向尺度。Ne 必须非负。
+
+P1-4 新增 SpreadF3DComponent。实现各向异性三维幂律随机场或相位屏体场，支持 C_s、p、L0、l0、sigma_phi、B-field anisotropy、seed、frozen drift。若计算量过高，可先生成局部体数据块和路径采样，但必须输出真实三维谱参数，不能只写 diagnostic。
+
+P1-5 新增 Es3DComponent。实现薄层背景增强、层厚、foEs/峰值 Ne、水平斑块、场向不规则体、aspect angle、Bragg wave vector 诊断。Es 对传播的影响仍由统一射线/散射链读取 Ne 和梯度，不由 main.py 手工改 label。
+
+P1-6 新增 ExternalNeProvider3D。支持 npz/netCDF/HDF5 初版至少 npz，字段包含 Ne、x/y/z/t、units、mask、metadata。读取后统一单位为 m^-3，坐标为 km。
+
+P1-7 增加 irregularity_detector.py。只诊断梯度、谱斜率、各向异性、候选 TID/Spread-F/Es/bubble，不作为传播计算前置条件。
+
+验收：
+
+1. tests/_verify_ne_provider_3d.py：Ne>=0、关闭扰动退化到背景、固定 seed 可复现、sample_grid3d 形状正确。
+2. tests/_verify_irregularity_3d_physics.py：Spread-F 谱斜率接近输入；bubble 沿 B 方向延展；Es aspect 偏离时诊断散射权重下降；TID 相位随 t 按速度移动。
+3. 外部 Ne 输入不要求声明扰动类型即可被统一 pipeline 使用。
+4. metadata 明确记录 component、seed、坐标、单位、时间、B-field。
+
+六、P2：三维 AH 反射主链与复吸收一致化
+
+目标：把统一 pipeline 的反射主求解器升级为物理主干：3D Appleton-Hartree Hamiltonian O/X 射线追踪 + 复折射率吸收。各向同性射线保留为 baseline/legacy。
+
+现有基础：models/ray_tracer_ah_3d.py、point_to_point_ah_3d.py 已实现 AH3D first version；main.py 可启用 OX_MODE='ah3d'；absorption_collision.py 已提供 complex absorption；但 group path、near-cutoff、碰撞吸收和功率链仍需统一 pipeline 严格管理。
+
+理论依据：Appleton-Hartree 色散关系 D(r,k,omega)=0；Haselgrove 方程 dr/dlambda=partial D/partial k、dk/dlambda=-partial D/partial r；群速度由色散关系对 k/omega 的导数决定；吸收由 Im(n) 路径积分得到，雷达双程为双程积分。
+
+实施内容：
+
+P2-1 在 unified_hybrid_pipeline 中定义 solver='ah3d'、solver='iso3d_legacy'。默认研究输出使用 ah3d；iso3d 只用于基线对照或性能回退，并在 CSV 标记 legacy。
+
+P2-2 ray_tracer_ah_3d.py 完善 branch_status：ok、near_cutoff、evanescent、invalid_n2、step_failed、mode_lost。禁止用 n2_floor 掩盖不可传播区；可用数值保护但必须输出状态。
+
+P2-3 group_path_km 和 tau_ms 统一由 AH3D group index/group velocity 得到；geom_path_km 单独保留。
+
+P2-4 absorption_collision.py 与 AH3D 共享 geomag、collision frequency 和 wave_mode。功率链只允许 complex_absorption_path_dB 一个吸收入口；legacy d_layer_absorption_dB 只作为 fallback，并标记 abs_model='legacy_d_layer'。
+
+P2-5 P2P 支持扫角初版保持，新增频率参数透传，为 P5 扫频+扫角做接口准备。
+
+验收：
+
+1. tests/_verify_AH3D_physics.py：fH=0 退化到 isotropic；O/X 分支符号正确；near-cutoff 有状态；步长减半 tau/h_reflect/x_land 收敛。
+2. tests/_verify_absorption_consistency.py：nu=0 吸收为 0；双程约为单程两倍；频率升高吸收降低；同一路径 O/X 吸收差异可解释。
+3. CSV 中 O/X 必含 wave_mode、ox_solver、branch_status、group_index_model、abs_model。
+4. 不允许同一模式同时应用 legacy absorption 和 complex absorption。
+
+七、P3：反射-散射耦合与 P-D 谱物理闭环
+
+目标：解决 Ray-PE 仍为 local_2p5d 的局限，建立可逐步替换为 3D PE/MPS/FDTD 的反射-散射混合框架。阶段性 local_2p5d 可以保留，但只能标为 local_2p5d_reference。
+
+现有基础：models/local_frame.py、hybrid_ray_pe.py、pe_propagator.py、scatter_phase_screen.py、pd_scatter_kernel.py 已有局部耦合和散射到 P-D 的初步实现；FARR release 和 FDTD 文献可作为全波参考；多相屏资料可指导 MPS。
+
+理论依据：弱散射用 Born/Rytov 适用性判据；中强散射用 MPS 或 PE/SSF；强折射、caustic、尺度接近波长时应转全波/FDTD。散射模块应输出角谱、延迟谱、能量通量和相干性，而不是只给经验 Gaussian 展宽。
+
+实施内容：
+
+P3-1 local_frame.py 标准化射线局部坐标。输入 AH3D 轨迹、局部 k、极化、振幅、相位、曲率、Ne 梯度，输出 PE/MPS/FDTD 边界场。
+
+P3-2 hybrid_ray_pe.py 抽象 ScatteringSolver 接口：local_2p5d_pe、mps、fdtd_farr_adapter。当前 local_2p5d 继续可用，但输出 solver_dimensionality='local_2p5d' 和 validity='reference_only'。
+
+P3-3 scatter_phase_screen.py 实现路径相关 MPS：沿主射线分段投影三维 Ne 扰动，生成多相屏，输出 delay-angle-power kernel、S4、sigma_phi、sigma_tau。
+
+P3-4 pd_scatter_kernel.py 不再用单一经验核作为最终实现。弱散射核来自 Rytov/Born 统计；中强散射核来自 MPS/PE 实际输出；FDTD 区域来自场采样结果。
+
+P3-5 能量闭环。每个 mode 记录 Pr_before_scatter、Pr_after_scatter、scatter_loss_dB、energy_conservation_error、kernel_normalization。
+
+P3-6 与 FARR 参考代码对齐接口。先不必直接嵌入 FARR，但要定义 fdtd_domain、boundary_field、receiver_surface、field_to_pd 的数据结构。
+
+验收：
+
+1. tests/_verify_local_frame.py：局部坐标正交、沿射线连续、均匀介质边界场不产生伪散射。
+2. tests/_verify_ray_pe_physics.py：均匀介质能量守恒；弱扰动主瓣方向与射线一致；网格减半收敛。
+3. tests/_verify_mps_scatter_kernel.py：相位屏 seed 可复现；sigma_phi=0 退化为 delta；强散射不误用弱散射公式。
+4. P-D 谱关闭 scatter_apply_to_pd 时旧结果一致；开启后 kernel 归一化并记录能量误差。
+5. 文档和 CSV 不得把 local_2p5d 写成 complete_3d_pe。
+
+八、P4：统一雷达/OTH 观测与绝对功率校准接口
+
+目标：把通信、点目标雷达、surface clutter、tube radar 都放在统一观测层中，处理绝对功率缺实测校准的问题。模型输出分为“物理计算值”“参考参数化值”“待校准值”。
+
+现有基础：radar_clutter.py 已支持 sigma0、Bragg Doppler、range-Doppler projection；main.py 已区分 tau_ms 和 tau_2way_ms；tube radar 已使用 Bragg projection；但海况、天线方向图、距离门、接收机处理链仍缺失。
+
+理论依据：Skolnik 雷达方程、Barrick 一阶海面 Bragg 散射、Coleman flux-tube OTH backscatter、天线方向图和距离门处理。绝对功率必须考虑发射功率、天线增益方向图、传播损耗、吸收、散射截面、系统损耗、噪声和接收处理。
+
+实施内容：
+
+P4-1 新增 models/observables.py。定义 communication_observable、point_target_radar_observable、surface_clutter_observable、tube_clutter_observable。统一输入 modes，输出 observation modes。
+
+P4-2 radar_clutter.py 扩展海况和地表模型。sigma0 支持 sea_state、wind_speed、wave_spectrum、land_type、ice/desert/custom；Bragg 双峰支持径向流速、波向、谱宽。
+
+P4-3 增加 antenna_pattern.py。支持理想增益、方位/俯仰方向图、主瓣宽度、旁瓣和极化损失。没有真实天线时输出 calibration_status='reference_pattern'。
+
+P4-4 增加 receiver_chain.py。支持距离门、Doppler bin、积分时间、噪声温度、带宽、系统损耗。没有实测参数时输出 calibrated=False。
+
+P4-5 所有功率输出拆分：Pr_model_W、Pr_reference_W、Pr_calibrated_W、Pr_dBW、calibration_status、uncertainty_dB。无实测时只给 reference/calibration_required。
+
+P4-6 图像标注增加 calibration_status、antenna_model、receiver_model、sigma0_source、sea_state_source。
+
+验收：
+
+1. tests/_verify_observable_semantics.py：通信单程与雷达双程分离；point target 与 clutter 不混用 RCS/sigma0。
+2. tests/_verify_radar_clutter_physics.py：sigma0=0 回波为 0；R^-4；Bragg Doppler 符号正确；距离门改变谱宽。
+3. tests/_verify_power_chain.py：自由空间损耗、吸收、散射、clutter、天线、接收链不重复扣减。
+4. 无实测校准时，报告必须写 calibration_required，不得宣称绝对功率真实。
+
+九、P5：外部 Ne 接入、扫频+扫角与真实性验证
+
+目标：完成最终目标的关键接口：外部 3D/4D Ne 输入、未知不规则体统一传播、P2P 扫频+扫角、外部软件/文献算例验证。
+
+现有基础：BaseNeProvider3D 和 GridNeProvider3D 已存在；P2P 当前主要是固定频率扫角；report2 已说明扫频+扫角对 MUF/LUF、模式跳变和频率管理有必要。
+
+理论依据：HF 反射高度、截止、O/X 可传播性、吸收、Es、散射强度均强依赖频率。只做固定频率扫角不能给出可用频段、MUF/LUF、频散和 OTH 频率管理。IONORT/AU-Ray/PHaRLAP 可用于射线路径、群时延和 O/X 对照；FARR/FDTD 可用于复杂不规则体波动传播对照。
+
+实施内容：
+
+P5-1 ExternalNeProvider3D 支持 4D Ne(x,y,z,t)。最小支持 npz；后续支持 netCDF/HDF5。必须检查单位、坐标单调性、时间轴、缺测 mask、插值方式和外推状态。
+
+P5-2 P2P 扫频+扫角。新增 frequency_grid_MHz，外层扫频、内层扫角/方位，或使用 continuation 从上一频点模式延续。输出 freq_MHz、mode_id、branch、tau、Pr、h_reflect、MUF/LUF candidate、mode_continuity_id。
+
+P5-3 跨频模式追踪。使用反射高度、轨迹相似度、launch angle、O/X、群延迟连续性为模式编号，识别模式出现、消失、合并和跳变。
+
+P5-4 外部真实性验证。选取三类 benchmark：均匀/分层电离层解析退化；IONORT/AU-Ray/PHaRLAP 射线对照；FARR/FDTD 或多相屏文献的散射/闪烁对照。输出 validation_report.txt。
+
+P5-5 参数与不确定性扫描。analysis/unified_ne_sweep.py 扫频、时间、扰动强度、碰撞频率、海况和天线参数，输出敏感度和置信区间。
+
+验收：
+
+1. tests/_verify_external_ne_provider.py：单位转换、mask、时间插值、坐标检查、未知不规则体直接传播。
+2. tests/_verify_frequency_angle_sweep.py：固定频率结果与旧扫角一致；频率升高反射高度/可达性趋势合理；MUF/LUF 字段存在。
+3. tests/_verify_mode_continuity.py：无模式跳变时 mode_id 连续；跳变处显式标记。
+4. validation_report.txt 包含至少一个外部射线程序或文献算例对照。
+5. 外部 Ne 输入不要求扰动类型标签。
+
+十、阶段依赖关系与推荐顺序
+
+推荐顺序为 P0 -> P1 -> P2 -> P3 -> P4 -> P5。P0 必须最先实施，因为它解决 main.py 分支重复和输出语义冲突。P1 必须早于 P5，因为外部 Ne 接入需要同一 provider 语义。P2 是真实 HF 反射的主干，应早于高阶散射。P3 处理 Ray-PE local_2p5d 的物理边界，避免过度宣称。P4 处理绝对功率和雷达观测校准，避免把参考功率当实测功率。P5 最后做扫频+扫角和外部验证，使模型真正面向未知 3D Ne。
+
+十一、后续实施时的硬性禁止项
+
+1. 禁止在外部 Ne 输入前要求用户声明 TID/Spread-F/bubble/Es 类型。
+2. 禁止把 local_2p5d Ray-PE 表述为完整 3D PE/全波。
+3. 禁止在同一功率链中重复扣减吸收或散射损耗。
+4. 禁止 P-D 图不标注单程/双程和谱核来源。
+5. 禁止把未校准的绝对功率写成实测可信值。
+6. 禁止新增场景时绕过 unified_hybrid_pipeline 另写传播主链。

@@ -1,0 +1,47 @@
+A4-C0R-5 P2P与下游ECEF调用迁移实施记录
+日期：2026-07-20
+状态：passed
+
+一、范围与语义
+
+1. 本阶段迁移P2P端点映射、模式去重、Ray-PE局部几何、复吸收、散射路径采样和P2P绘图的坐标消费契约。
+2. 新正式路径只使用TX/RX geocentric纬经高、ECEF轨迹、物理高度及RX ENU残差；不把旧link-local x/y/z字段重命名后继续使用。
+3. main.py、main2.py、unified pipeline和config正式入口切换属于C0R-6。本阶段保留旧模块供未迁移入口运行，但所有新增正式结果不含trajectory_3d、x_land_km、z_land_km或h_reflect_km别名。
+
+二、P2P与去重
+
+1. 新增models/point_to_point_ah_3d_ecef.py。solve_p2p_ray_ah3d_ecef输入TX/RX [lat,lon,height]、elevation和bearing，调用C0R-4正式射线；端点误差通过rx_enu_residual转换为RX切平面的East/North km。
+2. Jacobian对elevation/bearing分别采用0.5/1/2倍中心差分；任一扰动轨迹非ground、非有限、无稳定平台或病态时显式拒绝局部根。求解器为单元有界scipy TRF，不回退forward或旧变分Jacobian。
+3. 旧坐标高/低根只允许作为legacy_coordinate_reference_seed_only搜索种子。每个结果标记seeded_local_roots_not_full_domain_mode_audit，不能解释为全角域模式召回。
+4. 去重联合branch、termination、turning count、elevation/bearing、ECEF轨迹RMS、apex高度和群时延。正式C1高/低根仍在C0R-8之后的C1-Prep按新坐标重新搜索和冻结。
+
+三、下游坐标迁移
+
+1. models/local_frame.py正式路径读取trajectory_ecef_km和trajectory_group_tangent_ecef。s轴沿群轨迹，径向up投影到横向平面形成u轴，v轴补全右手系；正式原点字段为origin_ecef_km。
+2. ECEF局部截面通过GeocentricNeProvider3D.get_Ne_ecef采样，网格字段明确为ecef_x/y/z_km。旧local截面仍在迁移期独立标记，不与正式字段混用。
+3. models/hybrid_ray_pe.py对“ECEF射线+旧Ne_2d/x/z网格”直接拒绝，避免错误耦合。local_2p5d PE方程未改；完整三维PE/全波未在本阶段暗中实现。
+4. models/absorption_collision.py新增complex_absorption_ecef_ray_dB：碰撞高度为|r|-R，Ne来自正式Provider，传播方向和固定磁场均为ECEF；一/双程语义独立记录。
+5. scatter_coupler.py和scatter_phase_screen.py正式路径沿trajectory_ecef_km调用Provider采样，并记录spherical_ECEF；Born/Rytov/MPS物理方程、统计适用范围及功率开关均未改变。
+6. viz/plot_utils.py优先从trajectory_geocentric_lat_lon_height派生累计球面ground range及物理height，不把ECEF z当高度。
+
+四、验收结果
+
+1. tests/_verify_a4_c0r5_downstream.py共15项检查，结果0 fail(s)。
+2. Chapman F2轻量seeded P2P得到1个O波ground根；RX ENU落点误差1.0060377e-12 km，多尺度Jacobian最大条件数2.9053042。
+3. 该根使用legacy-35deg作为seed_only，最终输出明确为新坐标TRF求解结果；本验收不冻结C1文献引导高/低根。
+4. ECEF Ray-PE局部框架正交误差1.1102230e-16、行列式1.0；正式截面仅含ECEF坐标字段。旧Ne_2d/x/z对正式ECEF射线的调用被显式拒绝。
+5. 复吸收测试的一/双程结果比例严格为2。测试使用恒定Ne和碰撞频率，只验证坐标和程数语义；297.20 dB数值不代表真实电离层校准结果。
+6. Born弱散射路径沿ECEF Provider采样；绘图派生累计ground range为1045.407114 km，最大物理高度264.131239 km，与射线apex一致。
+7. 旧local-frame、Ray-PE 3D接口、吸收一致性及Born/Rytov/MPS scatter coupler回归均为0 fail(s)。语法检查和git diff whitespace检查通过。
+8. 机器结果及源码SHA-256见output2/a4_pharlap/c0r5_downstream_validation.json。
+
+五、理论与引用
+
+P2P继续依据Coleman直接变分/端点映射思想及Nosikov广义力高低射线研究，但本实现的生产端点求解采用精度优先的Hamiltonian前向射线、RX ENU残差和多尺度中心差分Jacobian。Ray-PE、吸收及散射方程未改变。完整文献已维护于word/reference-papers.txt，本阶段无需联网新增引用。
+
+六、风险、未完成项与下一步
+
+1. 当前P2P验收是已知seed驱动的局部根，不证明复杂场全域模式完整性；P2-6H完整性审计继续保持延期状态。
+2. 正式ECEF Ray-PE局部框架和Provider截面已具备，但旧2D PE网格不能直接复用；C0R-6接入主pipeline时必须传递正式Provider，禁止自动fallback。
+3. 新吸收、散射和绘图组件尚未由main/main2/unified正式入口调用；旧调用链仍可能产生legacy_coordinate_reference_only结果。
+4. 建议进入C0R-6，统一config、main.py、main2.py和unified pipeline的TX/RX纬经高、elevation/bearing、Provider和显式轨迹字段，并删除生产自动fallback。C0R-6通过前不得执行C0R-7 PHaRLAP真空复验。

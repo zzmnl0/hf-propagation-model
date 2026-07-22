@@ -1,0 +1,53 @@
+A4-C0 PHaRLAP接口与坐标预检实施记录
+日期：2026-07-20
+状态：historical_machine_pass_superseded_by_c0r_block（原数值/图像阈值通过，但后续隔离诊断确认坐标模型不自洽，不再具有A4准入意义）
+
+1. 实施范围
+
+1.1 在D:\Matlab\PHaRLAP部署a4_pharlap_preflight.m；未修改或复制D:\pharlap\pharlap_4.7.4中的受控程序。
+1.2 新增Python冻结输入、MATLAB调用、AH3D真空轨迹、ECEF统一坐标比较和机器验收脚本。
+1.3 冻结条件：Ne=0、B=0、collision=0、OX_mode=0、10 MHz、仰角35 deg、方位37 deg、R=6371000 m、PHaRLAP tol=[1e-8,0.01,10]、单线程。
+1.4 C0语义固定为interface_and_coordinate_precheck_not_physics_validation；不验证反射、O/X分裂、P2P根、散射、P-D谱或功率。
+
+2. 运行与输入预检
+
+2.1 MATLAB为R2024a Update 7，mexext=mexw64；PHaRLAP为4.7.4。
+2.2 raytrace_3d_sp实际解析到D:\pharlap\pharlap_4.7.4\mex\raytrace_3d_sp.mexw64。
+2.3 DIR_MODELS_REF_DAT和NRT_NUM_THREADS=1生效；输入float64、shape、finite、非负Ne、单位、OX_mode和零碰撞/零磁场均在MEX调用前检查。
+2.4 PHaRLAP返回ray_label=-2（penetrated），92个路径点，无catastrophic_error；MEX单射线耗时约2.59 s。
+2.5 输入MAT、项目MATLAB脚本和PHaRLAP MEX均记录SHA-256；记录PHaRLAP致谢要求和禁止再分发语义。
+
+3. C0比较结果
+
+3.1 统一比较前250 km，不对轨迹作平移、旋转或缩放注册。
+3.2 起点误差为0 km；双方三维轨迹RMS差1.777205 km，最大差3.943964 km。
+3.3 PHaRLAP相对解析真空直线最大误差7.42e-12 km；AH3D经既定earth-flattening逆映射后最大误差3.943964 km。
+3.4 PHaRLAP状态penetrated与AH3D状态upper_boundary均保留原始语义，并仅在C0归为非地面域退出；未将两种原始状态伪装为同一事件。
+3.5 最小验收tests/_verify_a4_pharlap_c0.py通过，0 fail(s)。
+
+4. 风险与下一步约束
+
+4.1 AH3D局部earth-flattening与PHaRLAP球形方程并不相同；当前250 km误差已接近正式轨迹最大误差5 km门槛，C1不得省略随距离增长的差异归因。
+4.2 真空全程中PHaRLAP group path等于geometric path；AH3D的group path与局部geometric path存在约4%差异，主要与earth-flattening有效折射率和路径度量语义有关。C0不以不同终止高度的全程值作硬判，但C1必须对共同反射轨迹正式检查group path/group delay，失败时不得放宽阈值。
+4.3 C0通过只开放后续输入契约和C1实施，不形成pharlap_smooth_field_limited_pass；A4总状态仍未完成。
+
+5. 产物
+
+5.1 code/tests/_run_a4_pharlap_c0.py
+5.2 code/tests/_verify_a4_pharlap_c0.py
+5.3 code/output2/a4_pharlap/a4_c0_validation.json及preflight、inputs、raw、run.log
+5.4 D:\Matlab\PHaRLAP\a4_pharlap_preflight.m
+
+6. 图像验收增补
+
+6.1 必需产物为trajectory_c0_pharlap.png、trajectory_c0_ah3d.png和trajectory_c0_comparison.png。
+6.2 独立图使用相同坐标范围，分别显示原始点、解析真空直线、物理高度侧视和TX中心ENU俯视；对比图显示共同前250 km轨迹及East/North/Up和三维残差。
+6.3 禁止任何拟合配准；图像存在性、像素尺寸、有限像素、非空白方差、PNG哈希和原始数据源哈希全部进入机器硬验收。
+6.4 补图复验结果：PHaRLAP独立图、AH3D独立图和统一坐标对比图均通过自动检查及人工可读性检查；标题明确区分sphere/earth-flattening、penetrated/upper_boundary及非散射/非功率语义。
+6.5 补图复验当时的机器状态为passed；该历史状态不形成pharlap_smooth_field_limited_pass，且已被第7节后续坐标诊断取消准入意义。
+
+7. 后续坐标诊断与状态修订
+
+7.1 隔离实验表明，关闭现有earth-flattening并按精确TX切平面嵌入ECEF后，前250 km最大真空轨迹误差由3.943964 km降至2.05e-10 km，群路径/局部几何路径相对差由4.01496%降至2.52e-5。
+7.2 原C0阈值未把真空group_path/physical geom_path一致性设为硬门槛，因此机器passed只能作为历史执行结果，不能继续作为坐标物理闭环证明。
+7.3 A4-C1被A4-C0R阻断。修复方案见a4_c0r_coordinate_model_repair_plan.txt；历史输入、raw、图像和哈希保留，不覆盖。

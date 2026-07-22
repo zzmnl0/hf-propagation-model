@@ -1,0 +1,41 @@
+A4-C1-Prep-1 等价输入生成与冻结实施记录
+
+日期：2026-07-21
+状态：passed_input_contract_frozen
+语义：input_contract_only_not_ray_or_external_physics_validation
+
+一、完成内容
+
+1. 新增tests/_run_a4_c1_prep1.py，复用正式球面坐标工具和GeocentricGridNeProvider3D，未新增重复Provider或坐标实现。
+2. 部署D:/Matlab/PHaRLAP/a4_c1_prep1_preflight.m，验证MATLAB/PHaRLAP运行环境、数组轴序、shape、单位、球面端点、Chapman峰值、B=0和collision=0；本阶段未调用raytrace_3d_sp积分。
+3. 生成并冻结2 km主网格和1 km复核网格。两者使用同一Chapman公式，AH3D读取m^-3数组，PHaRLAP读取由其严格除以1e6得到的cm^-3数组。
+4. 保存schema、参数、单位、轴序、Provider metadata、field/provider/Ne/input/code/Python/MATLAB/MEX哈希及MATLAB/PHaRLAP版本。冻结后重复执行只验哈希；漂移时默认拒绝，仅显式--rebuild-frozen允许受控重建。
+
+二、冻结输入
+
+1. sphere R=6371 km；TX=(30 deg,120 deg,0 km)；bearing=0 deg；target range=1185.848260273658 km；RX=(40.66458961805238 deg,120 deg,0 km)。
+2. f=10 MHz，foF2=7 MHz，hmF2=350 km，ymF2=100 km，B=0，collision=0，nhops=1，tol=[1e-8,0.01,10]。
+3. 主网格：latitude 28:0.25:65 deg，longitude 118:0.25:122 deg，height 60:2:500 km，shape=(149,17,221)。
+4. 复核网格：相同水平网格，height 60:1:460 km，shape=(149,17,401)。复核网格每隔一个高度点与主网格在60至460 km共同高度范围内的Ne逐值相同。401层为PHaRLAP 4.7.4 Ne网格单轴上限。
+5. 零磁场独立网格为latitude 28:0.5:65 deg、longitude 118:0.5:122 deg、height 60:5:500 km，shape=(75,9,89)，满足PHaRLAP磁场网格(101,101,201)上限。
+6. 输出a4_c1_prep1_input_contract.png，展示冻结Chapman电子密度纬度-高度剖面和TX处垂直剖面；Ne色标jet、alpha=0.5，图题明确本图不是射线验证。
+
+三、验收结果
+
+1. Chapman峰值Ne=6.076358748220494e11 m^-3；峰值和同点Provider相对误差均为0。
+2. m^-3 -> cm^-3 -> m^-3最大相对误差1.0044692681760203e-16，小于1e-12门槛。
+3. RX球面距离误差6.821210263296962e-13 km，小于1e-9 km门槛；经度范围、轴单调、非有限值和负Ne检查通过。
+4. MATLAB 24.1.0.2837808 (R2024a) Update 7正常；选择D:/pharlap/pharlap_4.7.4/mex/raytrace_3d_sp.mexw64，PHaRLAP版本记录为4.7.4，NRT_NUM_THREADS=1。
+5. Python输入检查、MAT往返、主/复核共同网格和MATLAB预检全部通过。机器报告：output2/a4_pharlap/c1_prep/prep1/a4_c1_prep1_validation.json；冻结清单：同目录a4_c1_prep1_freeze_manifest.json。
+6. 图像存在、有限像素、最小尺寸、非空白像素方差和输入来源SHA-256全部通过，并纳入Prep-1硬门及冻结清单。
+
+四、边界与风险
+
+1. Prep-1只证明双方将读取等价的球面坐标、电子密度和零磁场/零碰撞输入；未计算任何射线，不能宣称高/低射线或外部物理验证通过。
+2. 旧local-Cartesian角度未写入冻结输入，后续Prep-2不得将其用于扫描范围或根区间。
+3. 当前Codex沙箱内MATLAB settings插件无法启动；沙箱外MATLAB运行正常。后续PHaRLAP运行需使用同一沙箱外调用方式，物理输入与结果哈希不受该运行环境问题影响。
+4. 未新增参考文献；理论和参数引用沿用word/reference-papers.txt中的Haselgrove、Coleman、Nosikov及Cervera与Harris文献链。
+
+补充复验：Prep-2首次扫描发现低仰角轨迹在纬度44 deg发生grid_exit，故按计划硬门将纬度上界扩展至65 deg并重新冻结两套输入；扩展后Prep-1全部检查再次通过。
+
+下一步：Prep-2已完成；进入Prep-3前保持Prep-1输入与哈希冻结。

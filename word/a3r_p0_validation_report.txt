@@ -1,0 +1,76 @@
+A3R P0/P0R验收报告
+日期：2026-07-15
+2026-07-16已追加高低射线算例
+
+一、结论
+
+P0R实现和运行时闭环已完成。真空、smooth_layer_single_mode和tid_3d均通过数值、重复性及9000 s硬上限验收；原约7000 s基准主要受tracemalloc在AH3D高频Python调用中的测量扰动，不是求解器死锁。
+
+smooth_layer_high_low未通过算例物理有效性验收：1169 km正式运行仅得到O/X各一个模式；按计划在600--1600 km、100 km步长复用同一8点O/X fan审计后，有效落地映射随仰角单调下降，不存在真实fold或双目标交叉。状态为case_physics_not_demonstrated，不得伪造高低射线参考。因此p0_reference_complete=false，P1准入门保持关闭。
+
+二、已通过项目
+
+1. 真空O/X Appleton-Hartree退化通过。
+2. P0R精确缓存、局部根/正式积分分阶段、候选来源审计和逐repeat原子checkpoint已实现。
+3. smooth_layer_single_mode三次完成，时间为1678.638、1526.270、1695.075 s；每次195次顶层射线调用，均得到一个O波和一个X波，模式签名完全一致。
+4. single-mode签名与P0冻结结果逐字段一致：O=(45.234764 deg, -0.026379 deg, 2.814325 ms)，X=(44.629086 deg, 0.020988 deg, 2.795087 ms)。
+5. tid_3d三次完成，时间为1861.575、1972.097、1826.540 s；每次196次顶层射线调用，均得到一个O波和一个X波，模式签名完全一致。
+6. TID三次均保留scenario=tid和TID3D Provider组件；Provider哈希、Provider配置哈希三次一致。
+7. 所有正式模式均为convergence_status=passed、branch_status=ground、p2p_jacobian_effective=central_reference。
+8. 所有有效正式运行均低于7200 s性能目标，无performance_warning；P0R-4轨迹裁剪和P0R-5单射线root缓存未触发。
+
+三、高低射线算例结果
+
+1. 原1169 km算例完成一次O/X正式运行，耗时3503.581 s、298次顶层射线调用，仅得到O/X各一个模式。
+2. 已修正伪fold：fold必须由x_land(beta)相邻斜率变号定义，不再把abs(x_land-x_rx)局部最小误标为fold。
+3. 600--1600 km审计结果selected_distance_km=None；没有距离满足真实双交叉/折叠候选条件。
+4. 700 km O波额外research/central确认耗时1373.361 s，仍只有一个模式，支持“算例物理不成立”而非求解器漏跑的判断。
+5. 按P0R停止条件，不扩大距离、频率或扫描密度强行构造通过；高低射线基准构造转交P2焦散/二维角域工作。
+
+四、剖析与性能语义
+
+1. high_low/O代表剖析：candidate fan 84.8 s，38次实际顶层轨迹、1次精确缓存命中；root累计347.1 s，Provider查询累计256.5 s。
+2. tid_3d/X代表剖析：candidate fan 152.4 s，48次实际顶层轨迹、1次精确缓存命中；root累计625.1 s，Provider查询累计495.0 s。
+3. 精确浮点缓存命中率低，未引入量化键或容差缓存。
+4. 正式计时排除tracemalloc；peak_python_allocated_bytes=None。tracemalloc会把约10 s量级smoke轨迹放大到约150 s，不能用于AH3D墙钟验收。
+
+五、最终状态
+
+implementation_status=complete
+runtime_closure_status=passed
+single_mode_reference_status=passed
+multi_mode_reference_status=case_physics_not_demonstrated
+tid_3d_reference_status=passed
+p0_reference_complete=false
+p0_overall_status=case_physics_not_demonstrated
+p1_gate=closed
+
+六、输出文件
+
+1. output2/a3r_benchmark/a3r_p0r_profile.json
+2. output2/a3r_benchmark/a3r_p0r_smooth_layer_single_mode.json
+3. output2/a3r_benchmark/a3r_p0r_tid_3d.json
+4. output2/a3r_benchmark/a3r_p0r_high_low_distance_audit.json
+5. output2/a3r_benchmark/a3r_p0r_benchmark.json
+
+七、剩余风险
+
+1. 8点中密度、方位0度参考仍不是完整三维模式真值。
+2. 高低射线算例缺失使P0全局参考不完整；P2必须基于真实焦散或可复现文献剖面重新构造。
+3. AH root/Provider链仍是单射线主要成本；当前运行已低于目标，进一步优化留给P4，避免在P0R改写P1验证对象。
+
+八、P0C补充闭环（2026-07-16，取代第五节中的历史门状态）
+
+1. Coleman（2011）Chapman F2冻结场已独立确认真实fold，并在1185.848260 km目标距离得到同分支low_ray/high_ray双根。
+2. 两根三次通过research/reference积分，生产AH3D P2P三次均召回两根且一一匹配；模式签名、Provider哈希和配置哈希一致。
+3. 仰角根容差和积分容差各收紧一次，落点、顶点高度、群时延及Hamiltonian残差满足冻结阈值。
+4. B=0时O/X为磁离子退化单计数；本结果不是完整三维磁离子焦散真值。
+
+multi_mode_reference_status=passed_p0c_isotropic_high_low
+p0_reference_complete=true
+p0_overall_status=passed
+p1_gate=open
+p2_full_azimuth_audit_required=true
+magnetoionic_caustic_validation_required=true
+
+新增输出：output2/a3r_benchmark/a3r_p0c_reference_preparation.json、output2/a3r_benchmark/a3r_p0c_closure.json。

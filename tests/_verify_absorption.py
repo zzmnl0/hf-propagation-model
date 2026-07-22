@@ -1,4 +1,4 @@
-﻿"""
+"""
 Phase 3 verification: D-layer absorption.
 
 Checks:
@@ -100,7 +100,7 @@ def run():
 
     # ── Check 5: absorption reduces Pr_W in HybridPropagationModel ───────────
     print("\n[5] Absorption reduces Pr_W:")
-    from models.hybrid_model import HybridPropagationModel
+    from legacy.models.hybrid_model import HybridPropagationModel
 
     m_clean = HybridPropagationModel(
         _make_iono(), _make_rp(),

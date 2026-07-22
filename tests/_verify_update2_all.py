@@ -1,4 +1,4 @@
-﻿"""Update2.1 phase-1 verification."""
+"""Update2.1 phase-1 verification."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
-from models.ne_provider import GridNeProvider
-from models.ray_tracer_3d import RefractiveIndex3D
+from legacy.models.ne_provider import GridNeProvider
+from legacy.models.ray_tracer_3d import RefractiveIndex3D
 
 
 def _check_update2_defaults() -> int:

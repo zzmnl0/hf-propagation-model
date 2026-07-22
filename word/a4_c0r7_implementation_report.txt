@@ -1,0 +1,32 @@
+A4-C0R-7 PHaRLAP真空复验实施报告
+日期：2026-07-20
+状态：passed
+
+一、实施范围
+
+1. 算例固定为Ne=0、B=0、collision=0、10 MHz、发射仰角35 deg、方位37 deg、球半径6371 km、单程传播。
+2. PHaRLAP输入和原始MAT哈希与已通过C0报告一致，按计划复用冻结原始结果，未重跑MATLAB，未覆盖旧C0产物。
+3. AH3D采用正式geocentric_spherical_ecef坐标、VacuumGeocentricNeProvider3D、ECEF AH Hamiltonian和DOP853 reference积分。
+4. 双方轨迹在前250 km共同ECEF几何路径上直接比较，不进行平移、旋转、缩放、拟合或配准。
+
+二、验收结果
+
+1. 轨迹RMS三维误差：2.5962162536965937e-11 km，门槛1e-3 km，通过。
+2. 轨迹最大三维误差：4.507507492598736e-11 km，门槛1e-2 km，通过。
+3. PHaRLAP群路径/几何路径相对差：0，门槛1e-4，通过。
+4. AH3D群路径/几何路径相对差：2.2737367544323206e-16，门槛1e-4，通过。
+5. AH3D最大Hamiltonian归一残差：1.6564252021325083e-16，门槛1e-8，通过。
+6. 冻结输入与原始MAT哈希、正式ECEF入口、250 km完整区间、共同原点、三张非空图像及来源哈希全部通过；共12项、0 fail(s)。
+
+三、产物
+
+1. 验收脚本：tests/_verify_a4_c0r7_pharlap_vacuum.py。
+2. 机器报告：output2/a4_pharlap/a4_c0r7_validation.json。
+3. AH3D原始结果：output2/a4_pharlap/raw/a4_c0r7_vacuum_ah3d_ecef.json。
+4. PHaRLAP、AH3D及直接对比图：output2/a4_pharlap/figures_c0r7/。
+
+四、结论与边界
+
+C0R-7通过，原C0中约4%真空路径差和公里级轨迹差已由统一球形/ECEF坐标与物理路径语义消除。该结果只证明单程真空坐标和路径度量契约一致，不证明电离层反射、O/X分裂、P2P模式完整性、local_2p5d Ray-PE、散射或绝对功率。
+
+建议进入C0R-8，完成回归、静态禁止项检查和旧生产入口清理；C0R-8通过前不建议进入A4-C1。

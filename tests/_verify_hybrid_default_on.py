@@ -3,7 +3,7 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import config as cfg
-from models.hybrid_model import build_pd_spectrum
+from models.pd_spectrum import build_pd_spectrum
 
 
 def run():

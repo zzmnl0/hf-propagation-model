@@ -1,0 +1,8 @@
+增强版结果章节自查
+
+1. 结果支撑：第4章主要数值来自 output/report_scenario_summary.csv 和 output/report_mode_details.csv，未手工编造。
+2. 图表一致性：新增 5 张 report_fig_*.png 均由 analysis/report_results.py 生成，并在 Word 中逐一引用。
+3. 指标定义：正文明确 delta_tau_us、delta_group_path_km、delta_Pr_dB、delta_tau_OX_us 和 tube radar 双程时延。
+4. 物理一致性：保留 group_path_km=integral(ds/n)；O/X 为三维各向同性轨迹上的 AH 后处理近似；scatter_coupler 默认仅附加诊断，不直接改写 Pr_W。
+5. 局限：参考文献未联网核验，继续保留待核验说明；缺失诊断字段在汇总表中为空，不据此作物理结论。
+6. Go/No-Go：无 Critical 级一致性问题；建议后续在投稿前补充联网参考文献核验和完整 3D AH 射线追踪对照。

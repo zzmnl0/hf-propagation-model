@@ -1,0 +1,51 @@
+技术报告 Word 撰写与生成执行计划
+
+一、用户确认需求
+1. 仅中文。
+2. 定位为项目技术论文/报告型 Word，同时讲清模型构建方法和模型结果解读。
+3. 允许运行验证脚本并读取 code/output/ 图件与 CSV。
+4. 参考文献暂不联网核验。
+5. SS1~SS13 细节按报告需要保留。
+6. 保存路径为 code/word/。
+
+二、调用/采用的 skill
+1. research-paper-writing：贡献、证据链、章节逻辑、结果叙事。
+2. scientific-writing：科研报告结构、段落化表达、图表组织。
+3. docx：Word 文档生成规范。
+4. scientific-visualization：现有 PNG 图件选择和图表服务于结果解释。
+5. paper-review：最终完整性和证据支撑自查。
+
+三、验证记录
+- _verify_group_path.py：0 fail(s)。
+- _verify_OX.py：PASSED。
+- _verify_absorption_3d.py：0 fail(s)。
+- _verify_p2p_jacobian.py：0 fail(s)。
+- _verify_scatter_coupling.py：0 fail(s)。
+- _verify_phase5.py：并行运行时 ppigrf 出现内存分配异常；单独重跑后 0 fail(s)。
+- _verify_phase6.py：0 fail(s)。
+- _verify_phase7.py：0 fail(s)。
+
+四、输出文件
+- writing-plan.txt
+- result_summary.md
+- hf_hybrid_propagation_technical_report.docx
+- validation.txt
+
+
+五、论文式修订记录（2026-07-01 18:05:32）
+1. 按 scientific-writing 的 IMRAD 思路重构为“引言-模型与方法-数值实验-结果-讨论-结论”。
+2. 按 research-paper-writing 的贡献-证据-意义逻辑强化研究问题、方法创新和结果解释。
+3. 按 docx 规范重设 A4 页面、中文宋体小四正文、黑体标题、Cambria Math 公式、图题/表题小五号。
+4. 按 scientific-visualization 原则保留与结果讨论直接相关的输出图件。
+5. 按 paper-review 做自查：结果均来自 output/modes_*.csv 和已运行验证脚本；参考文献仍标注待核验。
+
+六、执行异常记录
+论文式修订时原 hf_hybrid_propagation_technical_report.docx 被系统锁定，已改为生成 hf_hybrid_propagation_technical_report_paperstyle.docx。
+
+
+七、结果展示增强执行记录（2026-07-01 20:47:08）
+1. 采用 scientific-visualization 原则生成 300 dpi、多面板、色盲友好的结果图。
+2. 采用 exploratory-data-analysis 思路汇总 modes_*.csv，生成 report_scenario_summary.csv、report_mode_details.csv 与 report_results_summary.md。
+3. 采用 scientific-writing/research-paper-writing 思路重写第3章、第4章和第5章，强调指标定义、结果证据链和局限。
+4. 采用 docx 规范生成新文件 hf_hybrid_propagation_technical_report_results_enhanced.docx，未覆盖 _paperstyle.docx。
+5. 运行命令：python main.py；python analysis/report_results.py；python word/generate_report_results_enhanced.py；物理验证脚本见最终验证记录。

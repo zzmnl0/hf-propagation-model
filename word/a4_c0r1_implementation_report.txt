@@ -1,0 +1,36 @@
+A4-C0R-1 最小球面/ECEF几何内核实施记录
+日期：2026-07-20
+状态：passed
+
+一、实施范围与语义
+
+1. 本阶段仅建立PHaRLAP一致球形地球坐标所需的最小共享几何内核；未迁移NeProvider、AH3D Hamiltonian、事件、P2P、Ray-PE、散射、功率、main.py或main2.py。
+2. 外部语义固定为地心纬度、东经、球面地表以上高度；内部位置为ECEF km；bearing从地理北顺时针，elevation相对局部水平面。
+3. 结果语义为spherical_geocentric_ecef_geometry_only，不是PHaRLAP轨迹验证、WGS84验证或传播物理验收。
+
+二、实现
+
+1. 在utils.py增加geocentric_to_ecef与ecef_to_geocentric，支持标量及可广播数组，显式传入earth_radius_km，输出位置单位固定为km。
+2. 增加enu_basis，返回以ECEF分量表达、按East/North/Up排列的右手正交基；增加launch_direction_ecef与elevation_bearing_from_ecef，统一方位/仰角定义。
+3. 增加spherical_destination，经度按[-180,180)周期归一；原destination_point仅保留为迁移期旧调用包装器并委托给共享实现，不再维护重复公式。
+4. 增加rx_enu_residual，直接计算终端ECEF位置相对RX球面位置在RX切平面的East/North残差，供后续P2P迁移使用。
+5. 所有新增入口拒绝非有限值、非正球半径、越界地心纬度/仰角、地心位置、无效向量及低于地心的高度；球面距离允许有符号值，以表达TX后方背景网格位置；不根据数值范围猜测单位。
+
+三、验收结果
+
+1. 坐标往返最大位置误差：1.286219742154e-12 km，门槛不大于1e-9 km。
+2. ENU最大正交误差：2.220446049250e-16，门槛不大于1e-12；最小行列式0.9999999999999998，右手性通过。
+3. 发射仰角恢复最大误差：5.329070518201e-15 deg；方位恢复最大误差：0 deg，门槛均不大于1e-10 deg。
+4. 已知四分之一大圆终点误差：3.901112378684e-13 km；经度周期位置误差：0 km；负距离与反向方位等价检查通过。
+5. RX ENU残差最大误差：2.446931546274e-13 km；9类非法输入全部显式拒绝。
+6. tests/_verify_a4_c0r1_geometry.py运行结果为0 fail(s)；机器报告及源码SHA-256写入output2/a4_pharlap/c0r1_geometry_validation.json。
+
+四、理论与引用
+
+本阶段使用球形地球地心坐标、ECEF和局部ENU的解析几何关系，公式复用A4-C0中已由PHaRLAP真空输入核验的坐标定义；未引入新物理参数或未经核验文献。Haselgrove、Jones-Stephenson及PHaRLAP依据继续统一维护于word/reference-papers.txt。
+
+五、风险与下一步
+
+1. destination_point旧接口仍隐式读取config.RE_KM，只用于未迁移调用者；C0R-2至C0R-6应改为显式R入口，C0R-8再删除生产旧入口。
+2. 球面极点处bearing存在坐标固有退化；本阶段验证近极区正交性，不宣称完成极区传播精度验证。
+3. 下一步为C0R-2 Provider输入统一；必须复用本内核，禁止另写局部坐标转换或修改既有扰动物理方程。

@@ -15,8 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 import config as cfg
-from models.ray_tracer import RefractiveIndex
-from models.point_to_point import (
+from legacy.models.ray_tracer import RefractiveIndex
+from legacy.models.point_to_point import (
     optical_path, optical_path_gradient,
     variational_find_ray, find_all_rays_p2p,
     classify_mode, extract_es_params, extract_bubble_entry,

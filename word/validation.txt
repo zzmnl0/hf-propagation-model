@@ -1,0 +1,5 @@
+docx=D:\code11\IRI01\IRI03\TID\code\word\hf_hybrid_propagation_technical_report_results_enhanced.docx
+paragraphs=40
+tables=2
+size_bytes=658149
+revision=results-enhanced-v1

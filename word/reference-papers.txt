@@ -4,7 +4,7 @@ Haselgrove, C. B., & Haselgrove, J. (1960). Twisted ray paths in the ionosphere.
 Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. U.S. Department of Commerce, Office of Telecommunications, OT Report 75-76.
 Budden, K. G. (1985). The Propagation of Radio Waves: The Theory of Radio Waves of Low Power in the Ionosphere and Magnetosphere. Cambridge: Cambridge University Press.
 Azzarone, A., Bianchi, C., Pezzopane, M., Pietrella, M., Scotto, C., & Settimi, A. (2012). IONORT: A Windows software tool to calculate the HF ray tracing in the ionosphere. arXiv:1202.2079.
-Cervera, M. A., & Harris, T. J. (2014). Modeling ionospheric disturbance features in quasi-vertically incident ionograms using 3-D magnetoionic ray tracing and atmospheric gravity waves. Journal of Geophysical Research: Space Physics, 119, 431-440.
+Cervera, M. A., & Harris, T. J. (2014). Modeling ionospheric disturbance features in quasi-vertically incident ionograms using 3-D magnetoionic ray tracing and atmospheric gravity waves. Journal of Geophysical Research: Space Physics, 119(1), 431-440. https://doi.org/10.1002/2013JA019247
 Bilitza, D., Altadill, D., Truhlik, V., Shubin, V., Galkin, I., Reinisch, B., & Huang, X. (2017). International Reference Ionosphere 2016: From ionospheric climate to real-time weather predictions. Space Weather, 15(2), 418-429.
 Hocke, K., & Schlegel, K. (1996). A review of atmospheric gravity waves and travelling ionospheric disturbances: 1982-1995. Annales Geophysicae, 14, 917-940.
 Rino, C. L. (1979). A power law phase screen model for ionospheric scintillation: 1. Weak scatter. Radio Science, 14(6), 1135-1145.
@@ -16,6 +16,11 @@ Barrick, D. E. (1972). First-order theory and analysis of MF/HF/VHF scatter from
 Skolnik, M. I. (Ed.). (2008). Radar Handbook (3rd ed.). New York: McGraw-Hill.
 Coleman, C. J. (1997). On the simulation of backscatter ionograms. Journal of Atmospheric and Solar-Terrestrial Physics, 59(16), 2089-2099.
 Nosikov, I. A., Klimenko, M. V., Zhbankov, G. A., Podlesnyi, A. V., Ivanova, V. A., & Bessarab, P. F. (2020). Generalized force approach to point-to-point ionospheric ray tracing and systematic identification of high and low rays. IEEE Transactions on Antennas and Propagation, 68(1), 455-467. https://doi.org/10.1109/TAP.2019.2938817
+Branch, M. A., Coleman, T. F., & Li, Y. (1999). A subspace, interior, and conjugate gradient method for large-scale bound-constrained minimization problems. SIAM Journal on Scientific Computing, 21(1), 1-23. https://doi.org/10.1137/S1064827595289108
+Hairer, E., Nørsett, S. P., & Wanner, G. (1993). Solving Ordinary Differential Equations I: Nonstiff Problems (2nd rev. ed.). Berlin: Springer-Verlag. https://doi.org/10.1007/978-3-540-78862-1
 Ding, M., Tong, P., Wei, Y., & Yu, L. (2021). Multiple phase screen modeling of HF wave field scintillations caused by the irregularities in inhomogeneous media. Radio Science, 56, e2020RS007239. https://doi.org/10.1029/2020RS007239
 Green, A., Longley, W. J., Oppenheim, M. M., & Young, M. A. (2025). An open source code for modeling radio wave propagation in Earth's ionosphere. Frontiers in Astronomy and Space Sciences, 12, 1521497. https://doi.org/10.3389/fspas.2025.1521497
 Hirvonen, E. A. O., Kauristie, K., & Kallio, E. (2025). AU-Ray program for modeling radio wave propagation in the ionosphere. Radio Science, 60, e2024RS008209. https://doi.org/10.1029/2024RS008209
+Croft, T. A., & Hoogasian, H. (1968). Exact ray calculations in a quasi-parabolic ionosphere with no magnetic field. Radio Science, 3(1), 69-74. https://doi.org/10.1002/rds19683169
+Coleman, C. J. (2011). Point-to-point ionospheric ray tracing by a direct variational method. Radio Science, 46(5), RS5016. https://doi.org/10.1029/2011RS004748
+Nosikov, I. A., Klimenko, M. V., Bessarab, P. F., & Zhbankov, G. A. (2017). Application of the nudged elastic band method to the point-to-point radio wave ray tracing in IRI modeled ionosphere. Advances in Space Research, 60(2), 491-497. https://doi.org/10.1016/j.asr.2016.12.003

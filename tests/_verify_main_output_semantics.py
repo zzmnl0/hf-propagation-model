@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
 import main
-from models.hybrid_model import build_pd_spectrum
+from models.pd_spectrum import build_pd_spectrum
 from viz.plot_utils import save_modes_csv
 
 
@@ -36,6 +36,20 @@ def run() -> int:
     print(" main output semantics verification")
     print("=" * 55)
 
+    with main._temporary_update2({}):
+        try:
+            main.RUN_PRODUCTS["ray_fan_x"] = False
+            main._enable_main_reference_physics()
+            default_o_only = not cfg.UPDATE2["RAY_FAN_INCLUDE_X"]
+            main.RUN_PRODUCTS["ray_fan_x"] = True
+            main._enable_main_reference_physics()
+            switch_ox = cfg.UPDATE2["RAY_FAN_INCLUDE_X"]
+        finally:
+            main.RUN_PRODUCTS["ray_fan_x"] = False
+    ok = default_o_only and switch_ox
+    print(" ray_fan_ox_switch_semantics {}".format("OK" if ok else "FAIL"))
+    n_fail += 0 if ok else 1
+
     comm = main._tag_communication_modes([_mode()])[0]
     ok = comm["tau_oneway_ms"] == comm["tau_ms"] and comm["tau_2way_ms"] is None
     print(" comm_oneway_semantics {}".format("OK" if ok else "FAIL"))
@@ -50,20 +64,23 @@ def run() -> int:
     print(" point_target_two_way_semantics {}".format("OK" if ok else "FAIL"))
     n_fail += 0 if ok else 1
 
-    clutter = main._tag_clutter_radar_modes([_mode()])[0]
-    ok = (
-        abs(clutter["tau_2way_ms"] - 2.0 * clutter["tau_oneway_ms"]) < 1e-12
-        and clutter["radar_observable"] == "two_way_surface_clutter"
-        and "Barrick_1972" in clutter["physics_basis"]
-    )
-    print(" clutter_two_way_semantics {}".format("OK" if ok else "FAIL"))
+    blocked = []
+    for product in (main.run_radar_clutter, main.run_tube_radar):
+        try:
+            product()
+        except RuntimeError as exc:
+            blocked.append("formal entry rejects" in str(exc))
+        else:
+            blocked.append(False)
+    ok = all(blocked)
+    print(" legacy_flux_tube_products_rejected {}".format("OK" if ok else "FAIL"))
     n_fail += 0 if ok else 1
 
     tau1, pd1 = build_pd_spectrum([_mode()], method="tube")
     pd_enabled = main.RUN_PRODUCTS["pd"]
     main.RUN_PRODUCTS["pd"] = True
     try:
-        tau2, pd2 = main._build_pd([clutter], method="tube", delay_key="tau_2way_ms")
+        tau2, pd2 = main._build_pd([radar], method="tube", delay_key="tau_2way_ms")
     finally:
         main.RUN_PRODUCTS["pd"] = pd_enabled
     ok = abs(float(tau1[np.argmax(pd1)]) * 2.0 - float(tau2[np.argmax(pd2)])) < 0.05
@@ -72,14 +89,14 @@ def run() -> int:
 
     td = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output")
     path = save_modes_csv(
-        "semantics", [clutter], tau2, pd2, cfg.FREQ_MHZ, td,
+        "semantics", [radar], tau2, pd2, cfg.FREQ_MHZ, td,
         pd_delay_key="tau_2way_ms")
     with open(path, newline="", encoding="utf-8") as f:
         row = next(csv.DictReader(f))
     ok = (
         row["pd_delay_key"] == "tau_2way_ms"
-        and abs(float(row["pd_delay_ms"]) - clutter["tau_2way_ms"]) < 1e-12
-        and row["radar_observable"] == "two_way_surface_clutter"
+        and abs(float(row["pd_delay_ms"]) - radar["tau_2way_ms"]) < 1e-12
+        and row["radar_observable"] == "two_way_point_target"
     )
     print(" csv_records_delay_semantics {}".format("OK" if ok else "FAIL"))
     n_fail += 0 if ok else 1

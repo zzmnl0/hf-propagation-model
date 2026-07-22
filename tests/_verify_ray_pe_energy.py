@@ -1,4 +1,4 @@
-﻿"""Verify update2.1 Ray-PE/SSF energy coupling.
+"""Verify update2.1 Ray-PE/SSF energy coupling.
 
 Run:
     conda run -n pytorch_cpu python tests/_verify_ray_pe_energy.py
@@ -14,8 +14,8 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
-from models.hybrid_ray_pe import apply_ray_pe_coupling
-from models.pe_propagator import PEPropagator
+from legacy.models.hybrid_ray_pe import apply_ray_pe_coupling
+from legacy.models.pe_propagator import PEPropagator
 
 
 def _local_grid():

@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 import config as cfg
-from models.ray_tracer import RefractiveIndex, trace_single_ray, shoot_rays_fan
+from legacy.models.ray_tracer import RefractiveIndex, trace_single_ray, shoot_rays_fan
 
 print("=" * 55)
 print("  Part 2 verification")

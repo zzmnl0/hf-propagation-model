@@ -1,0 +1,51 @@
+A4-C0R-0 历史冻结与迁移清单实施记录
+日期：2026-07-20
+状态：passed_legacy_coordinate_artifacts_frozen
+
+一、实施边界
+
+1. 本阶段只冻结A4-C0历史证据、标记旧坐标结果并固定迁移调用清单；未修改AH3D Hamiltonian、积分器、Provider、P2P、Ray-PE、main.py或main2.py的计算逻辑。
+2. 所有冻结结果统一标记legacy_coordinate_reference_only，仅可作为原local Cartesian/earth-flattening坐标下的历史内部或接口证据，不能作为新球面/ECEF坐标契约的验证结果。
+3. A4-C0原passed仅保留接口预检历史语义，不恢复其A4准入意义；C0R-1至C0R-8完成前继续阻断A4-C1/C2。
+
+二、冻结结果
+
+1. 新增tests/_run_a4_c0r0_freeze.py。首次运行只写一次；目标文件已存在且哈希不同时立即拒绝，禁止静默覆盖。
+2. 冻结14项C0证据：输入MAT、PHaRLAP原始MAT、AH3D原始JSON、三张图、预检MAT/JSON、验证JSON、日志、Python运行/验收脚本、MATLAB适配脚本及C0报告。
+3. 冻结并标记25项旧坐标参考：A3Rnew-P3 3项、P5 1项、Coleman/P0C根5项、main/main2图像14项及P3/P5报告2项。
+4. 机器清单为output2/a4_pharlap/c0r0_freeze/c0r0_freeze_manifest.json；每项记录原路径、冻结路径、SHA-256、字节数、产物类别和坐标语义。
+
+三、生产迁移清单
+
+静态清单覆盖config.py、main.py、main2.py、models、viz和analysis生产Python文件，登记trajectory_3d、earth_flat、TX_POS、RX_POS、z_cart和legacy_parabolic。共识别16个待迁移文件：
+
+analysis/parameter_sweep_3d.py
+config.py
+main.py
+main2.py
+models/hybrid_model.py
+models/local_frame.py
+models/pe_propagator.py
+models/point_to_point_ah_3d.py
+models/ray_tracer_3d.py
+models/ray_tracer_ah_3d.py
+models/ray_tracer_ah_3d_v2.py
+models/scatter_coupler.py
+models/scatter_phase_screen.py
+models/unified_hybrid_pipeline.py
+viz/plot_ne_background.py
+viz/plot_utils.py
+
+当前共100处命中：z_cart 34处、trajectory_3d 23处、earth_flat 21处、TX_POS 13处、RX_POS 9处；legacy_parabolic当前生产代码无命中，但保留为后续禁止项扫描。清单要求全部调用者迁移后才能切换正式入口，禁止新旧轨迹字段并行静默解释。
+
+四、验证
+
+1. conda环境pytorch_cpu运行tests/_run_a4_c0r0_freeze.py：PASS，c0=14、legacy=25、callers=16。
+2. tests/_verify_a4_c0r0_freeze.py检查冻结哈希、原C0源文件未覆盖、旧坐标标签、扫描token、禁止部分迁移及入口阻断状态。
+3. 本阶段未引入新物理参数或新理论引用；文献链继续以word/reference-papers.txt为唯一完整记录。
+
+五、风险与下一步
+
+1. 旧产物已隔离，但生产代码仍使用旧坐标语义；C0R-0通过不表示坐标错误已修复。
+2. 迁移清单基于当前生产Python源快照；后续新增调用者必须由C0R-8静态验收重新扫描。
+3. 下一步仅进入C0R-1最小球面/ECEF几何内核，不提前改Provider、P2P或主入口。

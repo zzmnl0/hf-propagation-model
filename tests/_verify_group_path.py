@@ -20,8 +20,8 @@ import numpy as np
 import config as cfg
 from utils import group_delay_ms
 from models.ionosphere_model import IonosphereModel
-from models.ray_tracer import RefractiveIndex, trace_single_ray
-from models.ray_tracer_3d import RefractiveIndex3D, trace_single_ray_3d
+from legacy.models.ray_tracer import RefractiveIndex, trace_single_ray
+from legacy.models.ray_tracer_3d import RefractiveIndex3D, trace_single_ray_3d
 from main import _apply_OX_split_3d
 
 

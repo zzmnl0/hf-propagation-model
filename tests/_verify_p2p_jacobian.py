@@ -1,5 +1,5 @@
 """
-Stage D verification: 3-D P2P forward vs central Jacobian option.
+AH3D verification: variational vs central-reference P2P Jacobian.
 
 Run:
     conda run -n pytorch_cpu python tests/_verify_p2p_jacobian.py
@@ -7,34 +7,41 @@ Run:
 import os
 import sys
 
+import numpy as np
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
-from models.ionosphere_model import IonosphereModel
-from models.ray_tracer_3d import RefractiveIndex3D
-from models.point_to_point_3d import find_all_rays_3d
+from legacy.models.ray_tracer_3d import RefractiveIndex3D
+from legacy.models.point_to_point_ah_3d import find_all_rays_ah_3d
+from models.scenario_provider_factory import ScenarioProviderFactory
 
 
 def run():
     print("=" * 55)
-    print("  Stage D verification: P2P Jacobian")
+    print("  AH3D verification: P2P Jacobian")
     print("=" * 55)
 
-    iono = IonosphereModel()
-    Ne, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)
-    n3d = RefractiveIndex3D(Ne, cfg.BG_X, cfg.BG_Z, cfg.FREQ_MHZ, earth_flat=True)
+    provider = ScenarioProviderFactory(cfg).create(
+        "baseline", seed=0, t_s=0.0, validation=True)
+    ne_slice = provider.get_Ne_grid(cfg.BG_X, cfg.BG_Z, t=0.0, y_km=0.0)
+    n3d = RefractiveIndex3D(
+        ne_slice, cfg.BG_X, cfg.BG_Z, cfg.FREQ_MHZ, earth_flat=True,
+        ne_provider=provider)
 
     base = {**cfg.P2P_3D, "n_init": 6, "max_iter": 12}
-    modes_f = find_all_rays_3d(
+    modes_f = find_all_rays_ah_3d(
         cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ,
-        p2p_params={**base, "jacobian": "forward"})
-    modes_c = find_all_rays_3d(
+        p2p_params={**base, "jacobian": "variational"}, wave_mode="O")
+    diagnostics = {}
+    modes_c = find_all_rays_ah_3d(
         cfg.TX_POS, cfg.RX_POS, n3d, cfg.FREQ_MHZ,
-        p2p_params={**base, "jacobian": "central"})
+        p2p_params={**base, "jacobian": "central_reference_multiscale"},
+        wave_mode="O", diagnostics=diagnostics)
 
     n_fail = 0
     ok_count = bool(modes_f) and bool(modes_c)
-    print("  forward_modes={} central_modes={} {}".format(
+    print("  variational_modes={} central_modes={} {}".format(
         len(modes_f), len(modes_c), "OK" if ok_count else "FAIL"))
     if not ok_count:
         return 1
@@ -46,6 +53,25 @@ def run():
         dtau, dh, "OK" if ok_close else "FAIL"))
     if not ok_close:
         n_fail += 1
+
+    checked = [m for m in modes_c if m.get("p2p_jacobian_reference")]
+    if not checked:
+        print("  jacobian_diagnostics=missing FAIL")
+        n_fail += 1
+    else:
+        mode = checked[0]
+        meta = mode["p2p_jacobian_reference"]
+        ok_diag = (meta.get("stable") is True
+                   and len(meta.get("relative_changes", [])) >= 2
+                   and np.isfinite(meta.get("condition", np.nan))
+                   and meta["condition"] <= cfg.P2P_3D["jacobian_condition_max"]
+                   and mode.get("p2p_jacobian_effective")
+                   == "central_reference_multiscale")
+        print("  reference_scale={} condition={:.3e} {}".format(
+            meta.get("selected_scale"), float(meta.get("condition", np.nan)),
+            "OK" if ok_diag else "FAIL"))
+        if not ok_diag:
+            n_fail += 1
 
     print("\n{} fail(s)\n".format(n_fail))
     return n_fail

@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
-from models.radar_clutter import RadarClutterModel, apply_clutter_to_mode
+from legacy.models.radar_clutter import RadarClutterModel, apply_clutter_to_mode
 
 
 def _mode(group_path_km=1000.0, tau_ms=3.0, area_km2=50.0):

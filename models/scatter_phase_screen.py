@@ -329,7 +329,8 @@ def make_path_mps_delay_kernel(mode: dict,
             "scatter_validity": "phase_screen_not_fullwave",
         }
 
-    pts = np.asarray(mode.get("trajectory_3d", []), dtype=float)
+    ecef_path = mode.get("trajectory_ecef_km")
+    pts = np.asarray(ecef_path if ecef_path is not None else [], dtype=float)
     if pts.ndim != 2 or pts.shape[0] < 2:
         kernel = _delta_kernel(tau_axis, tau0)
         return {
@@ -342,10 +343,11 @@ def make_path_mps_delay_kernel(mode: dict,
 
     sample_step = max(int(pts.shape[0] // 24), 1)
     samples = pts[::sample_step, :3]
-    ne_vals = [
-        max(float(n3d.Ne_at(float(p[0]), float(p[1]), float(p[2]), t=t)), 0.0)
-        for p in samples
-    ]
+    if not hasattr(n3d, "get_Ne_ecef"):
+        raise TypeError("formal MPS path sampling requires an ECEF NeProvider")
+    radius = float(mode["earth_radius_km"])
+    ne_vals = [max(float(n3d.get_Ne_ecef(p, radius, t=t)), 0.0)
+               for p in samples]
     Ne_eff = float(np.median(ne_vals)) if ne_vals else 1.0e11
     DeltaL_km = float(sp.get("DeltaL_km", mode.get("scatter_DeltaL_km", 100.0)))
     mps = MultiPhaseScreen(
@@ -381,5 +383,6 @@ def make_path_mps_delay_kernel(mode: dict,
         "energy_conservation_error": abs(pr_norm - 1.0),
         "scatter_solver_dimensionality": "path_mps_statistical",
         "scatter_validity": "phase_screen_not_fullwave",
+        "scatter_path_coordinate_model": "spherical_ECEF",
         "theory_reference": "Rino 1979 phase screen; Knepp 1983 multiple phase screen",
     }

@@ -1,0 +1,129 @@
+在3D电离层复杂环境中统一计算电波反射/散射混合传播升级报告
+生成日期：2026-07-09
+
+一、目标定位
+
+本报告面向最终目标：在外部输入的三维电子密度 Ne(x,y,z,t) 分布中，不预设 TID、Spread-F、等离子体泡、Es 或其他不规则体是否存在及其类型，统一计算 HF/短波传播路径、O/X 分支、反射/散射混合传播、P-D 功率谱、信号强度、雷达 clutter 和传播模式。阶段1中仍可使用不同三维参数化复杂环境生成 Ne，但传播计算主链必须逐步收敛为同一套算法，而不是每种环境单独写一套传播逻辑。
+
+二、参考文献与本地资料依据
+
+本次报告参考路径为 D:\0文件\0文献\电离层短波传播。目录内资料覆盖了当前升级所需的主要理论和实现参照：FARR 复杂电离层 FDTD 混合全波模拟器用于全波/射线混合验证；HF 在移动电离层扰动和等离子体气泡中的波光学分析用于 TID、bubble 与波动传播耦合；中低纬度偶发 E 层传播建模用于 Es 层和低高度反射/散射；基于 NRLMSISE-00 的半经验吸收模型用于碰撞吸收；多相屏建模非均匀介质中 HF 波场闪烁用于 MPS/相位屏；点对点电离层射线追踪及系统识别高低射线的广义力方法用于 P2P 模式识别；AU-Ray 2025 用于现代电离层射线追踪程序对照；FARR release 代码可作为 FDTD/混合全波实现参照。
+
+外部标准理论依据包括 Appleton-Hartree 磁离子理论、Haselgrove Hamiltonian 射线追踪、Jones and Stephenson 三维电离层射线追踪、Budden 电离层无线电传播理论、Rino 幂律相位屏、Knepp 多相位屏、Yeh and Liu 电离层闪烁理论、Barrick 一阶 HF 海面 Bragg 散射、Skolnik 雷达方程、Bilitza et al. IRI 模型、Azzarone et al. IONORT 和 PHaRLAP/AU-Ray 类三维射线追踪程序。
+
+三、统一计算方式的必要性
+
+当前工程中 TID、Spread-F、Bubble、Es、Full、Radar 等场景仍有较强的场景分支色彩。阶段1这样做有利于单机制验证，但不适合最终目标。外部 Ne(x,y,z,t) 只给出电子密度分布，通常不会告诉模型某处扰动属于 TID、Spread-F 还是 bubble。若传播计算依赖场景标签，就无法对未知复杂环境进行统一计算，也无法保证不同扰动混合时的结果可比较。
+
+统一计算方式的核心思想是：复杂环境只负责生成或提供 Ne 场，传播模块只读取 Ne、梯度、地磁场、碰撞频率和边界条件。TID、bubble、Spread-F、Es 应从“传播算法分支”降级为“NeProvider 的数据来源或诊断标签”。同一 Ne 场进入同一反射/散射混合求解链，才能在外部实测、同化、仿真或参数化 Ne 之间保持物理口径一致。
+
+统一计算还能避免功率链重复扣减。当前系统已包含自由空间损耗、复吸收、Ray-PE、散射核、雷达 clutter 等多个可改变功率的模块。若每个场景独立处理，很容易重复扣减吸收或把诊断散射误写成功率损失。统一链路应规定功率只在明确节点改写：传播几何、吸收、散射再分配、地/海面散射、接收机观测，每个节点输出 energy_before、energy_after 和 applied 标志。
+
+四、总体实施路线
+
+路线A为近期主线：统一 NeProvider 和传播调度。所有主程序场景先生成或读取 NeProvider3D，再调用同一个 hybrid_propagation_pipeline。旧 run_with_tid、run_with_spreadf、run_with_bubble 等函数保留为参数模板，只负责构造 provider，不再直接决定传播算法。
+
+路线B为物理主干：3D Appleton-Hartree Hamiltonian 射线追踪作为大尺度反射主求解器。O/X 分支必须拥有独立轨迹、群延迟、反射高度、横向偏移和吸收；各向同性 3D 射线只保留为 baseline 或 legacy 对照。
+
+路线C为散射/全波耦合：在射线局部坐标系中把主射线边界场送入 PE/SSF、多相屏或 FDTD/FARR 类全波模块，输出角谱、延迟谱、功率再分配和相干性指标，再回写 P-D 谱。Ray-PE local_2p5d 可作为阶段性实现，但必须标明不是完整 3D PE/全波。
+
+路线D为观测层统一：通信、点目标雷达、surface clutter、tube radar 共享同一传播模式，只在观测方程层不同。通信使用单程 tau_ms；雷达使用 tau_2way_ms；点目标使用 RCS 与 R^-4；地/海面 clutter 使用 sigma0、照射面积、Bragg/Doppler 和 range-Doppler projection。
+
+路线E为验证和追踪：所有输出 CSV/图像记录 provider、solver、feature gates、单/双程语义、O/X、吸收、PE、散射、clutter 和测试脚本。报告/论文只按这些字段表述功能状态，不把 legacy 或 diagnostic 写成完整物理闭合。
+
+五、具体实施方案
+
+1. 统一 NeProvider3D
+
+目标是建立唯一介质入口。BaseNeProvider3D 必须提供 get_Ne(x,y,z,t)、get_grad_Ne、sample_grid3d、sample_ray_path、get_metadata。ParameterizedIonosphere3DProvider 用于阶段1参数化环境；ExternalGridNeProvider 用于后续 npz/netCDF/HDF5 外部 Ne；IriNeProvider 用于背景。传播模块不得直接判断“当前是 TID 还是 Spread-F”，只能读取 provider。
+
+当前 code/models/ne_provider.py 已有 BaseNeProvider3D、GridNeProvider3D 和 ParameterizedIonosphere3DProvider 雏形，但 Spread-F 和 Es 在 metadata 中仍偏 diagnostic。下一步应补齐三维随机谱 Spread-F、场向 Es 不规则体、时间演化、seed 复现、单位检查、缺测掩膜和外部 Ne 文件读入。
+
+2. 统一传播调度器
+
+新增或重构 models/unified_hybrid_pipeline.py，输入为 provider、freq_MHz、tx/rx、geomag、collision_model、observable_config。内部顺序为：采样/插值 Ne 和梯度；AH3D 射线/P2P；复折射率吸收；局部 Ray-PE/SSF 或 MPS/FDTD 散射；P-D 谱组装；通信/雷达观测方程；CSV/图像输出。main.py 的各模式只调用该调度器。
+
+3. AH3D 反射主链
+
+models/ray_tracer_ah_3d.py 和 models/point_to_point_ah_3d.py 应成为默认物理主干。Hamiltonian 应直接来自 Appleton-Hartree 色散关系 D(r,k,omega)=0。group_path 和 tau 必须由群速度或群折射率积分得到，不能用几何路径代替。near-cutoff、evanescent、branch invalid、mode conversion 风险要显式输出状态。
+
+4. 吸收主链
+
+models/absorption_collision.py 负责复折射率吸收，使用与 AH3D 同源的磁离子公式、碰撞频率模型和地磁场投影。基于 NRLMSISE-00 的半经验吸收模型可作为碰撞频率/中性大气约束来源。功率链中只能有一个吸收入口，legacy D 层经验吸收应标为 diagnostic 或 fallback。
+
+5. 反射-散射耦合
+
+models/local_frame.py 构造射线局部坐标、入射边界场、局部波矢、曲率和极化。models/hybrid_ray_pe.py 接收这些边界条件并调用 PE/SSF；models/scatter_phase_screen.py 和 models/pd_scatter_kernel.py 接收 MPS/相位屏输出。FARR/FDTD 参考资料提示：当不规则体尺度与波长可比、强散射或 caustic 附近射线失效时，应转入全波或混合全波计算，而不是继续用经验 Gaussian delay kernel。
+
+6. P-D 谱统一
+
+P-D 谱应由模式延迟、功率、散射核和观测方程共同生成。通信谱是单程群延迟功率谱；雷达谱是双程群延迟或 range-Doppler 投影。当前 radar_clutter.py 已将 surface/tube clutter 升级为 Bragg range-Doppler projection，后续应把通信散射 P-D 也升级为同样明确来源的 kernel：弱散射用 Rytov/Born；中强散射用 MPS/PE；全波区域用 FDTD/FARR 输出。
+
+7. 雷达与 OTH 模块
+
+models/radar_clutter.py 应作为观测层模块，而不是传播主链模块。TubeRayTracer3D 提供照射管、聚焦和到达几何；radar_clutter.py 提供 sigma0、Bragg Doppler、距离门、地/海面类型、R^-4 雷达方程和 P-D/range-Doppler 投影。后续应加入天线方向图、距离门、海浪方向谱、二阶海杂波、多站/双基地接口。
+
+8. 参数扫描与不确定性
+
+新增 analysis/unified_ne_sweep.py。对同一统一传播链扫描频率、时间、背景 Ne、TID 参数、bubble 参数、Spread-F 谱强度、Es 参数、碰撞频率、海况和天线参数。输出模式失锁、MUF/LUF、主模切换、P-D 分位数、功率敏感度和收敛性。固定 seed 必须完全复现。
+
+六、模块升级清单
+
+需要新增或重点重构的模块如下：
+
+code/models/ne_provider.py：升级为唯一 Ne 入口，补齐外部 3D Ne、缺测掩膜、单位和坐标元数据。
+
+code/models/parameterized_ionosphere_3d.py：从简单导出文件升级为阶段1复杂环境工厂，统一 TID、bubble、Spread-F、Es、背景 IRI 和时间演化。
+
+code/models/unified_hybrid_pipeline.py：新增统一传播调度器，替代 main.py 中场景分支式传播流程。
+
+code/models/ray_tracer_ah_3d.py：继续升级为完整磁离子 Hamiltonian 反射主链。
+
+code/models/point_to_point_ah_3d.py：支持统一 P2P 搜索，后续扩展为扫频+扫角。
+
+code/models/absorption_collision.py：作为唯一复折射率吸收入口，统一单程/双程语义。
+
+code/models/local_frame.py：负责射线局部坐标和 PE/全波边界场。
+
+code/models/hybrid_ray_pe.py：从 local_2p5d 逐步升级到可替换的 3D PE/全波接口。
+
+code/models/scatter_phase_screen.py、code/models/pd_scatter_kernel.py：统一弱/强散射核与 P-D 谱回写。
+
+code/models/radar_clutter.py：继续完善 Bragg clutter、海况谱、距离门和多站接口。
+
+code/models/irregularity_detector.py：新增外部 Ne 诊断模块，只输出候选扰动类型、谱斜率、各向异性、梯度和置信度，不参与传播前置分支判断。
+
+code/analysis/unified_ne_sweep.py：新增统一参数扫描和不确定性分析。
+
+code/analysis/build_traceability_matrix.py：新增理论-代码-测试-输出字段-图像追踪矩阵。
+
+七、分阶段落地计划
+
+P0：统一入口和语义。完成 External/Grid/Parameterized NeProvider3D；新增 unified_hybrid_pipeline；main.py 各场景只生成 provider；所有输出标注 provider、solver、feature gate、单/双程和 applied 状态。验收重点是默认开关仍关闭，旧测试不破坏。
+
+P1：统一 AH3D+吸收。把 O/X AH3D、复折射率吸收和群延迟作为统一主链；各向同性射线只作为 baseline。验收重点是 O/X 分支、群路径、吸收单/双程、near-cutoff 状态和步长收敛。
+
+P2：统一散射。把 PE/SSF、MPS、Rytov/Born 的输出统一成 P-D kernel，所有功率改写记录能量守恒或物理损耗。验收重点是 scatter_apply_to_pd 关闭时旧谱一致，开启时能量归一化和强弱散射方法选择正确。
+
+P3：统一雷达观测。通信、点目标、surface clutter、tube radar 共享同一传播模式集合，区别只在观测方程。验收重点是 tau_ms/tau_2way_ms 分离、R^-4、sigma0、Bragg Doppler、range-Doppler/P-D 投影和图像语义标注。
+
+P4：外部 Ne 接入。支持外部 3D/4D Ne 文件和回调，传播不依赖扰动标签。irregularity_detector 只做诊断。验收重点是单位、坐标、缺测、时间插值、未知扰动和结果可追踪。
+
+P5：扫频+扫角和真实性验证。P2P 从固定频率扫角升级为扫频+扫角，输出 MUF/LUF、模式连续性、频散、主模切换和频率可用性。使用 IONORT、AU-Ray、PHaRLAP 或 FARR/FDTD 算例做对照。
+
+八、最低验收标准
+
+1. 同一 NeProvider 输入下，不同场景标签不得改变传播算法，只能改变输出诊断标签。
+2. 所有功率改变必须有 applied 字段、公式来源和能量前后值。
+3. 所有 P-D 图必须标注单程/双程、solver、provider、吸收、PE、散射、雷达观测类型和谱核来源。
+4. 所有随机不规则体必须记录 seed、谱指数、外尺度、内尺度、各向异性方向和时间。
+5. 外部 Ne 输入不得要求用户先声明扰动类型。
+6. AH3D、PE/MPS、FDTD/FARR、clutter 任何一个未启用时，输出必须明确写 off、diagnostic 或 legacy，不能默认暗中改变结果。
+
+九、当前最关键的风险
+
+第一，当前 ParameterizedIonosphere3DProvider 仍未完整表达 Spread-F 和 Es 三维物理，只能作为阶段性入口。第二，Ray-PE 仍是 local_2p5d，不能宣称完整三维全波散射。第三，绝对功率缺实测校准，吸收、海况、天线方向图和接收机处理链会显著改变结果。第四，若不尽快把 main.py 的场景分支收敛为统一 pipeline，后续接入外部 Ne 时会出现重复逻辑和语义冲突。
+
+十、建议下一步
+
+建议先实施 P0：新增 unified_hybrid_pipeline.py，把 baseline、TID、Spread-F、Bubble、Es、Full 都改成“构造 provider + 调用统一 pipeline”。这一步不追求新物理效果，而是先统一接口和输出语义。随后再把 AH3D、吸收、PE/MPS、clutter 逐步替换到统一 pipeline 内。这样最符合最终目标，也最能避免后续外部 Ne 接入时大规模返工。

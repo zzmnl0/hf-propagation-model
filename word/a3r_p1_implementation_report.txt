@@ -1,0 +1,49 @@
+A3Rnew-P1 多尺度中心差分 Jacobian 实施记录
+日期：2026-07-16
+
+一、实施范围
+
+本阶段将 AH3D P2P 生产落点 Jacobian 定版为多尺度中心差分，保持 Appleton-Hartree 色散关系、AH3D 有限差分 Hamiltonian、O/X 分支、发射角搜索域和 P0C 参考算例不变。
+
+二、完成内容
+
+1. 生产默认 `jacobian=central_reference_multiscale`；先对仰角和方位角步长使用 0.5、1、2 倍尺度，无稳定平台时自适应细化至 0.25/0.125，选择变化最稳定的较细尺度。
+2. 记录仰角列和方位角列的相对误差，避免总范数掩盖单列误差。
+3. 记录参考步长、相邻步长相对变化和 fallback 原因。
+4. 稳定判据为最小相邻尺度变化不大于 1e-2；Jacobian 非有限、条件数大于 1e10、扰动射线非地面分支或无稳定平台时拒绝局部根，并记录拒绝原因。
+5. 扩展 P2P Jacobian 回归脚本，检查逐列诊断和参考步长收敛元数据。
+
+三、输出语义
+
+`jacobian_variational`：AH3D 积分过程中同步传播的实验切线敏感度，不是生产 Jacobian。
+`jacobian_central_reference_multiscale`：同一局部射线求解位置、同一 smoke 积分器下的多尺度中心差分参考。
+`p2p_jacobian_column_relative[0]`：发射仰角列相对误差。
+`p2p_jacobian_column_relative[1]`：发射方位角列相对误差。
+`p2p_jacobian_fallback_reasons`：本次局部求解触发回退的原因。
+
+四、验收
+
+Python 编译、`git diff --check` 和多尺度控制流验收均为 0 fail(s)。冻结 Coleman 高/低射线定点检查为 0 fail(s)：低射线在初始 0.5/1/2 尺度形成平台；高射线初始最小变化为 1.031%，自适应细化后在 0.125/0.25 尺度间达到 0.108% 稳定变化。P0C 冻结结果结构回归为 0 fail(s)。变分 Jacobian 仰角列相对中心差分仍约为 1.82e-3（低射线）和 1.74e-2（高射线），不参与生产精度结论。
+
+基线 IRI O 波全流程回归运行约 25 分钟仍未完成，确认进程持续占用 CPU 且无异常后人工终止；因此本阶段不声称该长流程已通过，运行时长记录为 P2 全角域实施前的资源风险。
+
+当前准入结论：A3Rnew-P1 implementation_complete=true；生产 Jacobian 已定版为多尺度中心差分。原 A3R-P1 的变分 Jacobian 仰角列未达到 1e-3，不能据此宣称变分加速已验证；P2 仍需独立完成模式完整性审计。
+
+五、理论依据
+
+切线方程与 Hamiltonian 射线方程的一致性依据 Haselgrove（1955）、Jones and Stephenson（1975）及 Budden（1985）；P2P 多解和高低射线语义依据 Coleman（2011）及 Nosikov et al.（2020）。这些文献支持射线灵敏度、变分落点映射和多根识别，但不把当前有限差分 AH3D 实现宣称为完整三维全波解。
+
+六、风险与未完成项
+
+1. 生产 Jacobian 仍为终端落点数值中心差分，不是解析 Hamiltonian 偏导；每个局部根成本增加，正式角域扫描可能小时级运行。
+2. 原切线 RHS 仍通过方向中心差分近似，尚未升级为解析 Hamiltonian 偏导或自动微分；仰角列偏差表明该离散切线仍存在未闭合的一致性误差。
+3. 焦散、near-cutoff 和分支出生/消失处 Jacobian 可能理论病态；完整模式完整性留待 P2。
+4. P1 不包含 PHaRLAP 外部验证，也不包含性能优化；不得据此宣称达到 10 倍加速。
+5. 变分路径若后续用于提速，仍须沿实际接受步隔离 RHS、色散投影、地面事件和终端映射误差；在此之前不得放宽 1e-3 诊断阈值。
+
+参考文献：
+Haselgrove, J. (1955). Ray theory and a new method for ray tracing. In The Physics of the Ionosphere, 355-364.
+Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. OT Report 75-76.
+Budden, K. G. (1985). The Propagation of Radio Waves. Cambridge University Press.
+Coleman, C. J. (2011). Point-to-point ionospheric ray tracing by a direct variational method. Radio Science, 46(5), RS5016. https://doi.org/10.1029/2011RS004748
+Nosikov, I. A., Klimenko, M. V., Zhbankov, G. A., Podlesnyi, A. V., Ivanova, V. A., & Bessarab, P. F. (2020). Generalized force approach to point-to-point ionospheric ray tracing and systematic identification of high and low rays. IEEE Transactions on Antennas and Propagation, 68(1), 455-467. https://doi.org/10.1109/TAP.2019.2938817

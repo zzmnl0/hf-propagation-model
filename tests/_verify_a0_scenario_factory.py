@@ -14,6 +14,7 @@ import config as cfg
 import main
 import main2
 from models.scenario_provider_factory import ScenarioProviderFactory
+from utils import spherical_destination
 
 
 def check(condition, label, failures):
@@ -39,11 +40,19 @@ def run():
               "{}_config_hash".format(scene), failures)
         check(ma["provider_hash"] == mb["provider_hash"],
               "{}_provider_hash".format(scene), failures)
-        ga = a.get_Ne_grid(cfg.BG_X, cfg.BG_Z, t=0.0, y_km=0.0)
-        gb = b.get_Ne_grid(cfg.BG_X, cfg.BG_Z, t=0.0, y_km=0.0)
+        ga = a.sample_link_plane(
+            cfg.TX_GEOCENTRIC, cfg.LINK_BEARING_DEG, cfg.BG_X, cfg.BG_Z)
+        gb = b.sample_link_plane(
+            cfg.TX_GEOCENTRIC, cfg.LINK_BEARING_DEG, cfg.BG_X, cfg.BG_Z)
         check(np.array_equal(ga, gb), "{}_slice_exact".format(scene), failures)
-        va = np.array([a.get_Ne(p, t=0.0) for p in points])
-        vb = np.array([b.get_Ne(p, t=0.0) for p in points])
+        geocentric = []
+        for x, y, height in points:
+            bearing = cfg.LINK_BEARING_DEG + np.degrees(np.arctan2(y, x))
+            lat, lon = spherical_destination(
+                cfg.TX_LAT, cfg.TX_LON, bearing, np.hypot(x, y), cfg.RE_KM)
+            geocentric.append((lat, lon, height))
+        va = np.array([a.get_Ne_geocentric(*p, t=0.0) for p in geocentric])
+        vb = np.array([b.get_Ne_geocentric(*p, t=0.0) for p in geocentric])
         check(np.allclose(va, vb, rtol=1e-12, atol=0.0),
               "{}_samples".format(scene), failures)
 
@@ -53,8 +62,11 @@ def run():
     check(explicit.get_metadata()["provider_hash"] ==
           labelled.get_metadata()["provider_hash"],
           "label_does_not_change_physical_provider_hash", failures)
-    check(np.array_equal(explicit.get_Ne_grid(cfg.BG_X, cfg.BG_Z),
-                         labelled.get_Ne_grid(cfg.BG_X, cfg.BG_Z)),
+    check(np.array_equal(
+        explicit.sample_link_plane(
+            cfg.TX_GEOCENTRIC, cfg.LINK_BEARING_DEG, cfg.BG_X, cfg.BG_Z),
+        labelled.sample_link_plane(
+            cfg.TX_GEOCENTRIC, cfg.LINK_BEARING_DEG, cfg.BG_X, cfg.BG_Z)),
           "label_does_not_change_provider_data", failures)
     try:
         factory.create("spreadf", seed=None, validation=True)

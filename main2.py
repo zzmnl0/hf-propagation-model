@@ -45,6 +45,7 @@ os.makedirs(_OUT, exist_ok=True)
 
 RUN_PRODUCTS = {
     "ray_fan": True,
+    "ray_fan_x": False,
     "p2p": False,
     "pd": False,
     "csv": False,
@@ -77,6 +78,7 @@ def _enable_reference_physics():
     _merge_dict(cfg.UPDATE2, {
         "AH3D_ENABLE": True,
         "OX_MODE": "ah3d",
+        "RAY_FAN_INCLUDE_X": bool(RUN_PRODUCTS.get("ray_fan_x", False)),
         "ABSORPTION_COMPLEX": {
             "enable": True,
             "mode": "reference",
@@ -107,17 +109,8 @@ def _save(fig, name):
     print("  Saved: output2/{}".format(name))
 
 
-def _rays3d_to_fan(rays3d):
-    out = []
-    for r in rays3d:
-        rr = dict(r)
-        rr["trajectory"] = [(float(s[0]), float(s[2]))
-                             for s in r.get("trajectory_3d", [])]
-        out.append(rr)
-    return out
-
-
-def _make_link_info():
+def _make_link_info(traceability=None):
+    trace = traceability or {}
     return {
         "TX_LAT": cfg.TX_LAT,
         "TX_LON": cfg.TX_LON,
@@ -127,6 +120,13 @@ def _make_link_info():
         "IRI_DT": cfg.IRI_DT,
         "IRI_LAT": cfg.IRI_LAT,
         "IRI_LON": cfg.IRI_LON,
+        "earth_model": cfg.EARTH_MODEL["name"],
+        "earth_radius_km": cfg.EARTH_MODEL["radius_km"],
+        "coordinate_model": "geocentric lat/lon/height -> ECEF state",
+        "oneway_or_twoway": trace.get("oneway_or_twoway", "one_way"),
+        "reflection_coupling": "on",
+        "ray_pe_coupling": trace.get("ray_pe_coupling", "off"),
+        "scatter_coupling": trace.get("scatter_power_coupling", "diagnostic_only"),
     }
 
 
@@ -152,6 +152,10 @@ def _make_pd_info(result, delay_key="tau_ms"):
     lines = [
         obs,
         "delay_key={}".format(delay_key),
+        "earth={} R={}km".format(
+            result.traceability.get("earth_model", "sphere"),
+            result.traceability.get("earth_radius_km", "")),
+        "coordinates={}".format(result.traceability.get("coordinate_model", "")),
         "provider={}".format(result.traceability.get("provider_components", "")),
         "solver={}".format(result.traceability.get("solver_chain", "")),
         "absorption={}".format(sample.get("abs_model", "none")),
@@ -176,7 +180,8 @@ def _plot_ne_slice(provider, kind):
         z_es = np.linspace(h_es - 5.0 * sigma_km,
                            h_es + 5.0 * sigma_km, 41)
         z_plot = np.unique(np.concatenate((z_plot, z_es, [h_es])))
-    return provider.get_Ne_grid(cfg.BG_X, z_plot), z_plot
+    return provider.sample_link_plane(
+        cfg.TX_GEOCENTRIC, cfg.LINK_BEARING_DEG, cfg.BG_X, z_plot), z_plot
 
 
 def _normalize_scenario_label(kind):
@@ -209,7 +214,11 @@ def _request_for(kind):
     return UnifiedPropagationRequest(
         scenario="unified_{}".format(kind),
         provider=_scenario_provider(kind),
-        solver="ah3d" if bool(cfg.UPDATE2.get("AH3D_ENABLE", False)) else "iso3d_legacy",
+        tx_geocentric=cfg.TX_GEOCENTRIC,
+        rx_geocentric=cfg.RX_GEOCENTRIC,
+        bearing_deg=cfg.LINK_BEARING_DEG,
+        earth_radius_km=cfg.EARTH_MODEL["radius_km"],
+        solver="ah3d_ecef",
         observable_type="communication_oneway",
         pd_delay_key="tau_ms",
         apply_scatter_to_pd=apply_scatter_pd,
@@ -244,18 +253,20 @@ def run_unified_scenario(kind):
 
     pert_info = _make_pert_info(kind)
     if RUN_PRODUCTS.get("ray_fan", True) and result.rays3d:
+        fan_modes = "/".join(result.traceability.get("ray_fan_wave_modes", ["O"]))
         fig, _ = plot_tx_ray_fan(
-            _rays3d_to_fan(result.rays3d), Ne_plot, cfg.BG_X, z_plot,
-            title="TX Ray Fan - unified {} Ne background".format(kind),
-            link_info=_make_link_info(), pert_info=pert_info,
+            result.rays3d, Ne_plot, cfg.BG_X, z_plot,
+            title="TX Ray Fan ({}) - unified {} Ne background".format(
+                fan_modes, kind),
+            link_info=_make_link_info(result.traceability), pert_info=pert_info,
             xlim=_plot_x_limits())
         _save(fig, "tx_fan_unified_{}.png".format(kind))
 
     if RUN_PRODUCTS.get("p2p", True) and result.modes:
         fig, _ = plot_p2p_modes(
             result.modes, Ne_plot, cfg.BG_X, z_plot,
-            title="P2P Modes - unified {} Ne background".format(kind),
-            link_info=_make_link_info(), pert_info=pert_info,
+            title="P2P Modes (O/X) - unified {} Ne background".format(kind),
+            link_info=_make_link_info(result.traceability), pert_info=pert_info,
             xlim=_plot_x_limits())
         _save(fig, "p2p_modes_unified_{}.png".format(kind))
 
@@ -289,5 +300,9 @@ if __name__ == "__main__":
         "--scenario", action="append", dest="scenarios",
         help="Scenario label; repeat for multiple scenes: {}".format(
             ", ".join(SCENARIO_LABELS)))
+    parser.add_argument(
+        "--ray-fan-x", action="store_true",
+        help="Include and distinguish X-mode rays in the ray fan; default is O only")
     args = parser.parse_args()
+    RUN_PRODUCTS["ray_fan_x"] = bool(args.ray_fan_x)
     main(args.scenarios)

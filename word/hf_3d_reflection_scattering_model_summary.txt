@@ -1,0 +1,99 @@
+3D复杂电离层短波反射/散射混合传播模型阶段总结
+更新日期：2026-07-16
+
+一、目前模型总体路线
+
+项目以统一三维电子密度Ne(x,y,z,t)为传播介质输入，目标是在未知不规则体类别的外部三维电子密度分布中，统一计算短波传播路径、O/X传播模式、群路径、群时延、信号强度、功率-时延/多普勒谱及雷达观测量。阶段1使用IRI背景及TID、Spread-F、Es、plasma bubble等参数化场进行可控验证；传播求解器不依赖场景标签判断物理算法。
+
+当前执行链为：ScenarioProviderFactory/NeProvider3D统一构场 -> Appleton-Hartree三维Hamiltonian射线追踪AH3D V2 -> O/X点对点模式发现与正式积分 -> 可选吸收、Ray-PE和统计散射诊断 -> 通信单程或雷达双程输出。main.py用于单场景验证，main2.py用于同一传播程序在不同Provider场景上的统一应用。
+
+反射主链采用Haselgrove/Jones-Stephenson Hamiltonian磁离子射线理论。AH3D V2使用Appleton-Hartree O/X独立色散分支、DOP853自适应积分、D=0色散面投影、自然转向和research/reference收敛复算。默认AH3D入口已由V2替换legacy；legacy只作显式对照。该模型属于几何光学/射线理论，不描述截止区隧穿、模式转换和强散射全波效应。
+
+反射/散射链当前由AH3D路径、local_2p5d Ray-PE、Born/Rytov/MPS统计诊断和P-D核组成。local_2p5d只沿射线提取局部二维截面，不能称为完整3D PE或全波；MPS是路径相关统计核，不是完整三维随机散射场。在能量闭合、文献复现和外部验证完成前，散射与Ray-PE默认不改写正式功率/P-D谱。
+
+观测语义严格区分通信单程与雷达双程。通信使用tau_ms；单站雷达使用tau_2way_ms，并区分point target、surface clutter和tube radar。当前绝对功率未经过实测校准，输出必须保留reference_uncalibrated语义。
+
+二、实施进度与验收状态
+
+总执行关系为：A0 -> A1 -> A2 -> A3 -> A3Rnew(P0C -> P1 -> P2 -> P3 -> P5new) -> A4 PHaRLAP -> B1 -> B2 -> B3 -> B4 -> B5。
+
+1. A0已完成。main.py/main2.py统一通过ScenarioProviderFactory构造baseline、TID、Spread-F、Bubble和Es；传播计算与绘图切片来自同一三维Provider。旧二维背景/传播入口已删除，二维Ne只保留为同一Provider的绘图切片及默认关闭的local_2p5d输入。场景metadata包含组件、seed、t_s、单位、插值、配置哈希和Provider哈希。A0相关验证均为0 fail(s)。
+
+2. A1已完成。统一Appleton-Hartree O/X复色散根、branch_id、根连续性、near_cutoff、turning_point、evanescent、resonance_excluded和branch_lost状态；取消n2_floor伪传播。群速度由色散关系v_g=-D_k/D_omega计算，碰撞语义为“实色散轨迹+复折射率吸收”。
+
+3. A2已完成。AH3D V2采用DOP853自适应积分，沿Hamiltonian方程自然积分上升支、转向点和下降支；每个接受步投影回D=0色散面。smoke仅用于ray fan筛选，P2P命中后必须通过research/reference复算。默认入口已切换为V2，正式P-D排除convergence_failed、constraint_failed、branch_lost和under_resolved_Ne模式。
+
+4. A3已实施。P2P使用有界trust-region reflective局部求解，全发射仰角粗审计生成候选；O/X独立求解，P2P固定计算两种模式。ray fan默认只计算O波，可由开关加入并区分X波。已实现变分Jacobian、中心差分交叉检查、fallback和continuation，但变分Jacobian未达到研究阈值，因此A3性能目标没有闭环。
+
+5. A3R-P0/P0R/P0C已闭环。Coleman(2011) Chapman F2参考场采用foF2=7 MHz、hmF2=350 km、ymF2=100 km和f=10 MHz，在冻结距离1185.848260 km得到low ray 35.339808度和high ray 39.918777度。两根均通过research/reference积分；生产P2P三次均100%召回两根，无伪模式、无漏模，P0总体状态passed。
+
+6. 原A3R-P1代码已实施但验收未通过。多尺度中心差分参考已出现稳定平台；变分Jacobian方位角列约为1e-3或更优，但仰角列相对误差约为3.69e-3(low)和1.74e-2(high)，未达到1e-3。中心差分fallback可保护结果，但不得宣称变分Jacobian已验证或已实现加速。
+
+7. A3Rnew-P1已完成。生产AH3D P2P默认使用多尺度中心差分Jacobian，先检查0.5/1/2尺度，无稳定平台时细化至0.25/0.125；无平台、非有限、条件数大于1e10或扰动射线非地面分支时拒绝局部根。变分Jacobian仅保留实验诊断。当前实际节点为A3Rnew-P2模式完整性审计。
+
+三、模块现状与物理边界
+
+模块：NeProvider3D与复杂电离层场
+实现：BaseNeProvider、GridNeProvider、ParameterizedIonosphere3DProvider、ExternalNeProvider3D及ScenarioProviderFactory。
+已完成：传播与绘图使用同一Provider；TID、Spread-F、Es、Bubble场景可分离构造、计算和标注。
+不足：IRI背景仍是距离-高度采样后沿y不变；Spread-F、Es和Bubble只是阶段性三维参数化，不代表完整动力学和实测不规则体。Spread-F内尺度和Es薄层在当前有效采样尺度下可能标记under_resolved_Ne。
+
+模块：单程/双程3D磁离子反射射线追踪AH3D V2
+实现：统一色散模块、DOP853 Hamiltonian积分、D=0投影、O/X独立分支、群速度/群时延、事件和收敛状态。
+已完成：真空、B=0各向同性、截止两侧、跨频branch_id、自然转向及research/reference内部验证。
+不足：空间Hamiltonian导数仍依赖Provider有限差分；尚未完成PHaRLAP同输入外部验证。几何光学在near-cutoff不可微、隧穿、模式耦合和强散射区域存在理论边界。
+
+模块：AH3D P2P传播模式求解
+实现：固定频率下二维发射角参数的候选发现、有界局部求根、O/X分支、正式复算、去重及continuation种子。
+已完成：Coleman B=0分层高低射线参考100%召回；生产Jacobian已定版为多尺度中心差分，并在最终接受点复核稳定平台。
+不足：完整beta/az二维磁离子模式审计、焦散自适应加密、模式出生/消失和跨频连续性属于P2/P3。扫频+扫角尚未实施；基线全流程中心差分回归运行约25分钟仍未完成，计算成本显著增加。
+
+模块：复折射率吸收
+实现：沿AH3D路径积分复折射率衰减，雷达按双程语义处理。
+不足：碰撞频率、中性大气和D区参数仍需更严格数据约束；绝对吸收缺实测校准。
+
+模块：Ray-PE local_2p5d
+实现：沿主射线建立局部坐标和二维PE/SSF截面，默认reference_only且不改写功率。
+不足：不是完整3D PE/全波，不能描述双横向散射、路径间相干耦合、三维边界和模式转换。
+
+模块：Born/Rytov/MPS与散射P-D核
+实现：输出sigma_phi、S4、sigma_tau、delay kernel及归一化/能量诊断，默认diagnostic/off。
+不足：MPS是路径相关统计核，不是完整三维散射场；尚无充分依据将散射功率直接写入正式P-D谱。
+
+模块：P-D谱及雷达输出
+实现：区分通信单程、雷达双程、point target、surface clutter和tube radar，保留delay_key、solver、wave_mode、branch和校准状态。
+不足：海况、地表散射、天线方向图、系统损耗和接收机处理链未闭合；输出峰形和相对结构可分析，绝对功率不能当作实测预测。
+
+四、下一步实施顺序
+
+1. A3Rnew-P2：对beta/az完整二维角域进行中等密度审计，在目标交叉、fold、局部极值、小奇异值、branch变化和near-cutoff邻域自适应加密；O/X分别候选、求根和去重。
+2. A3Rnew-P3（已通过）：完成Coleman文献引导参数化复现、Nosikov带假设部分复现，以及真空、平滑分层、B=0退化、O/X分裂和频率连续性检查。Coleman并非严格复现：论文链路约1100 km，冻结算例为独立选取的1185.848260 km双根距离。
+3. A3Rnew-P5new：分别验收轨迹精度、P2P正确性、模式完整性、文献复现和剩余风险；运行时间只记录，不设置十倍加速门槛。
+4. A4：使用本地MATLAB/PHaRLAP开展同Ne、地磁、碰撞、坐标、频率和O/X定义的外部验证，先平滑分层和单模，再验证TID等三维扰动。
+5. A4之后再按B1-B5推进完整3D PE/全波、三维随机散射场、能量闭合、外部Ne和功率校准等后续阶段；具体边界以ah3d_full3d_wave_upgrade_plan.txt为准。
+
+五、当前最重要风险与禁止性结论
+
+1. 不得将P0C的一维B=0高低射线算例称为完整三维磁离子焦散真值。
+2. 不得宣称变分Jacobian达到1e-3或已经实现P2P加速；当前正式精度依赖中心差分。
+3. 不得将local_2p5d称为完整3D PE/全波，也不得将MPS统计核称为完整三维散射场。
+4. 不得用smoke结果替代正式research/reference结果，不得因耗时减少搜索域、关闭P2P X波或放宽收敛阈值。
+5. 在PHaRLAP外部验证和实测校准前，只能声明内部数值一致性及参考输出，不能声明传播真实性和绝对功率已完全验证。
+
+六、主要理论依据
+
+Haselgrove, J. (1955). Ray theory and a new method for ray tracing. In The Physics of the Ionosphere (pp. 355-364). Physical Society.
+Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. OT Report 75-76, U.S. Department of Commerce.
+Budden, K. G. (1985). The Propagation of Radio Waves: The Theory of Radio Waves of Low Power in the Ionosphere and Magnetosphere. Cambridge University Press.
+Coleman, C. J. (2011). Point-to-point ionospheric ray tracing by a direct variational method. Radio Science, 46(5), RS5016. https://doi.org/10.1029/2011RS004748
+Nosikov, I. A., Klimenko, M. V., Zhbankov, G. A., Podlesnyi, A. V., Ivanova, V. A., & Bessarab, P. F. (2020). Generalized force approach to point-to-point ionospheric ray tracing and systematic identification of high and low rays. IEEE Transactions on Antennas and Propagation, 68(1), 455-467. https://doi.org/10.1109/TAP.2019.2938817
+Branch, M. A., Coleman, T. F., & Li, Y. (1999). A subspace, interior, and conjugate gradient method for large-scale bound-constrained minimization problems. SIAM Journal on Scientific Computing, 21(1), 1-23. https://doi.org/10.1137/S1064827595289108
+Cervera, M. A., & Harris, T. J. (2014). Modeling ionospheric disturbance features in quasi-vertically incident ionograms using 3-D magnetoionic ray tracing and atmospheric gravity waves. Journal of Geophysical Research: Space Physics, 119(1), 431-440. https://doi.org/10.1002/2013JA019247
+Bilitza, D., Altadill, D., Truhlik, V., Shubin, V., Galkin, I., Reinisch, B., & Huang, X. (2017). International Reference Ionosphere 2016: From ionospheric climate to real-time weather predictions. Space Weather, 15(2), 418-429. https://doi.org/10.1002/2016SW001593
+Rino, C. L. (1979). A power law phase screen model for ionospheric scintillation: 1. Weak scatter. Radio Science, 14(6), 1135-1145.
+Rino, C. L. (1979). A power law phase screen model for ionospheric scintillation: 2. Strong scatter. Radio Science, 14(6), 1147-1155.
+Yeh, K. C., & Liu, C. H. (1982). Radio wave scintillations in the ionosphere. Proceedings of the IEEE, 70(4), 324-360.
+Knepp, D. L. (1983). Multiple phase-screen calculation of the temporal behavior of stochastic waves. Proceedings of the IEEE, 71(6), 722-737.
+Barrick, D. E. (1972). First-order theory and analysis of MF/HF/VHF scatter from the sea. IEEE Transactions on Antennas and Propagation, 20(1), 2-10.
+
+完整参考文献及引用核验以word/reference-papers.txt为准。

@@ -1,0 +1,51 @@
+P2 AH3D反射主链与复吸收一致化实施说明
+生成日期：2026-07-10
+
+一、实施范围
+
+P2将统一传播pipeline中的研究主线定义为3D Appleton-Hartree Hamiltonian O/X射线追踪，并把复折射率碰撞吸收作为唯一可改变功率的吸收入口。各向同性3D射线保留为iso3d_legacy，仅用于基线对照或性能回退，输出字段必须标记legacy语义。
+
+二、理论依据
+
+1. O/X传播分支采用Appleton-Hartree磁离子色散关系。O/X分支符号、截止附近状态、倏逝区判据均基于冷等离子体磁离子理论，不以数值floor代替物理可传播性。
+2. 射线路径采用Haselgrove Hamiltonian形式。当前实现为有限差分Hamiltonian一阶版本，强调物理状态可追踪和各向同性退化验证。
+3. 群时延采用群折射率路径积分，group_path_km定义为integral(n_g ds)，tau_ms由group_path_km/c得到；geom_path_km仅表示几何长度。
+4. 吸收采用碰撞Appleton-Hartree复折射率路径积分，A_dB = 8.686 integral(2 k0 Im(n) ds)。雷达双程吸收为同一路径单程吸收的两倍近似，后续P4再引入完整观测链校准。
+
+三、参数与语义
+
+1. n2_floor只作Hamiltonian积分的数值保护，不作为物理传播判据。物理判据使用n2_raw。
+2. branch_status取值包括ok、near_cutoff、evanescent、invalid_n2、step_failed、mode_lost。只有ok和near_cutoff可进入有效P2P模式排序。
+3. group_index_model='ah3d_fd_dn_df'表示用n_g = n + f dn/df的频率有限差分形式计算群折射率。
+4. ABSORPTION_COMPLEX.enable=True时，功率链只扣减complex_absorption_path_dB；legacy_d_layer_absorption_applied=False用于避免重复吸收。
+5. 未启用复吸收时，abs_model='none'，不能把未扣减吸收的功率解释为校准真实绝对功率。
+
+四、参考文献
+
+Budden, K. G. (1985). The Propagation of Radio Waves: The Theory of Radio Waves of Low Power in the Ionosphere and Magnetosphere. Cambridge University Press.
+
+Davies, K. (1990). Ionospheric Radio. Peter Peregrinus.
+
+Ginzburg, V. L. (1970). The Propagation of Electromagnetic Waves in Plasmas (2nd ed.). Pergamon Press.
+
+Haselgrove, J. (1955). Ray theory and a new method for ray tracing. In The Physics of the Ionosphere: Report of the Physical Society Conference on the Physics of the Ionosphere (pp. 355-364). Physical Society.
+
+Jones, R. M., & Stephenson, J. J. (1975). A versatile three-dimensional ray tracing computer program for radio waves in the ionosphere. Office of Telecommunications Report 75-76.
+
+Yeh, K. C., & Liu, C. H. (1972). Theory of ionospheric waves. Academic Press.
+
+五、未完成项
+
+1. 当前AH3D为有限差分Hamiltonian first version，尚不是经外部程序完整benchmark的生产级射线程序。
+2. 碰撞频率默认仍是D区指数参考模型，缺少NRLMSISE-00/实测剖面约束。
+3. 绝对功率仍未校准，吸收、天线方向图、海况、接收机处理链会在P4继续拆分。
+4. P2仅完成频率参数透传，完整扫频+扫角和跨频模式追踪留给P5。
+
+六、下一阶段升级需考虑事项
+
+1. P3实施反射-散射耦合时，必须继续显式标记local_2p5d_reference，不能因接入PE/MPS核而宣称完整3D全波散射。
+2. P3若启用散射改变P-D谱或功率，必须记录Pr_before_scatter、Pr_after_scatter、scatter_loss_dB、kernel_normalization和energy_conservation_error，防止与P2复吸收重复扣减。
+3. P3/P4/P5阶段需保留P2的AH3D状态字段，遇到mode_lost、evanescent、invalid_n2等分支不得进入散射功率闭环。
+4. P4必须补足绝对功率校准链：天线方向图、海况/地表散射截面、接收机处理、噪声和系统损耗。无实测校准时输出只能标记reference/calibration_required。
+5. P5必须安排AH3D外部benchmark和扫频+扫角优化。当前main2 AH3D baseline smoke耗时较长，后续需采用continuation、缓存、并行或分层筛选降低P2P求解成本。
+6. P5外部Ne接入后不允许依赖TID/Spread-F/bubble/Es标签选择传播算法，只允许使用Ne、梯度、谱诊断和适用性判据。

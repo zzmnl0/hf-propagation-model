@@ -5,6 +5,11 @@ __pycache__/
 
 # Generated output
 output/
+output2/
+word/ppt_review_jpg*/
+word/*backup*
+word/~$*
+sources/au_ray_README.pdf
 
 # IDE / OS
 .vscode/

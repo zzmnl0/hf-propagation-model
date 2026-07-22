@@ -11,8 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as cfg
 from utils import freq_to_k0
-from models.ray_tracer_3d import RefractiveIndex3D, trace_single_ray_3d
-from models.ray_tracer_ah_3d import RefractiveIndexAH3D, group_index_ah3d, trace_single_ray_ah_3d
+from legacy.models.ray_tracer_3d import RefractiveIndex3D, trace_single_ray_3d
+from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D, group_index_ah3d, trace_single_ray_ah_3d
 
 
 def _synthetic_field():

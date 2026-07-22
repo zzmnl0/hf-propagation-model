@@ -1,0 +1,34 @@
+A4-C0R-8 回归、旧入口移除与坐标契约关闭报告
+日期：2026-07-20
+状态：passed_pharlap_coordinate_contract_closed
+
+一、实施内容
+
+1. main.py删除两个不可达的旧link-local flux-tube/tube计算体；run_radar_clutter和run_tube_radar继续显式拒绝，禁止旧坐标产品被误认为正式结果。
+2. main.py各场景不再导入旧ray_tracer_3d或point_to_point_3d；场景标签直接传入统一ECEF pipeline。
+3. unified_hybrid_pipeline内部按ECEF模式的发射仰角、apex高度、O/X分支和环境标签生成cause语义，不再从旧P2P模块导入标注函数。
+4. local_frame、scatter_coupler和scatter_phase_screen删除trajectory_3d/local Ne_at fallback，正式采样要求trajectory_ecef_km、earth_radius_km及get_Ne_ecef。
+5. plot_utils的正式P2P轨迹绘制删除trajectory_3d分支，继续使用geocentric轨迹派生球面累计地距和物理高度。
+6. 旧ray_tracer_3d、旧P2P、hybrid_model、旧PE、tube tracer、旧parameter sweep和2D背景脚本保留为historical_reference_only，不属于main/main2/unified生产链；A4实际需要时必须先迁移和复验。
+
+二、数值与回归验收
+
+1. Chapman非均匀场reference最大步长0.5 km，细化算例最大步长0.25 km，方程、容差和介质输入不变。
+2. 半步长最大轨迹变化1.5249778781408408e-5 km，门槛1e-3 km；RMS变化3.687910016904825e-6 km。
+3. 群路径相对变化7.898107670191954e-11，门槛1e-5。
+4. reference/细化最大Hamiltonian残差分别9.932256797026946e-11和9.996095424317132e-11，门槛1e-8。
+5. C0R-0至C0R-7、main输出语义和main2场景字段共10个脚本全部返回0；总验收耗时643.11 s。
+6. 13个正式生产文件的静态扫描无trajectory_3d、earth_flat、legacy_parabolic、cfg.TX_POS/cfg.RX_POS及旧射线/P2P导入。
+
+三、产物
+
+1. 验收器：tests/_verify_a4_c0r8_closure.py。
+2. 机器报告：output2/a4_pharlap/a4_c0r8_validation.json。
+3. 子回归日志：output2/a4_pharlap/c0r8_logs/。
+4. 更新计划：a4_c0r_coordinate_model_repair_plan.txt、a4_pharlap_external_validation_implementation_plan.txt、ah3d_full3d_wave_upgrade_plan.txt。
+
+四、结论与边界
+
+C0R坐标修复门已关闭，原local/earth-flattening坐标不再进入正式生产链。该状态只证明球形geocentric/ECEF坐标、事件、路径度量、正式入口和轻量下游接口闭环，不证明Chapman电离层反射已与PHaRLAP一致，也不证明磁场O/X分量、全域P2P模式完整性、完整3D PE/全波、散射功率或绝对功率。
+
+建议下一步实施A4-C1-Prep，在新坐标下重新搜索并冻结Chapman高/低射线及双方等价输入；不建议直接进入C1正式比较或沿用A3Rnew旧坐标角度。

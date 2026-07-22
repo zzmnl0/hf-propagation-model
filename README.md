@@ -4,9 +4,9 @@
 
 **测试链路**：TX @ 30°N 120°E → RX @ 1169 km，f = 10 MHz，2020-06-01 12:00 UT
 
-**已完成阶段**：Phase 1–7 全部完成，全部 9 个场景测试通过，无卡顿
+**当前生产链（2026-07-21）**：`main.py`/`main2.py` -> `models/unified_hybrid_pipeline.py` -> ECEF AH3D/P2P；输入采用PHaRLAP一致的球形地心纬经高。旧2D/local-Cartesian射线、P2P、local_2p5d PE及tube/radar源码已移至`legacy/`，禁止生产模块导入。
 
-**当前公式修复状态（2026-07-01）**：已修正群路径/群延迟为 `integral(ds/n)`、Appleton-Hartree O/X 分支、3D D 层吸收、3D Born/Rytov/MPS 诊断耦合，以及 P2P_3D forward/central Jacobian 选项。
+**文档边界**：第3至10节保留Phase 1-7历史实现说明，所列`legacy.models.*`只能用于旧结果复核，不代表当前生产接口。A4当前执行状态与验收以`word/a4_pharlap_external_validation_implementation_plan.txt`和`word/a4_c1_prep_chapman_high_low_implementation_plan.txt`为准。
 
 ---
 
@@ -70,27 +70,25 @@ code/
 ├── main.py                       # 场景驱动脚本（9 个场景函数）
 │
 ├── models/
-│   ├── ionosphere_model.py       # M1:  IRI + TID / Es / 等离子体泡 / Spread-F
-│   ├── geomag_field.py           # B2:  三维 IGRF（ppigrf，Phase 5）
-│   ├── spread_f_model.py         # M3b: Rino 1979 幂律相位屏
-│   ├── ray_tracer.py             # M2a: 二维 Haselgrove RK4 + RefractiveIndexAH
-│   ├── point_to_point.py         # M2b: 二维 P2P 变分求解（Nosikov 2020）
-│   ├── tube_tracer.py            # A3:  二维 flux-tube（Coleman 1997/1998）
-│   ├── ray_tracer_3d.py          # M2d: 三维 Haselgrove + TID-3D + 场向泡（Phase 6/7）
-│   ├── point_to_point_3d.py      # M2e: 三维 P2P Newton 双参数 shooting（Phase 6）
-│   ├── tube_tracer_3d.py         # A3b: 三维 flux-tube 椭圆截面（Phase 7）
-│   ├── es_model.py               # M3:  Hao 2017 三段式 + Booker-Gordon（Phase 7）
-│   ├── pe_propagator.py          # M4:  PE/SSF 等离子体泡散射（Carrano 2020）
-│   ├── scatter_selector.py       # C0:  Born/Rytov/MPS 方法选择器（Phase 6）
-│   ├── scatter_born.py           # C1:  Born 弱散射体散射截面（Phase 6）
-│   ├── scatter_rytov.py          # C2:  Rytov 闪烁理论（Phase 6）
-│   ├── scatter_coupler.py        # C6:  三维模式 Born/Rytov/MPS 统一诊断耦合
-│   ├── scatter_phase_screen.py   # C3/C5: Rino 二维相位屏 + Knepp MPS（Phase 7）
-│   └── hybrid_model.py           # M5-M7: 完整 pipeline（P-D 谱 + 主模式）
+│   ├── ne_provider_geocentric.py       # 正式球形地心/ECEF Ne Provider
+│   ├── ray_tracer_ah_3d_ecef.py        # 正式 ECEF AH3D DOP853 射线
+│   ├── point_to_point_ah_3d_ecef.py    # 正式 ECEF P2P 有界求根
+│   ├── scenario_provider_factory.py    # 统一场景 Provider 工厂
+│   ├── unified_hybrid_pipeline.py      # main/main2 正式统一传播入口
+│   ├── pd_spectrum.py                  # 正式 P-D 谱与主模式识别
+│   ├── ionosphere_model.py             # 共享 IRI/参数化场基础
+│   ├── ionosphere_components_3d.py     # 三维扰动分量
+│   ├── dispersion_ah.py                # Appleton-Hartree 色散
+│   └── scatter_*.py                    # 散射统计与诊断模块
+│
+├── legacy/                       # historical_reference_only，不进入生产链
+│   ├── models/                   # 旧2D/local射线、P2P、PE、tube/radar
+│   ├── analysis/                 # 依赖旧坐标的参数扫描
+│   ├── viz/                      # 旧2D Ne背景图
+│   └── _bench.py                 # 旧基准入口
 │
 ├── viz/
-│   ├── plot_utils.py             # 共享绘图函数
-│   └── plot_ne_background.py     # 4 面板 Ne 背景图
+│   └── plot_utils.py             # 正式 ECEF/geocentric 绘图函数
 │
 ├── analysis/
 │   ├── compare_pd.py             # 实测 vs 模型 P-D 谱比对（CLI）
@@ -243,11 +241,11 @@ Ne_2d, n_2d = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z, t=0.0)
 
 ### M2a — 二维 RefractiveIndex / RefractiveIndexAH
 
-**文件**：`models/ray_tracer.py`
+**文件**：`legacy/models/ray_tracer.py`
 
 ```python
-from models.ray_tracer import RefractiveIndex, RefractiveIndexAH
-from models.ray_tracer import trace_single_ray, shoot_rays_fan
+from legacy.models.ray_tracer import RefractiveIndex, RefractiveIndexAH
+from legacy.models.ray_tracer import trace_single_ray, shoot_rays_fan
 
 # 各向同性
 nm = RefractiveIndex(Ne_2d, BG_X, BG_Z, FREQ_MHZ)
@@ -285,10 +283,10 @@ dpz/ds = (k0^2/2|p|) * dn^2/dz
 
 ### M2b — 二维 P2P 变分求解（Nosikov 2020）
 
-**文件**：`models/point_to_point.py`
+**文件**：`legacy/models/point_to_point.py`
 
 ```python
-from models.point_to_point import find_all_rays_p2p
+from legacy.models.point_to_point import find_all_rays_p2p
 
 rays = find_all_rays_p2p(
     tx_km      = TX_POS,
@@ -315,10 +313,10 @@ rays = find_all_rays_p2p(
 
 ### M2c — 二维 TubeRayTracer（Coleman 1997/1998）
 
-**文件**：`models/tube_tracer.py`
+**文件**：`legacy/models/tube_tracer.py`
 
 ```python
-from models.tube_tracer import TubeRayTracer
+from legacy.models.tube_tracer import TubeRayTracer
 import numpy as np
 
 sigma0 = 10.0 ** (cfg.RADAR['sigma0_ground_dB'] / 10.0)
@@ -342,11 +340,11 @@ f_pulse   = T_pulse / tau_spread  if tau_spread > T_pulse else 1.0
 
 ### M2d — 三维 RefractiveIndex3D 与射线追踪（Phase 6/7）
 
-**文件**：`models/ray_tracer_3d.py`
+**文件**：`legacy/models/ray_tracer_3d.py`
 
 ```python
-from models.ray_tracer_3d import RefractiveIndex3D, trace_single_ray_3d
-from models.ray_tracer_3d import shoot_rays_fan_3d
+from legacy.models.ray_tracer_3d import RefractiveIndex3D, trace_single_ray_3d
+from legacy.models.ray_tracer_3d import shoot_rays_fan_3d
 
 # 创建三维折射率模型
 n3d = RefractiveIndex3D(
@@ -396,10 +394,10 @@ B_hat  = (cos(I)*cos(D-phi), cos(I)*sin(D-phi), -sin(I))   在(x,y,z)系
 
 ### M2e — 三维 P2P Newton 双参数 Shooting（Phase 6）
 
-**文件**：`models/point_to_point_3d.py`
+**文件**：`legacy/models/point_to_point_3d.py`
 
 ```python
-from models.point_to_point_3d import find_all_rays_3d
+from legacy.models.point_to_point_3d import find_all_rays_3d
 
 modes_3d = find_all_rays_3d(
     tx_pos     = TX_POS,
@@ -428,10 +426,10 @@ J = [[dF1/dbeta, dF1/daz],      # 2x2 Jacobian，步长 d_beta=0.05°, d_az=0.10
 
 ### A3b — 三维 TubeRayTracer3D（Phase 7）
 
-**文件**：`models/tube_tracer_3d.py`
+**文件**：`legacy/models/tube_tracer_3d.py`
 
 ```python
-from models.tube_tracer_3d import TubeRayTracer3D
+from legacy.models.tube_tracer_3d import TubeRayTracer3D
 
 tt3d = TubeRayTracer3D(n3d=n3d, freq_MHz=FREQ_MHZ,
                         tube_params=cfg.TUBE_3D, rt_params=cfg.RT_3D)
@@ -610,10 +608,10 @@ Step 4: u = IFFT2(U)
 
 ### M4 — PE/SSF 等离子体泡散射（Carrano 2020）
 
-**文件**：`models/pe_propagator.py`
+**文件**：`legacy/models/pe_propagator.py`
 
 ```python
-from models.pe_propagator import PEPropagator, construct_incident_field
+from legacy.models.pe_propagator import PEPropagator, construct_incident_field
 
 pe = PEPropagator(freq_MHz=FREQ_MHZ, pe_params=cfg.PE)
 Ne_pe, x_pe, z_pe = pe.extract_domain(Ne_2d, BG_X, BG_Z,
@@ -633,10 +631,10 @@ out   = pe.propagate(Ne_pe, x_pe, z_pe, u_inc, x_out=700.0, z_range_out=[200,500
 
 ### M5-M7 — HybridPropagationModel（顶层 pipeline）
 
-**文件**：`models/hybrid_model.py`
+**文件**：`legacy/models/hybrid_model.py`
 
 ```python
-from models.hybrid_model import HybridPropagationModel, build_pd_spectrum
+from legacy.models.hybrid_model import HybridPropagationModel, build_pd_spectrum
 
 model = HybridPropagationModel(
     iono_params  = {
@@ -983,7 +981,7 @@ sigma_v  # float, 体散射截面 [m^-1]
 
 ```python
 import config as cfg
-from models.hybrid_model import HybridPropagationModel
+from legacy.models.hybrid_model import HybridPropagationModel
 
 # ── 最简（IRI 背景，通信模式）────────────────────────────────────────────────
 model = HybridPropagationModel(
@@ -997,8 +995,8 @@ modes, tau_ax, pd_W, main = model.compute(cfg.TX_POS, cfg.RX_POS)
 
 # ── 三维 P2P 直接调用 ─────────────────────────────────────────────────────────
 from models.ionosphere_model import IonosphereModel
-from models.ray_tracer_3d import RefractiveIndex3D
-from models.point_to_point_3d import find_all_rays_3d
+from legacy.models.ray_tracer_3d import RefractiveIndex3D
+from legacy.models.point_to_point_3d import find_all_rays_3d
 
 iono = IonosphereModel(tid_params={**cfg.TID, 'enable': True})
 Ne, _ = iono.build_Ne_field(cfg.BG_X, cfg.BG_Z)

@@ -1,0 +1,35 @@
+AU-Ray公开获取情况核查
+核查日期：2026-07-14
+
+1. 论文
+Hirvonen, E. A. O., Kauristie, K., & Kallio, E. (2025). AU-Ray Program for Modeling Radio Wave Propagation in the Ionosphere. Radio Science, 60(8), e2024RS008209. https://doi.org/10.1029/2024RS008209
+
+2. 官方公开记录
+Zenodo DOI: https://doi.org/10.5281/zenodo.15301110
+记录页: https://zenodo.org/records/15301110
+状态: open access
+版本: 1.0-demo
+平台: Linux，编译环境Ubuntu 20.04.6 LTS
+
+3. 附件
+README.pdf，2,715,584 bytes
+https://zenodo.org/api/records/15301110/files/README.pdf/content
+
+au-ray-demo.tar，402,380,800 bytes，MD5 eec80c8dbd97ec77c3a5961d4794b89c
+https://zenodo.org/api/records/15301110/files/au-ray-demo.tar/content
+
+4. 公开版本限制
+官方README明确标记为AU-RAY DEMO。发射机位置、频率、仰角、方位角和跳数等配置受到限制。README主要说明预编译Linux程序raytracer、photonmap、generate及Python绘图脚本的运行方式，未给出完整研究版或完整C++核心源码的公开仓库地址。
+
+5. 代码仓库核查
+GitHub公开仓库搜索“AU-Ray ionosphere”未返回对应项目。当前可确认直接下载的是受限demo和论文支撑材料，不能据此认定完整AU-Ray已开源。
+
+6. 作者联系
+官方README给出的联系邮箱：elias.hirvonen@fmi.fi
+作者单位：Finnish Meteorological Institute；Aalto University School of Electrical Engineering
+
+7. 数据来源
+Crossref: https://api.crossref.org/works/10.1029/2024RS008209
+Zenodo API: https://zenodo.org/api/records/15301110
+GitHub repository search: https://api.github.com/search/repositories?q=AU-Ray+ionosphere
+

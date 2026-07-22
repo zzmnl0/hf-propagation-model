@@ -19,8 +19,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import config as cfg
 from models.ionosphere_model import IonosphereModel
-from models.ray_tracer import RefractiveIndex, RefractiveIndexAH
-from models.hybrid_model import HybridPropagationModel
+from legacy.models.ray_tracer import RefractiveIndex, RefractiveIndexAH
+from legacy.models.hybrid_model import HybridPropagationModel
 
 
 def _make_iono():

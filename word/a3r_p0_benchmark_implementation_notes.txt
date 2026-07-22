@@ -1,0 +1,89 @@
+A3R P0可复现实验基准实施记录
+日期：2026-07-14
+
+一、完成范围
+
+1. 新增tests/_benchmark_p2p_ah3d.py，作为独立AH3D O/X P2P基准入口，不改变main.py和main2.py默认行为。
+2. 固定seed=0、单进程、BLAS/OpenMP单线程、中央差分Jacobian、research最终积分profile和禁用continuation。
+3. 固定四类算例：真空退化、平滑背景短链路、平滑背景高低射线审计链路、参数化三维TID。
+4. 传播场冻结参考采用8个仰角样本的中等密度扫描，以限制AH3D正式运行时间。其语义为moderate_density_central_numerical_reference，不是物理真值。真空退化场不执行不存在反射解的P2P搜索，直接检查Appleton-Hartree色散的O/X真空极限n2=1。
+5. 保存机器/依赖/线程信息、配置哈希、Provider哈希、O/X模式参数、收敛状态、墙钟/CPU时间、射线调用、RHS调用、求解器调用和Python分配内存。
+6. Provider构建时间与“Provider就绪后的候选发现+P2P”算法时间分开；并行吞吐加速字段保持为空，不与单进程算法加速混用。
+7. 每个正式算例直接重复三次并取中位数；不执行成本等同正式求解的冗余预热。逐射线强制刷新进度，逐算例写checkpoint，长运行中断时保留已完成结果。
+8. tests/_verify_p2p_jacobian.py已删除IonosphereModel二维背景及各向同性P2P路径，改用统一三维Provider和AH3D O波变分/中心参考对照。
+
+二、输出与验收语义
+
+默认输出：output2/a3r_benchmark/a3r_p0_benchmark.json。
+
+repeat_mode_set_consistent仅表示同机、同配置重复运行得到相同数值模式集合。benchmark_config_hash不同则不得比较加速比。mode_count=0在真空退化算例中是允许结果，不表示求解失败。正式模式必须保留wave_mode/branch_id，O/X不得合并。
+
+三、已记录风险与后续处理
+
+1. 中等密度扫描可能漏掉窄焦散分支。P2必须以焦散诊断和局部自适应加密补充，不得把P0集合直接称为完整物理模式真值。
+2. 当前候选审计覆盖完整仰角边界，但方位候选仍以0度为中心，尚非完整二维角域扫描。基准文件显式记录candidate_scan_azimuth_domain_deg=[0,0]；该限制由P2闭环。
+3. 中心差分参考属于数值参考，其正确性仍需P1离散一致性和P3解析/文献复现验证。
+4. TID场由统一ParameterizedIonosphere3DProvider计算；背景IRI仍为沿程-高度采样后在y方向不变，不能宣称完整三维IRI背景。
+5. tracemalloc仅统计Python分配，不覆盖NumPy/SciPy原生内存；不得作为系统峰值RSS解释。
+6. IRI、地磁、依赖版本或Provider参数变化会改变哈希，旧性能值随即失效。
+7. AH3D O/X中央差分正式运行预计耗时较长。默认不降低research积分精度；发生中断时依靠逐算例checkpoint续查，不用smoke结果替代冻结参考。
+
+四、理论依据
+
+AH3D轨迹遵循Haselgrove Hamiltonian射线框架及Jones-Stephenson三维磁离子实现；O/X色散采用Appleton-Hartree关系；有界P2P局部求解采用Branch、Coleman和Li（1999）的trust-region reflective方法；高低射线完整性风险依据Nosikov等（2020）记录。完整引用见word/reference-papers.txt。
+
+五、P0边界
+
+P0只冻结可复现实验和当前风险，不修改Jacobian方程、焦散处理、候选完整性或性能算法。上述修复分别属于P1、P2和P4。P0结果不能用于宣称A3 M2已完成。
+
+六、本次验证
+
+1. Python语法检查通过。
+2. 真空O/X解析退化基准通过并生成JSON检查点，n2真空极限用于检验色散语义。
+3. tests/_verify_a0_scenario_factory.py通过：0 fail(s)。
+4. git diff --check通过。
+5. 本条为P0R前的阶段记录：当时四类算例的默认8样本、三次正式长基准尚未跑完。P0R后的最终实测与状态以第八节及a3r_p0_validation_report.txt为准。
+
+七、P0R前首次正式运行暴露的问题（历史记录）
+
+smooth_layer_single_mode在8样本、central Jacobian、research积分条件下运行达到2小时上限：O波阶段完成170次射线调用，X波进行至总计183次调用，未完成一次O/X结果，记录benchmark_timeout。进程持续占用单核且正常推进，不是死锁。原因是candidate_nearest=3与落点交叉/局部极值种子共同产生多个相近初值，重复收敛至约45.24度的同一O波模式。P0基准对已知单模和TID算例改为candidate_nearest=1；高低射线算例继续保留3。该调整不改变积分profile、中心差分、发射角扫描域、O/X分支或命中阈值，只删除单模基准中的冗余最近候选。
+
+调整后smooth_layer_single_mode三次完成，模式集合均为一个O波和一个X波，射线调用均为197次；墙钟时间分别为7251.067、6557.744和7023.704秒。高低射线算例保留candidate_nearest=3，在2小时达到O波第143次射线调用且未进入X波，记录benchmark_timeout；该算例不能作为已冻结多模参考。
+
+tid_3d算例使用candidate_nearest=1，在2小时完成O波阶段并进行至总计第111次X波调用，仍未形成完整O/X结果，记录benchmark_timeout。P0完整套件因此标记runtime_blocked，p0_reference_complete=false；P1准入门保持关闭。
+
+八、P0R实施与复验（2026-07-15）
+
+1. 在单分支find_all_rays_ah_3d作用域共享完全精确的smoke轨迹缓存；缓存键包含beta、az、sensitivity、profile和t，不使用角度量化或跨调用复用。
+2. 局部求解与research正式验证分阶段；同根判定增加O/X、终止状态、反射次数、发射角、落点、顶点高度和群时延联合约束。候选保留crossing/fold/nearest来源、支撑单元及shadow审计字段。
+3. 修正fold物理语义：根据x_land(beta)斜率变号识别折叠，不再用目标误差局部最小代替折叠。
+4. 基准增加candidate_fan、local_solve、formal_research、formal_reference、dedup阶段统计，逐repeat使用tmp+replace原子checkpoint，并支持中断续跑和逐算例最终聚合。
+5. cProfile确认AH root/Provider链为主要热点。正式墙钟计时移除tracemalloc；该工具使smoke单射线约由10 s放大到150 s，原runtime_blocked主要是测量器扰动。
+6. single-mode三次时间1678.638/1526.270/1695.075 s，模式签名与原冻结参考完全一致。
+7. TID三次时间1861.575/1972.097/1826.540 s，O/X模式、Provider哈希及TID3D组件三次一致。
+8. 原high_low 1169 km一次完整运行耗时3503.581 s但仅有O/X各一个模式。600--1600 km距离审计未发现真实双交叉或fold；700 km O波正式确认仍为单模，状态为case_physics_not_demonstrated。
+9. 有效算例均低于7200 s，因此未实施return_trajectory=false、geom_path重写或单射线root缓存；这些条件步骤未被运行数据触发。
+10. 最终runtime_closure_status=passed，但p0_reference_complete=false、p1_gate=closed，原因仅为高低射线算例构造缺失，不再是运行时超时。
+
+九、P0C-0/P0C-1实施结果（2026-07-16）
+
+1. 已核对Coleman（2011）、Nosikov等（2017、2020）本地PDF。Coleman（2011）公开Chapman F2参数foF2=7 MHz、hmF2=350 km、ymF2=100 km、工作频率10 MHz、代表性高/低射线角度和Haselgrove对照表，可支持确定性场及独立数值根参考。论文所述约1100 km不作为精确接收距离。
+2. Nosikov等（2017）IRI-2007、8 MHz、Kaliningrad--Stockholm结果保留为外部趋势参考；Nosikov等（2020）简化算例缺少可唯一恢复的端点/补充材料输入，标记partial_reproduction_with_assumptions。
+3. tests/_benchmark_p2p_ah3d.py中的无效smooth_layer_high_low已替换为基准局部_ColemanChapmanProvider；不新增生产Provider抽象，不改变main.py/main2.py或生产P2P求解器。
+4. P0C场为水平一致Chapman层、无碰撞、B=0。O/X语义为magnetoionic_degenerate_single_count，不把重合分支计为两个传播模式。
+5. 使用2--88度、25点中等密度独立落点扫描，以相邻dx_land/dbeta斜率变号确认fold，仅在fold邻域增加9点；未调用生产候选发现逻辑。
+6. 在双根公共内部区间中央冻结目标距离1185.848260 km，距区间边界的归一化余量为50%，高于20%要求。独立有界根为35.339808度和39.918777度，分别标记low_ray和high_ray。
+7. 两根均ground终止；对应顶点高度为241.785042 km和270.229860 km，证明同一目标下存在可区分双根。冻结reference_config_hash=a81f7a8bf64df26500c834778af85ca9a40ec8eabc36d2631effbcf256545c97。
+8. 机器可读结果为output2/a3r_benchmark/a3r_p0c_reference_preparation.json，状态p0c_1_passed。该状态只表示P0C-0/P0C-1完成；尚未执行P0C-2 research/reference收敛、生产P2P召回、三次重复及P0C-3门控，p1_gate仍为closed。
+9. 保留p2_full_azimuth_audit_required=true和magnetoionic_caustic_validation_required=true；当前一维各向同性fold不得解释为完整三维磁离子焦散真值。
+
+十、P0C-2/P0C-3实施结果（2026-07-16）
+
+1. 两个独立有界根分别完成research/reference正式积分，均为ground且convergence_status=passed。low_ray reference：beta=35.339808度、x_land=1185.852721 km、h_reflect=241.806964 km、geom_path=1316.253931 km、group_path=1433.775931 km、tau=4.782441 ms；high_ray reference：beta=39.918777度、x_land=1185.837126 km、h_reflect=270.095381 km、geom_path=1349.684391 km、group_path=1523.739168 km、tau=5.082519 ms。
+2. research/reference最大差异：落点小于0.001 km、顶点高度小于0.060 km、群时延小于0.000003 ms；Hamiltonian最大归一化残差小于1.0e-10。积分容差收紧检查通过。
+3. 仰角有界根容差由1e-5度收紧至5e-6度，两个根的变化和收紧后落点残差满足冻结阈值；不是仅记录配置而未执行。
+4. 生产find_all_rays_ah_3d使用B=0、O单分支、25点全域扫描、central Jacobian和research/reference正式检查。三次均召回两条且一一匹配：low_ray发射角误差约1.8e-9度，high_ray约2.5e-6度；无伪模式、无漏模。
+5. 三次模式签名、Provider哈希1491565de28d0dfc200241220e5afc4d9fef10ed251454cc9e12ee41ecc9660b和配置哈希0b57152d30388cef1e31d2522103c7a80db5e0f44b0f41c1303d31ad733046e3一致。
+6. P0C-3显式合并既有真空、smooth_layer_single_mode和tid_3d的runtime_closure_status=passed后判定：p0_reference_complete=true、p0_overall_status=passed、p1_gate=open。
+7. 机器可读结果为output2/a3r_benchmark/a3r_p0c_closure.json；tests/_verify_p0c_high_low_reference.py覆盖真实fold、伪fold拒绝、B=0退化单计数、双根生产召回和门状态。
+8. P0C通过只证明确定性分层B=0 Chapman场中的同分支高/低射线拓扑。p2_full_azimuth_audit_required和magnetoionic_caustic_validation_required继续为true，完整三维磁离子焦散留给P2/A4。

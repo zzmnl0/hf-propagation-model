@@ -2,8 +2,8 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import config as cfg
-from models.hybrid_ray_pe import apply_ray_pe_coupling_3d
-from models.pe_propagator import PEPropagator
+from legacy.models.hybrid_ray_pe import apply_ray_pe_coupling_3d
+from legacy.models.pe_propagator import PEPropagator
 
 
 def _mode():
