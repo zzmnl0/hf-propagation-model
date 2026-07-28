@@ -21,28 +21,35 @@ from models.absorption_collision import (
     complex_refractive_index,
     complex_refractive_index_ah,
 )
+from utils import geodetic_to_ecef
 
 
 class _ConstN3D:
     def __init__(self, ne):
         self.ne = float(ne)
 
-    def Ne_at(self, x, y, z, t=0.0):
+    def get_Ne_ecef(self, ecef_km, earth_radius_km=None, t=0.0):
         return self.ne
 
 
 def _mode(wave_mode="O"):
-    traj = [
-        np.array([0.0, 0.0, 60.0, 1.0, 0.0, 0.1]),
-        np.array([100.0, 0.0, 90.0, 1.0, 0.0, 0.0]),
-        np.array([200.0, 0.0, 60.0, 1.0, 0.0, -0.1]),
-    ]
+    traj = np.array([
+        geodetic_to_ecef(30.0, 120.0, 60.0),
+        geodetic_to_ecef(30.5, 120.0, 90.0),
+        geodetic_to_ecef(31.0, 120.0, 60.0),
+    ])
     return {
         "group_path_km": 220.0,
         "geom_path_km": 220.0,
         "tau_ms": 220.0 / cfg.C_KMS * 1e3,
         "beta_deg_tx": 20.0,
-        "trajectory_3d": traj,
+        "trajectory_ecef_km": traj,
+        "earth_radius_km": cfg.RE_KM,
+        "earth_model": "WGS84",
+        "frequency_MHz": cfg.FREQ_MHZ,
+        "branch_id": wave_mode,
+        "b_ecef_hat": [0.0, 0.0, 1.0],
+        "gyrofrequency_MHz": float(cfg.GEOMAG["fH_MHz"]),
         "wave_mode": wave_mode,
     }
 
@@ -104,9 +111,13 @@ def run():
         radar = [_mode("X")]
         _add_power_3d(comm, n3d=_ConstN3D(1.0e10), radar_mode=False)
         _add_power_3d(radar, n3d=_ConstN3D(1.0e10), radar_mode=True, sigma_rcs=1.0)
+        unified = [_mode("O")]
+        unified[0].update({"Pr_W": 1.0, "absorption_applied_once": True})
+        _add_power_3d(unified, n3d=_ConstN3D(1.0e10))
         n_fail += _ok("explicit off no complex loss", clean[0]["abs_model"] == "none" and abs(clean[0]["abs_total_dB"]) < 1e-12)
         n_fail += _ok("enabled reduces comm power", comm[0]["Pr_W"] < clean[0]["Pr_W"] and comm[0]["abs_model"] == "appleton_hartree_collision_path")
         n_fail += _ok("radar absorption positive", radar[0]["abs_total_dB"] > 0.0)
+        n_fail += _ok("unified absorption not overwritten", unified[0]["Pr_W"] == 1.0)
     finally:
         cfg.ABSORPTION.clear()
         cfg.ABSORPTION.update(old_abs)

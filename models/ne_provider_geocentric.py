@@ -10,8 +10,8 @@ from pathlib import Path
 import numpy as np
 from scipy.interpolate import PchipInterpolator, RegularGridInterpolator
 
-from utils import (ecef_to_geocentric, enu_basis, geocentric_to_ecef,
-                   spherical_destination)
+from utils import (ecef_to_geocentric, ecef_to_geodetic, enu_basis,
+                   geocentric_to_ecef, spherical_destination)
 from .ionosphere_components_3d import (
     Bubble3DComponent,
     Es3DComponent,
@@ -168,6 +168,53 @@ class GeocentricNeProvider3D(ABC):
             "units": "m^-3",
             "coordinate_system": COORDINATE_SYSTEM,
             "axis_order": AXIS_ORDER,
+        }
+
+
+class WGS84NeProviderAdapter:
+    """Evaluate a frozen lat/lon/height field on WGS84 geodetic coordinates."""
+
+    name = "wgs84_ne_provider_adapter"
+
+    def __init__(self, source: GeocentricNeProvider3D):
+        if not isinstance(source, GeocentricNeProvider3D):
+            raise TypeError("source must implement GeocentricNeProvider3D")
+        self.source = source
+        source_metadata = source.get_metadata()
+        self.provider_hash = _hash_value({
+            "adapter": self.name,
+            "coordinate_system": "wgs84_geodetic",
+            "source_hash": source_metadata.get(
+                "provider_hash", source_metadata.get("grid_hash", "")),
+        })
+
+    def get_Ne_ecef(self, ecef_km, earth_radius_km=None,
+                    t: float = 0.0) -> float:
+        del earth_radius_km
+        lat, lon, height = ecef_to_geodetic(ecef_km)
+        return self.source.get_Ne_geocentric(
+            float(lat), float(lon), float(height), t=t)
+
+    def domain_margin_ecef(self, ecef_km, earth_radius_km=None) -> float:
+        del earth_radius_km
+        lat, lon, height = ecef_to_geodetic(ecef_km)
+        return self.source.domain_margin_geocentric(
+            float(lat), float(lon), float(height))
+
+    def get_metadata(self) -> dict:
+        source = self.source.get_metadata()
+        return {
+            "name": self.name,
+            "dimensions": "3d",
+            "units": "m^-3",
+            "coordinate_system": "wgs84_geodetic",
+            "axis_order": "geodetic_latitude,longitude,ellipsoid_height",
+            "provider_hash": self.provider_hash,
+            "source_provider_hash": source.get(
+                "provider_hash", source.get("grid_hash", "")),
+            "source_coordinate_system": source.get("coordinate_system", ""),
+            "field_semantics": (
+                "same_frozen_lat_lon_height_field_evaluated_on_WGS84_geodetic_coordinates"),
         }
 
 

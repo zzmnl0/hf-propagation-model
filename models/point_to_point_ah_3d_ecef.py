@@ -5,8 +5,12 @@ from __future__ import annotations
 import numpy as np
 from scipy.optimize import least_squares
 
-from utils import rx_enu_residual
-from .ray_tracer_ah_3d_ecef import RefractiveIndexAH3DECEF, trace_ray_ah3d_ecef
+from utils import rx_enu_residual, rx_enu_residual_wgs84
+from .ray_tracer_ah_3d_ecef import (
+    WGS84_COORDINATE_MODEL,
+    RefractiveIndexAH3DECEF,
+    trace_ray_ah3d_ecef,
+)
 
 
 class P2PECEFMappingError(RuntimeError):
@@ -85,9 +89,13 @@ def solve_p2p_ray_ah3d_ecef(
             raise P2PECEFMappingError(
                 f"endpoint_map_not_ground:{ray.get('termination_status')}")
         terminal = np.asarray(ray["trajectory_ecef_km"], dtype=float)[-1]
-        residual = rx_enu_residual(
-            terminal, float(rx[0]), float(rx[1]), float(rx[2]),
-            model.earth_radius_km)
+        if model.coordinate_model == WGS84_COORDINATE_MODEL:
+            residual = rx_enu_residual_wgs84(
+                terminal, float(rx[0]), float(rx[1]), float(rx[2]))
+        else:
+            residual = rx_enu_residual(
+                terminal, float(rx[0]), float(rx[1]), float(rx[2]),
+                model.earth_radius_km)
         if not np.all(np.isfinite(residual)):
             raise P2PECEFMappingError("endpoint_map_nonfinite")
         return residual
@@ -157,7 +165,10 @@ def solve_p2p_ray_ah3d_ecef(
     if landing_error >= float(tol_km):
         return None
     final.update({
-        "p2p_coordinate_model": "geocentric_TX_RX_ECEF_state_RX_ENU_residual",
+        "p2p_coordinate_model": (
+            "WGS84_geodetic_TX_RX_ECEF_state_RX_ENU_residual"
+            if model.coordinate_model == WGS84_COORDINATE_MODEL else
+            "geocentric_TX_RX_ECEF_state_RX_ENU_residual"),
         "p2p_residual_semantics": "terminal_minus_RX_in_RX_ENU_East_North_km",
         "p2p_residual_east_north_km": final_residual.tolist(),
         "p2p_landing_error_km": landing_error,
@@ -169,7 +180,13 @@ def solve_p2p_ray_ah3d_ecef(
         "p2p_trace_profile": str(profile),
         "p2p_seed_semantics": str(seed_semantics),
         "p2p_search_scope": "seeded_local_roots_not_full_domain_mode_audit",
-        "rx_geocentric_lat_lon_height": rx.tolist(),
+        "rx_lat_lon_height": rx.tolist(),
+        "rx_geocentric_lat_lon_height": (
+            None if model.coordinate_model == WGS84_COORDINATE_MODEL
+            else rx.tolist()),
+        "rx_geodetic_lat_lon_height": (
+            rx.tolist() if model.coordinate_model == WGS84_COORDINATE_MODEL
+            else None),
         "convergence_status": "passed",
     })
     return final

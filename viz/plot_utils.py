@@ -6,7 +6,7 @@ import csv
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import to_dBW
+from utils import WGS84_A_KM, WGS84_E2, to_dBW
 
 
 # ── Annotation helper ─────────────────────────────────────────────────────────
@@ -252,7 +252,7 @@ def plot_ray_fan(rays: list,
     styles = {'O': ('crimson', '-'), 'X': ('deepskyblue', '--'),
               'iso': ('crimson', '-')}
     for r in rays:
-        if 'trajectory_geocentric_lat_lon_height' in r:
+        if r.get('trajectory_lat_lon_height') is not None:
             xs, zs = _mode_xz(r)
         else:
             xs = [s[0] for s in r['trajectory']]
@@ -306,20 +306,33 @@ def plot_tx_ray_fan(rays: list,
 
 
 def _mode_xz(mode: dict):
-    if 'trajectory_geocentric_lat_lon_height' in mode:
-        points = np.asarray(
-            mode['trajectory_geocentric_lat_lon_height'], dtype=float)
+    coordinate_points = mode.get(
+        'trajectory_lat_lon_height',
+        mode.get('trajectory_geocentric_lat_lon_height'))
+    if coordinate_points is not None:
+        points = np.asarray(coordinate_points, dtype=float)
         if points.ndim == 2 and points.shape[0] >= 1 and points.shape[1] == 3:
             lat = np.radians(points[:, 0])
             lon = np.radians(points[:, 1])
-            unit = np.column_stack((
-                np.cos(lat) * np.cos(lon),
-                np.cos(lat) * np.sin(lon),
-                np.sin(lat)))
-            angles = np.arccos(np.clip(
-                np.sum(unit[1:] * unit[:-1], axis=1), -1.0, 1.0))
-            ground = np.r_[0.0, np.cumsum(
-                float(mode['earth_radius_km']) * angles)]
+            if mode.get('earth_model') == 'WGS84':
+                phi = 0.5 * (lat[1:] + lat[:-1])
+                dlat = np.diff(lat)
+                dlon = (np.diff(lon) + np.pi) % (2.0 * np.pi) - np.pi
+                denom = np.sqrt(1.0 - WGS84_E2 * np.sin(phi)**2)
+                meridional = WGS84_A_KM * (1.0 - WGS84_E2) / denom**3
+                prime_vertical = WGS84_A_KM / denom
+                segments = np.hypot(
+                    meridional * dlat,
+                    prime_vertical * np.cos(phi) * dlon)
+            else:
+                unit = np.column_stack((
+                    np.cos(lat) * np.cos(lon),
+                    np.cos(lat) * np.sin(lon),
+                    np.sin(lat)))
+                angles = np.arccos(np.clip(
+                    np.sum(unit[1:] * unit[:-1], axis=1), -1.0, 1.0))
+                segments = float(mode['earth_radius_km']) * angles
+            ground = np.r_[0.0, np.cumsum(segments)]
             return ground.tolist(), points[:, 2].tolist()
     if 'points' in mode:
         pts = np.asarray(mode['points'], dtype=float)

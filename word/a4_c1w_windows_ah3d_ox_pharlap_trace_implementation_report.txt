@@ -1,0 +1,59 @@
+A4-C1W Windows AH3D完整O/X生产验收与PHaRLAP追溯实施报告
+日期：2026-07-28
+最终状态：implementation_defect_identified
+A4-C2准入：false
+
+一、完成工作
+
+1. 新增WGS84大地坐标/ECEF双向转换、WGS84 ENU基和发射方向。
+2. 新增基于ppigrf的IGRF-14三维地磁Provider，输出位置相关ECEF Tesla向量、元数据和SHA-256。
+3. AH3D生产射线已改为WGS84地面事件、位置相关B(r)、局部回旋频率和局部传播夹角；Hamiltonian空间导数同时包含Ne与B变化。
+4. P2P接收机残差、统一pipeline、轨迹绘图和复吸收路径积分已迁移至WGS84/ECEF语义。
+5. main.py不再覆盖统一pipeline已完成的局部B功率/吸收结果。
+6. 建立独立Windows O/X执行器、MATLAB PHaRLAP导出脚本、只读验收器和六类可视化。
+7. 旧legacy AH3D测试不再作为正式证据；C0R-3、C0R-4和C0R-7冻结回归继续通过。
+
+二、PHaRLAP可追溯性
+
+1. 可见内容：MATLAB帮助/API、C MEX包装器、MEX二进制、预编译libpropagation.lib及输入输出语义。
+2. 静态库可确认符号：hasel_rhs_3d_、elec_mag_pderivs_3d_、ode_bosh54_。
+3. 本地安装不含Fortran核心源码，未执行反汇编。
+4. 最终分类：behavior_traceable_core_source_unavailable。
+
+三、数值结果
+
+1. WGS84坐标闭合：纬度最大误差7.11e-15 deg，高度最大误差9.09e-13 km，ENU正交误差1.11e-16。
+2. 真空、B趋零、平行B和垂直B解析极限最大误差1.11e-16。
+3. D_r、D_k、D_omega独立复核相对误差分别为5.16e-7、9.82e-8和3.44e-12。
+4. 低O高精度/参考轨迹RMS为2.88e-4 km；投影开关影子RMS为2.29e-4 km。
+5. 局部B吸收路径语义通过，记录为position_dependent_3d_provider。
+
+四、AH3D与PHaRLAP O/X同角比较
+
+1. low_O：轨迹RMS 0.0120 km，最大误差0.0509 km，落点差0.00968 km；几何程/群程相对差均约7.9e-6。
+2. low_X：轨迹RMS 0.0811 km，最大误差0.135 km，落点差0.135 km；几何程/群程相对差约1.27e-4/1.25e-4。
+3. high_X：轨迹RMS 0.2088 km，最大误差0.342 km，落点差0.342 km；几何程/群程相对差约2.87e-4/3.46e-4。
+4. 上述三条ground-ground轨迹全部通过O/X初始门槛。
+5. high_O：PHaRLAP ray_label=-2，正常穿透；AH3D在约329.94 km处physics_domain_rejected。终点复核n2=0.5401、root_status=ok、色散残差1.13e-8，拒绝原因是多尺度空间差分平台相对散布0.0643略超组合限制，不是截止或倏逝。
+
+五、验证
+
+1. tests/_verify_a4_c1w_windows_ox.py：0 fail(s)。
+2. tests/_verify_a4_c0r3_ecef_hamiltonian.py：0 fail(s)。
+3. tests/_verify_a4_c0r4_events.py：0 fail(s)。
+4. tests/_verify_a4_c0r7_pharlap_vacuum.py：0 fail(s)。
+5. tests/_verify_a4_c0r8_closure.py：0 fail(s)，状态passed_pharlap_coordinate_contract_closed。
+6. tests/_verify_complex_absorption.py：0 fail(s)，并验证统一pipeline吸收不会被main.py二次覆盖。
+7. 原A4-C1状态failed_c1_chapman_high_low_external_comparison保持不变。
+
+六、风险与未完成项
+
+1. 高O失败暴露网格节点附近多尺度空间导数稳定平台问题；当前不能声明完整O/X生产验收通过。
+2. PHaRLAP核心闭源，行为一致不能替代公式级源码证明。
+3. near-cutoff、倏逝隧穿、模式转换、衍射和全波散射仍不属于AH3D能力。
+4. 绝对功率缺少实测校准；当前吸收结果只验证路径积分语义。
+5. 位置相关B和WGS84迁移可能改变既有P2P根，完整P2P模式回归仍需在缺陷修复后执行。
+
+七、下一步建议
+
+优先新增网格节点/单元边界诊断，比较当前三线性Ne/B场、可微插值场和解析Chapman/直接IGRF导数的D_r尺度平台。只有能以公式、量纲和双高/双低回归证明根因时才修改公共Provider或导数实现；不得放宽阈值。修复后重跑H3、H6、C0R、P2P高低射线和原C1限制性回归，再由用户决定是否进入A4-C2。

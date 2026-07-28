@@ -1,0 +1,72 @@
+A4-C1Q 以PHaRLAP为标准的AH3D沿链路偏差归因报告
+
+日期：2026-07-28
+状态：completed_c1q6_pharlap_effective_dynamics_not_recoverable
+范围：B=0、10 MHz、collision=0、单程、球形地球6371 km、冻结1 km Chapman场、四个固定同角算例
+验证标准：PHaRLAP 4.7.4，严格配置[tolerance,min_step_km,max_step_km]=[1e-12,0.001,1]
+原C1状态：failed_c1_chapman_high_low_external_comparison（保持不变）
+
+一、结论
+
+1. AH3D与PHaRLAP的高射线同角差异仍以沿链路x方向为主，但不能由发射状态、公开B=0规范RHS、群程/几何程参数化或AH3D色散投影中的任一单因素解释。
+2. 两个高射线基线三维轨迹RMS为2.405010845 km和2.533852270 km，x方向RMS为2.295054498 km和2.419403574 km，落点x差为-3.912848268 km和-4.126694871 km。
+3. 所有可解释单因素对两个高射线的x误差关闭率均远低于80%主因门。最好结果为群程参数化：关闭率1.3594%和2.1353%，三维RMS仍为2.371819147 km和2.479634715 km。
+4. 未发现可安全写入生产AH3D的公式或实现修复。C1Q-5未进入，models/dispersion_ah.py、models/ray_tracer_ah_3d_ecef.py、Provider和config均未修改。
+5. 最终归因为pharlap_effective_dynamics_not_recoverable。当前证据只能将剩余差异限定在PHaRLAP不可观察MEX有效动力学、未公开插值/离散细节或多个小贡献共同作用，不能证明某个源级公式错误。
+
+二、C1Q-0 冻结准入
+
+四个固定角21.94290326504532、21.94562872092976、39.54254824570964和39.58701138438118 deg全部ground。独立严格PHaRLAP导出相对C1P严格参考的轨迹RMS为8.72e-8至7.93e-7 km，输入、MEX、源码、原C1失败状态和可视化检查全部通过。
+
+三、C1Q-1 沿链路误差输运
+
+1. 两个低射线的归一化路径x RMS约0.0325/0.0337 km；两个高射线为2.2951/2.4194 km。
+2. 两个高射线y RMS仅1.54e-4/2.02e-5 km，z RMS为0.4684/0.4851 km，确认主要误差位于沿链路方向。
+3. 落点x差按公共传播段与不等长尾段分解后均闭合至数值精度。两个高射线的不等长尾段贡献约-3.3404/-3.5097 km，是落点差的主要组成；这属于误差预算，不等同于地面事件本身是根因。
+4. 公共群程配对时高射线x RMS仅约0.1494/0.1536 km，而z RMS约1.7906/1.8797 km，说明比较结论对参数化方式敏感，不能只用单一归一化路径残差归因。
+
+四、C1Q-2/C1Q-3 状态与规范方程审计
+
+1. PHaRLAP state ECEF与path纬经高转换位置最大闭合差约1.12e-5 km，位置语义闭合。
+2. |dir|^2与PHaRLAP输出refractive_index^2的RMS差为2.34e-10至5.16e-9；PHaRLAP路径折射率与其输出Ne重算n^2的RMS差约3.70e-4至4.44e-4。
+3. PHaRLAP路径Ne与共同Provider的相对RMS差约5.42e-5至1.09e-4；反推等离子体频率常数随路径并不稳定，不能归因为单一Hz/MHz、m^-3/cm^-3或2*pi常数错误。
+4. 在群程P'下，PHaRLAP的r积分闭合RMS约5.66e-5至6.48e-5 km，AH3D约1.56e-4至1.75e-4 km。5/7/9点导数窗口形成数值平台。
+5. PHaRLAP输出有效n^2虽能改善局部dp/dP'残差，但不能改善全程动量积分闭合，因此未形成可生产采用的介质或RHS证据链。
+
+五、C1Q-4 单因素影子重放
+
+高射线PHaRLAP锚点：
+baseline RMS=2.405011 km，x RMS=2.295054 km；
+PHaRLAP发射状态关闭0.9077%；
+精确B=0 RHS关闭1.5507%；
+群程参数化关闭1.3594%；
+关闭色散投影反向恶化4.4082%。
+
+高射线AH3D锚点：
+baseline RMS=2.533852 km，x RMS=2.419404 km；
+PHaRLAP发射状态反向恶化0.1455%；
+精确B=0 RHS关闭1.8277%；
+群程参数化关闭2.1353%；
+关闭色散投影反向恶化1.8155%。
+
+两个低射线在安全变体下三维RMS均小于0.15 km，没有掩盖高射线失败。由四条PHaRLAP输出轨迹拼接的有效Ne剖面不是唯一冻结介质，且全部physics_domain_rejected，因此仅记录为not_production_safe，不参与主因认定。
+
+六、生产修复与决策门
+
+1. safe_primary_candidates为空，未达到“双高均关闭至少80%、双低不退化”的准入条件。
+2. 未实施经验拟合、参数调节、Chapman参数修改、发射角重求根或生产修复。
+3. 原C1失败证据和2 km门槛均保留；A4-C2不得自动执行。
+4. 建议下一步：引入第三套源代码可审计的B=0 Hamiltonian求解器，在同一冻结Provider、四个角和统一ECEF/群程语义下三方比较；依据第三求解器与PHaRLAP/AH3D的聚类关系，再决定修正AH3D或将差异归为PHaRLAP实现特性。
+
+七、产物与复验
+
+输出目录：output2/a4_pharlap/c1/c1q/
+
+C1Q-0至C1Q-6分别保存MAT/NPZ、CSV/JSON、PNG、日志和SHA-256 manifest。主要图像包括冻结准入图、x/y/z输运及累计预算图、状态/介质闭合图、B=0规范方程积分闭合图、单因素关闭率矩阵、生产修复门和最终归因矩阵。
+
+只读验收命令：
+conda run -n pytorch_cpu python tests/_verify_a4_c1q_attribution.py
+
+验收结果：A4-C1Q verification: 0 failure(s)。
+
+补充：C1P和C1R只读验收均为0 failure。旧C1最终冻结验收器会报告a4_pharlap_external_validation_implementation_plan.txt和reference-papers.txt相对C1冻结时点发生source_files drift；前者由本次按计划更新，后者为C1冻结后已有文献记录演进。未重写旧C1 manifest，原数值产物哈希和failed_c1_chapman_high_low_external_comparison状态保持不变。

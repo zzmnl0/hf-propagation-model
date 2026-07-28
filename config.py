@@ -362,6 +362,13 @@ ABSORPTION = {
 UPDATE2 = {
     'AH3D_ENABLE': False,
     'AH3D_SOLVER': 'ecef_dop853',
+    'AH3D_COORDINATE_MODEL': 'wgs84_geodetic_ecef',
+    'AH3D_GEOMAG_MODEL': 'igrf14_grid',
+    'AH3D_GEOMAG_GRID': {
+        'horizontal_margin_deg': 5.0,
+        'horizontal_step_deg': 1.0,
+        'height_step_km': 25.0,
+    },
     'AH3D_INTEGRATION_PROFILE': 'research',
     'AH3D_INTEGRATION': {
         'smoke': {'rtol': 3.0e-5, 'atol_r_km': 1.0e-3, 'atol_k': 1.0e-7,
@@ -370,6 +377,14 @@ UPDATE2 = {
                      'ds_min_km': 0.01, 'ds_max_km': 2.0},
         'reference': {'rtol': 3.0e-9, 'atol_r_km': 1.0e-7, 'atol_k': 1.0e-11,
                       'ds_min_km': 0.002, 'ds_max_km': 0.5},
+        'wgs84_reference': {
+            'rtol': 3.0e-9, 'atol_r_km': 1.0e-7, 'atol_k': 1.0e-11,
+            'ds_min_km': 0.01, 'ds_max_km': 2.0,
+        },
+        'wgs84_refined': {
+            'rtol': 3.0e-10, 'atol_r_km': 3.0e-8, 'atol_k': 3.0e-12,
+            'ds_min_km': 0.005, 'ds_max_km': 1.0,
+        },
     },
     'OX_MODE': 'ah3d',
     'RAY_FAN_INCLUDE_X': False,

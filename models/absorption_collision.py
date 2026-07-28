@@ -15,8 +15,9 @@ from __future__ import annotations
 import numpy as np
 
 from config import GEOMAG, K_FP, LINK_BEARING_DEG
-from utils import freq_to_k0
+from utils import ecef_to_geodetic, freq_to_k0
 from .dispersion_ah import C_KM_S
+from .geomagnetic_field_3d import GYRO_MHZ_PER_T
 
 
 def _b_hat_from_geomag(geomag: dict | None = None) -> np.ndarray:
@@ -172,8 +173,9 @@ def complex_absorption_ecef_ray_dB(
     params: dict | None = None,
     two_way: bool = False,
     t: float = 0.0,
+    geomagnetic_provider=None,
 ) -> dict:
-    """Integrate AH collisional absorption on an explicit spherical-ECEF ray."""
+    """Integrate AH collisional absorption on an explicit physical ECEF ray."""
     points = np.asarray(ray.get("trajectory_ecef_km", []), dtype=float)
     if points.ndim != 2 or points.shape[0] < 2 or points.shape[1] != 3:
         raise ValueError("ray must contain trajectory_ecef_km with shape (N,3)")
@@ -186,9 +188,10 @@ def complex_absorption_ecef_ray_dB(
         raise ValueError("ray must record a positive frequency_MHz")
     branch = str(ray.get("branch_id", ray.get("wave_mode", "O"))).upper()
     b_ecef = np.asarray(ray.get("b_ecef_hat", []), dtype=float)
-    if b_ecef.shape != (3,) or not np.all(np.isfinite(b_ecef)):
-        raise ValueError("ray must record finite b_ecef_hat")
-    geomag = {"fH_MHz": float(ray.get("gyrofrequency_MHz", 0.0))}
+    if geomagnetic_provider is None:
+        if b_ecef.shape != (3,) or not np.all(np.isfinite(b_ecef)):
+            raise ValueError("ray must record finite b_ecef_hat")
+        geomag = {"fH_MHz": float(ray.get("gyrofrequency_MHz", 0.0))}
     k0_m = (2.0 * np.pi * frequency * 1.0e6 / C_KM_S) / 1000.0
     one_way = 0.0
     for start, end in zip(points[:-1], points[1:]):
@@ -197,14 +200,30 @@ def complex_absorption_ecef_ray_dB(
         if ds_m <= 0.0:
             continue
         midpoint = 0.5 * (start + end)
-        height = float(np.linalg.norm(midpoint) - radius)
+        if ray.get("earth_model") == "WGS84":
+            height = float(ecef_to_geodetic(midpoint)[2])
+        else:
+            height = float(np.linalg.norm(midpoint) - radius)
         Ne = max(float(provider.get_Ne_ecef(midpoint, radius, t=t)), 0.0)
         collision = collision_frequency_s(height, p)
         if collision <= 0.0 or Ne <= 0.0:
             continue
+        if geomagnetic_provider is not None:
+            b_local = np.asarray(
+                geomagnetic_provider.get_B_ecef_T(midpoint, t=t), dtype=float)
+            b_magnitude = float(np.linalg.norm(b_local))
+            if (b_local.shape != (3,) or not np.all(np.isfinite(b_local))
+                    or b_magnitude <= 0.0):
+                raise ValueError(
+                    "geomagnetic_provider returned an invalid local field")
+            b_hat = b_local / b_magnitude
+            geomag_local = {"fH_MHz": GYRO_MHZ_PER_T * b_magnitude}
+        else:
+            b_hat = b_ecef
+            geomag_local = geomag
         index = complex_refractive_index_ah(
             frequency, Ne, collision, segment, wave_mode=branch,
-            geomag=geomag, b_hat=b_ecef)
+            geomag=geomag_local, b_hat=b_hat)
         one_way += 8.686 * 2.0 * k0_m * max(float(index.imag), 0.0) * ds_m
     one_way = float(max(one_way, 0.0))
     return {
@@ -213,7 +232,16 @@ def complex_absorption_ecef_ray_dB(
         "abs_status": "ok",
         "collision_model": p.get("collision_model", "d_region_exponential"),
         "abs_index_model": "appleton_hartree_collision",
-        "abs_path_coordinate_model": "spherical_ECEF_physical_height",
+        "abs_path_coordinate_model": (
+            "WGS84_ECEF_ellipsoid_height"
+            if ray.get("earth_model") == "WGS84"
+            else "spherical_ECEF_physical_height"),
         "abs_path_semantics": "one_way_path_integral_two_way_optional_multiplier",
         "branch_id": branch,
+        "geomagnetic_field_semantics": (
+            "position_dependent_3d_provider"
+            if geomagnetic_provider is not None else "frozen_launch_field"),
+        "geomagnetic_provider_hash": (
+            geomagnetic_provider.get_metadata().get("field_hash", "")
+            if geomagnetic_provider is not None else ""),
     }

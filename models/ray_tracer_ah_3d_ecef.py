@@ -1,4 +1,4 @@
-"""Strict spherical-ECEF Appleton-Hartree Hamiltonian core for A4-C0R-3.
+"""ECEF Appleton-Hartree Hamiltonian core for spherical and WGS84 Earth.
 
 This module deliberately has no local-Cartesian or Earth-flattening entry.
 Ground/upper-boundary events and downstream migration belong to C0R-4/C0R-5.
@@ -13,7 +13,15 @@ import numpy as np
 from scipy.integrate import DOP853
 
 from config import UPDATE2
-from utils import ecef_to_geocentric, geocentric_to_ecef, launch_direction_ecef
+from utils import (
+    ecef_to_geocentric,
+    ecef_to_geodetic,
+    enu_basis_wgs84,
+    geocentric_to_ecef,
+    geodetic_to_ecef,
+    launch_direction_ecef,
+    launch_direction_ecef_wgs84,
+)
 from .dispersion_ah import (
     C_KM_S,
     AHRoot,
@@ -23,9 +31,14 @@ from .dispersion_ah import (
     select_root,
 )
 from .ne_provider_geocentric import COORDINATE_SYSTEM, GeocentricNeProvider3D
+from .geomagnetic_field_3d import (
+    GYRO_MHZ_PER_T,
+    ConstantGeomagneticField3D,
+)
 
 
 COORDINATE_MODEL = "geocentric_spherical_ecef"
+WGS84_COORDINATE_MODEL = "wgs84_geodetic_ecef"
 STATE_SEMANTICS = "r_ecef_km,k_ecef_km^-1,t_group_s"
 _COORDINATE_MAPPING_HASH = hashlib.sha256(
     b"C0R-3:geocentric_spherical<->ECEF:R_explicit:v1"
@@ -54,6 +67,8 @@ class RefractiveIndexAH3DECEF:
         wave_mode: str = "O",
         gyro_MHz: float = 0.0,
         b_ecef_hat=(0.0, 0.0, 1.0),
+        geomagnetic_provider=None,
+        coordinate_model: str = COORDINATE_MODEL,
         collision_s: float = 0.0,
         near_cutoff_n2: float = 2.0e-2,
         spatial_fd_base_km: float = 0.5,
@@ -62,10 +77,16 @@ class RefractiveIndexAH3DECEF:
         spatial_fd_stability_atol_n2_per_km: float = 2.0e-5,
         integration_profile: str = "reference",
     ):
-        if not isinstance(provider, GeocentricNeProvider3D):
-            raise TypeError("provider must implement GeocentricNeProvider3D")
+        if not (hasattr(provider, "get_Ne_ecef")
+                and hasattr(provider, "domain_margin_ecef")
+                and hasattr(provider, "get_metadata")):
+            raise TypeError("provider must implement the physical ECEF Ne contract")
         self.provider = provider
         self.earth_radius_km = float(earth_radius_km)
+        self.coordinate_model = str(coordinate_model)
+        if self.coordinate_model not in {
+                COORDINATE_MODEL, WGS84_COORDINATE_MODEL}:
+            raise ValueError("coordinate_model must be spherical ECEF or WGS84 ECEF")
         self.freq_MHz = float(freq_MHz)
         self.wave_mode = str(wave_mode).upper()
         self.gyro_MHz = float(gyro_MHz)
@@ -83,9 +104,15 @@ class RefractiveIndexAH3DECEF:
 
         metadata = provider.get_metadata()
         provider_radius = metadata.get("earth_radius_km")
-        if metadata.get("coordinate_system") != COORDINATE_SYSTEM:
-            raise ValueError("Provider must use the geocentric_spherical contract")
-        if provider_radius is None or float(provider_radius) != self.earth_radius_km:
+        expected_provider_coordinates = (
+            COORDINATE_SYSTEM if self.coordinate_model == COORDINATE_MODEL
+            else "wgs84_geodetic")
+        if metadata.get("coordinate_system") != expected_provider_coordinates:
+            raise ValueError(
+                "Provider coordinates do not match the AH3D coordinate model")
+        if (self.coordinate_model == COORDINATE_MODEL
+                and (provider_radius is None
+                     or float(provider_radius) != self.earth_radius_km)):
             raise ValueError("Provider and AH3D Earth radii must match exactly")
         if not np.isfinite(self.freq_MHz) or self.freq_MHz <= 0.0:
             raise ValueError("freq_MHz must be finite and positive")
@@ -104,6 +131,19 @@ class RefractiveIndexAH3DECEF:
         if b_norm <= 0.0:
             raise ValueError("b_ecef_hat must be nonzero")
         self.b_ecef_hat = b_hat / b_norm
+        if geomagnetic_provider is None:
+            constant_magnitude_T = self.gyro_MHz / GYRO_MHZ_PER_T
+            geomagnetic_provider = ConstantGeomagneticField3D(
+                constant_magnitude_T * self.b_ecef_hat)
+        if not (hasattr(geomagnetic_provider, "get_B_ecef_T")
+                and hasattr(geomagnetic_provider, "get_metadata")):
+            raise TypeError(
+                "geomagnetic_provider must implement get_B_ecef_T and get_metadata")
+        self.geomagnetic_provider = geomagnetic_provider
+        self.geomagnetic_metadata = geomagnetic_provider.get_metadata()
+        self.geomagnetic_provider_hash = str(
+            self.geomagnetic_metadata.get(
+                "field_hash", _metadata_hash(self.geomagnetic_metadata)))
         if (not np.isfinite(self.spatial_fd_base_km)
                 or self.spatial_fd_base_km <= 0.0):
             raise ValueError("spatial_fd_base_km must be finite and positive")
@@ -142,11 +182,49 @@ class RefractiveIndexAH3DECEF:
             raise ValueError("Provider returned non-finite or negative Ne")
         return value
 
+    def _magnetic_field(self, ecef_km, t: float = 0.0):
+        field = np.asarray(
+            self.geomagnetic_provider.get_B_ecef_T(ecef_km, t=t), dtype=float)
+        if field.shape != (3,) or not np.all(np.isfinite(field)):
+            raise ValueError("Geomagnetic Provider returned an invalid ECEF field")
+        magnitude = float(np.linalg.norm(field))
+        if magnitude <= 1.0e-18:
+            return 0.0, self.b_ecef_hat
+        return GYRO_MHZ_PER_T * magnitude, field / magnitude
+
+    def coordinates_from_ecef(self, ecef_km) -> np.ndarray:
+        if self.coordinate_model == WGS84_COORDINATE_MODEL:
+            return ecef_to_geodetic(ecef_km)
+        return ecef_to_geocentric(ecef_km, self.earth_radius_km)
+
+    def position_to_ecef(self, lat_deg, lon_deg, height_km) -> np.ndarray:
+        if self.coordinate_model == WGS84_COORDINATE_MODEL:
+            return geodetic_to_ecef(lat_deg, lon_deg, height_km)
+        return geocentric_to_ecef(
+            lat_deg, lon_deg, height_km, self.earth_radius_km)
+
+    def launch_direction(self, lat_deg, lon_deg, elevation_deg,
+                         bearing_deg) -> np.ndarray:
+        if self.coordinate_model == WGS84_COORDINATE_MODEL:
+            return launch_direction_ecef_wgs84(
+                lat_deg, lon_deg, elevation_deg, bearing_deg)
+        return launch_direction_ecef(
+            lat_deg, lon_deg, elevation_deg, bearing_deg,
+            self.earth_radius_km)
+
+    def physical_height_km(self, ecef_km) -> float:
+        return float(self.coordinates_from_ecef(ecef_km)[2])
+
+    def provider_domain_margin(self, ecef_km) -> float:
+        return float(self.provider.domain_margin_ecef(
+            ecef_km, self.earth_radius_km))
+
     def roots(self, ecef_km, k_ecef, *, omega=None, t: float = 0.0):
         frequency = self.omega if omega is None else omega
+        gyro_MHz, b_ecef_hat = self._magnetic_field(ecef_km, t=t)
         return appleton_hartree_roots(
             frequency, self._Ne(ecef_km, t=t), k_ecef,
-            self.b_ecef_hat, self.gyro_MHz, self.collision_s,
+            b_ecef_hat, gyro_MHz, self.collision_s,
         )
 
     def root(self, ecef_km, k_ecef, *, omega=None, t: float = 0.0) -> AHRoot:
@@ -163,15 +241,20 @@ class RefractiveIndexAH3DECEF:
 
     def metadata(self) -> dict:
         return {
-            "coordinate_model": COORDINATE_MODEL,
+            "coordinate_model": self.coordinate_model,
             "state_semantics": STATE_SEMANTICS,
-            "earth_model": "sphere",
+            "earth_model": (
+                "WGS84" if self.coordinate_model == WGS84_COORDINATE_MODEL
+                else "sphere"),
             "earth_radius_km": self.earth_radius_km,
             "frequency_MHz": self.freq_MHz,
             "branch_id": self.wave_mode,
             "gyrofrequency_MHz": self.gyro_MHz,
-            "b_field_coordinates": "fixed_ecef_unit_vector",
+            "b_field_coordinates": self.geomagnetic_metadata.get(
+                "coordinate_system", "ecef"),
             "b_ecef_hat": self.b_ecef_hat.tolist(),
+            "geomagnetic_provider": self.geomagnetic_metadata,
+            "geomagnetic_provider_hash": self.geomagnetic_provider_hash,
             "collision_frequency_s^-1": self.collision_s,
             "hamiltonian": "D=|k_ecef|^2-(omega/c)^2*n_AH^2",
             "spatial_derivative": "multiscale_centered_ECEF",
@@ -181,7 +264,12 @@ class RefractiveIndexAH3DECEF:
             "spatial_fd_stability_atol_n2_per_km": (
                 self.spatial_fd_stability_atol_n2_per_km),
             "provider_hash": self.provider_hash,
-            "coordinate_mapping_hash": _COORDINATE_MAPPING_HASH,
+            "coordinate_mapping_hash": (
+                _metadata_hash({
+                    "coordinate_model": self.coordinate_model,
+                    "mapping": "analytic_ECEF",
+                }) if self.coordinate_model == WGS84_COORDINATE_MODEL
+                else _COORDINATE_MAPPING_HASH),
         }
 
 
@@ -373,26 +461,30 @@ def launch_state_ah3d_ecef(
     bearing_deg: float,
     medium_time_s: float = 0.0,
 ) -> np.ndarray:
-    position = geocentric_to_ecef(
-        tx_lat_deg, tx_lon_deg, tx_height_km, model.earth_radius_km)
-    direction = launch_direction_ecef(
-        tx_lat_deg, tx_lon_deg, elevation_deg, bearing_deg,
-        model.earth_radius_km)
+    position = model.position_to_ecef(
+        tx_lat_deg, tx_lon_deg, tx_height_km)
+    direction = model.launch_direction(
+        tx_lat_deg, tx_lon_deg, elevation_deg, bearing_deg)
     root = model.root(position, direction, t=medium_time_s)
     if root.status not in {"ok", "near_cutoff"} or root.n2.real <= 0.0:
         raise ValueError(f"invalid launch dispersion: {root.status}")
     return np.r_[position, model.k0 * np.sqrt(root.n2.real) * direction, 0.0]
 
 
-def _physical_height_km(state, earth_radius_km: float) -> float:
-    return float(np.linalg.norm(np.asarray(state)[:3]) - earth_radius_km)
+def _physical_height_km(state, model: RefractiveIndexAH3DECEF) -> float:
+    return model.physical_height_km(np.asarray(state)[:3])
 
 
 def _radial_group_velocity(state, model, medium_time_s: float) -> float:
     position = np.asarray(state)[:3]
+    if model.coordinate_model == WGS84_COORDINATE_MODEL:
+        lat, lon, _ = ecef_to_geodetic(position)
+        vertical = enu_basis_wgs84(float(lat), float(lon))[:, 2]
+    else:
+        vertical = position / np.linalg.norm(position)
     return float(np.dot(
         group_velocity_ah3d_ecef(state, model, t=medium_time_s),
-        position / np.linalg.norm(position),
+        vertical,
     ))
 
 
@@ -430,6 +522,7 @@ def integrate_fixed_path_ah3d_ecef(
     profile: str | None = None,
     h_stop_km: float | None = None,
     stop_on_physical_events: bool = False,
+    apply_dispersion_projection: bool = True,
 ) -> dict:
     """Integrate physical arclength, optionally stopping on C0R-4 events."""
     length = float(path_length_km)
@@ -448,8 +541,7 @@ def integrate_fixed_path_ah3d_ecef(
         h_stop_km = float(h_stop_km)
         if h_stop_km <= float(tx_height_km):
             raise ValueError("h_stop_km must exceed TX physical height")
-        if model.provider.domain_margin_ecef(
-                initial[:3], model.earth_radius_km) < 0.0:
+        if model.provider_domain_margin(initial[:3]) < 0.0:
             raise ValueError("TX is outside the Provider domain")
         initial_radial_velocity = _radial_group_velocity(
             initial, model, medium_time_s)
@@ -480,9 +572,8 @@ def integrate_fixed_path_ah3d_ecef(
     apex_state = None
     apex_path = None
     left_ground = float(tx_height_km) > departure_tolerance_km
-    previous_height = _physical_height_km(initial, model.earth_radius_km)
-    previous_margin = model.provider.domain_margin_ecef(
-        initial[:3], model.earth_radius_km)
+    previous_height = _physical_height_km(initial, model)
+    previous_margin = model.provider_domain_margin(initial[:3])
     previous_radial_velocity = _radial_group_velocity(
         initial, model, medium_time_s)
     try:
@@ -494,15 +585,16 @@ def integrate_fixed_path_ah3d_ecef(
                 failure = "DOP853 failed or returned a non-finite state"
                 break
             dense = solver.dense_output()
-            projected, correction, ok = project_dispersion_ah3d_ecef(
-                solver.y, model, t=medium_time_s)
-            projection_max = max(projection_max, correction)
-            if not ok:
-                termination = "constraint_failed"
-                failure = "D=0 projection did not converge"
-                break
-            solver.y[:] = projected
-            solver.f = rhs(solver.t, solver.y)
+            if apply_dispersion_projection:
+                projected, correction, ok = project_dispersion_ah3d_ecef(
+                    solver.y, model, t=medium_time_s)
+                projection_max = max(projection_max, correction)
+                if not ok:
+                    termination = "constraint_failed"
+                    failure = "D=0 projection did not converge"
+                    break
+                solver.y[:] = projected
+                solver.f = rhs(solver.t, solver.y)
             accepted += 1
             residual_max = max(
                 residual_max,
@@ -516,10 +608,8 @@ def integrate_fixed_path_ah3d_ecef(
 
             current = solver.y.copy()
             current_path = float(solver.t)
-            current_height = _physical_height_km(
-                current, model.earth_radius_km)
-            current_margin = model.provider.domain_margin_ecef(
-                current[:3], model.earth_radius_km)
+            current_height = _physical_height_km(current, model)
+            current_margin = model.provider_domain_margin(current[:3])
             current_radial_velocity = _radial_group_velocity(
                 current, model, medium_time_s)
             terminal_candidates = []
@@ -531,8 +621,7 @@ def integrate_fixed_path_ah3d_ecef(
                     "ground",
                     _locate_dense_event(
                         dense, path_previous, current_path,
-                        lambda state: _physical_height_km(
-                            state, model.earth_radius_km)),
+                        lambda state: _physical_height_km(state, model)),
                 ))
             upper_previous = float(h_stop_km) - previous_height
             upper_current = float(h_stop_km) - current_height
@@ -542,7 +631,7 @@ def integrate_fixed_path_ah3d_ecef(
                     _locate_dense_event(
                         dense, path_previous, current_path,
                         lambda state: float(h_stop_km)
-                        - _physical_height_km(state, model.earth_radius_km)),
+                        - _physical_height_km(state, model)),
                 ))
             if (np.isfinite(previous_margin) and previous_margin >= 0.0
                     and current_margin < 0.0):
@@ -550,8 +639,7 @@ def integrate_fixed_path_ah3d_ecef(
                     "grid_exit",
                     _locate_dense_event(
                         dense, path_previous, current_path,
-                        lambda state: model.provider.domain_margin_ecef(
-                            state[:3], model.earth_radius_km)),
+                        lambda state: model.provider_domain_margin(state[:3])),
                 ))
 
             turning_candidate = None
@@ -566,12 +654,13 @@ def integrate_fixed_path_ah3d_ecef(
             terminal_path = float("inf") if terminal is None else terminal[1][0]
             if turning_candidate is not None and turning_candidate[0] < terminal_path:
                 turn_path, turn_state, turn_error = turning_candidate
-                turn_state, _, turn_ok = project_dispersion_ah3d_ecef(
-                    turn_state, model, t=medium_time_s)
-                if not turn_ok:
-                    termination = "constraint_failed"
-                    failure = "D=0 projection failed at turning event"
-                    break
+                if apply_dispersion_projection:
+                    turn_state, _, turn_ok = project_dispersion_ah3d_ecef(
+                        turn_state, model, t=medium_time_s)
+                    if not turn_ok:
+                        termination = "constraint_failed"
+                        failure = "D=0 projection failed at turning event"
+                        break
                 turning_count += 1
                 apex_state = turn_state.copy()
                 apex_path = float(turn_path)
@@ -587,12 +676,13 @@ def integrate_fixed_path_ah3d_ecef(
 
             if terminal is not None:
                 event_name, (event_path, event_state, event_error) = terminal
-                event_state, _, event_ok = project_dispersion_ah3d_ecef(
-                    event_state, model, t=medium_time_s)
-                if not event_ok:
-                    termination = "constraint_failed"
-                    failure = f"D=0 projection failed at {event_name} event"
-                    break
+                if apply_dispersion_projection:
+                    event_state, _, event_ok = project_dispersion_ah3d_ecef(
+                        event_state, model, t=medium_time_s)
+                    if not event_ok:
+                        termination = "constraint_failed"
+                        failure = f"D=0 projection failed at {event_name} event"
+                        break
                 event_error_max = max(event_error_max, float(event_error))
                 event_records.append({
                     "event": event_name,
@@ -625,18 +715,16 @@ def integrate_fixed_path_ah3d_ecef(
         failure = str(exc)
 
     trajectory = np.asarray(states)
-    geocentric = np.asarray([
-        ecef_to_geocentric(row[:3], model.earth_radius_km)
-        for row in trajectory
+    coordinates = np.asarray([
+        model.coordinates_from_ecef(row[:3]) for row in trajectory
     ])
     completed_path = float(paths[-1])
     group_path = float(C_KM_S * trajectory[-1, 6])
     positions = trajectory[:, :3]
     tangents = np.empty_like(positions)
     if len(positions) == 1:
-        tangents[0] = launch_direction_ecef(
-            tx_lat_deg, tx_lon_deg, elevation_deg, bearing_deg,
-            model.earth_radius_km)
+        tangents[0] = model.launch_direction(
+            tx_lat_deg, tx_lon_deg, elevation_deg, bearing_deg)
     else:
         tangents[0] = positions[1] - positions[0]
         tangents[-1] = positions[-1] - positions[-2]
@@ -645,15 +733,37 @@ def integrate_fixed_path_ah3d_ecef(
         tangent_norms = np.linalg.norm(tangents, axis=1)
         tangents /= np.maximum(tangent_norms[:, None], 1.0e-30)
     metadata = model.metadata()
-    landing = (geocentric[-1] if termination == "ground" else None)
-    apex_geocentric = (None if apex_state is None else ecef_to_geocentric(
-        apex_state[:3], model.earth_radius_km))
+    landing = (coordinates[-1] if termination == "ground" else None)
+    apex_coordinates = (
+        None if apex_state is None
+        else model.coordinates_from_ecef(apex_state[:3]))
+    launch_gyro_MHz, launch_b_hat = model._magnetic_field(
+        trajectory[0, :3], t=medium_time_s)
+    magnetic_fields = []
+    for point in trajectory[:, :3]:
+        try:
+            magnetic_fields.append(
+                model.geomagnetic_provider.get_B_ecef_T(
+                    point, t=medium_time_s))
+        except ValueError:
+            magnetic_fields.append(np.full(3, np.nan))
+    magnetic_fields = np.asarray(magnetic_fields, dtype=float)
+    coordinate_label = (
+        "geodetic" if model.coordinate_model == WGS84_COORDINATE_MODEL
+        else "geocentric")
     return {
         "trajectory_ecef_km": trajectory[:, :3],
         "trajectory_group_tangent_ecef": tangents,
         "wavevector_ecef_km^-1": trajectory[:, 3:6],
-        "trajectory_geocentric_lat_lon_height": geocentric,
-        "trajectory_physical_height_km": geocentric[:, 2],
+        "trajectory_B_ecef_T": magnetic_fields,
+        "trajectory_gyrofrequency_MHz": (
+            GYRO_MHZ_PER_T * np.linalg.norm(magnetic_fields, axis=1)),
+        "trajectory_lat_lon_height": coordinates,
+        "trajectory_geocentric_lat_lon_height": (
+            coordinates if coordinate_label == "geocentric" else None),
+        "trajectory_geodetic_lat_lon_height": (
+            coordinates if coordinate_label == "geodetic" else None),
+        "trajectory_physical_height_km": coordinates[:, 2],
         "trajectory_geom_path_km": np.asarray(paths),
         "geom_path_km": completed_path,
         "group_path_km": group_path,
@@ -663,6 +773,12 @@ def integrate_fixed_path_ah3d_ecef(
         "event_localization_error_max_km": float(event_error_max),
         "turning_point_count": turning_count,
         "landing_geocentric_lat_lon_height": (
+            None if landing is None or coordinate_label != "geocentric"
+            else landing.tolist()),
+        "landing_geodetic_lat_lon_height": (
+            None if landing is None or coordinate_label != "geodetic"
+            else landing.tolist()),
+        "landing_lat_lon_height": (
             None if landing is None else landing.tolist()),
         "landing_lat_deg": None if landing is None else float(landing[0]),
         "landing_lon_deg": None if landing is None else float(landing[1]),
@@ -671,9 +787,15 @@ def integrate_fixed_path_ah3d_ecef(
         "apex_wavevector_ecef_km^-1": (
             None if apex_state is None else apex_state[3:6].tolist()),
         "apex_geocentric_lat_lon_height": (
-            None if apex_geocentric is None else apex_geocentric.tolist()),
+            None if apex_coordinates is None or coordinate_label != "geocentric"
+            else apex_coordinates.tolist()),
+        "apex_geodetic_lat_lon_height": (
+            None if apex_coordinates is None or coordinate_label != "geodetic"
+            else apex_coordinates.tolist()),
+        "apex_lat_lon_height": (
+            None if apex_coordinates is None else apex_coordinates.tolist()),
         "apex_height_km": (
-            None if apex_geocentric is None else float(apex_geocentric[2])),
+            None if apex_coordinates is None else float(apex_coordinates[2])),
         "apex_geom_path_km": apex_path,
         "apex_radial_group_velocity_km_s": (
             None if apex_state is None else _radial_group_velocity(
@@ -682,25 +804,38 @@ def integrate_fixed_path_ah3d_ecef(
         "branch_id": model.wave_mode,
         "wave_mode": model.wave_mode,
         "frequency_MHz": model.freq_MHz,
-        "gyrofrequency_MHz": model.gyro_MHz,
-        "b_ecef_hat": model.b_ecef_hat.tolist(),
-        "tx_geocentric_lat_lon_height": [
+        "gyrofrequency_MHz": float(launch_gyro_MHz),
+        "b_ecef_hat": launch_b_hat.tolist(),
+        "geomagnetic_field_semantics": "launch_value_only_local_field_used_along_path",
+        "geomagnetic_provider_hash": model.geomagnetic_provider_hash,
+        "tx_lat_lon_height": [
             float(tx_lat_deg), float(tx_lon_deg), float(tx_height_km)],
+        "tx_geocentric_lat_lon_height": (
+            [float(tx_lat_deg), float(tx_lon_deg), float(tx_height_km)]
+            if coordinate_label == "geocentric" else None),
+        "tx_geodetic_lat_lon_height": (
+            [float(tx_lat_deg), float(tx_lon_deg), float(tx_height_km)]
+            if coordinate_label == "geodetic" else None),
         "elevation_tx_deg": float(elevation_deg),
         "bearing_tx_deg": float(bearing_deg) % 360.0,
-        "coordinate_model": COORDINATE_MODEL,
+        "coordinate_model": model.coordinate_model,
         "state_semantics": STATE_SEMANTICS,
-        "earth_model": "sphere",
+        "earth_model": (
+            "WGS84" if model.coordinate_model == WGS84_COORDINATE_MODEL
+            else "sphere"),
         "earth_radius_km": model.earth_radius_km,
         "integrator": "DOP853",
         "integration_profile": profile_name,
         "integration_scope": (
-            "spherical_physical_events_C0R4" if stop_on_physical_events
+            ("wgs84_physical_events" if
+             model.coordinate_model == WGS84_COORDINATE_MODEL
+             else "spherical_physical_events_C0R4") if stop_on_physical_events
             else "fixed_physical_path_core_no_events_C0R3"),
         "accepted_steps": accepted,
         "nfev": int(solver.nfev),
         "hamiltonian_residual_max": float(residual_max),
         "dispersion_projection_correction_max": float(projection_max),
+        "dispersion_projection_enabled": bool(apply_dispersion_projection),
         "group_velocity_definition": "v_g=-D_k/D_omega",
         "group_path_definition": "c*t_group",
         "provider_hash": model.provider_hash,
@@ -734,6 +869,7 @@ def trace_ray_ah3d_ecef(
     max_path_km: float,
     medium_time_s: float = 0.0,
     profile: str | None = None,
+    apply_dispersion_projection: bool = True,
 ) -> dict:
     """Trace until ground, upper boundary, Provider grid exit, or max path."""
     return integrate_fixed_path_ah3d_ecef(
@@ -748,6 +884,7 @@ def trace_ray_ah3d_ecef(
         profile=profile,
         h_stop_km=h_stop_km,
         stop_on_physical_events=True,
+        apply_dispersion_projection=apply_dispersion_projection,
     )
 
 

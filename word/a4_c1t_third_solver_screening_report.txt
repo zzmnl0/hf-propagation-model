@@ -1,0 +1,46 @@
+A4-C1T 第三方求解器筛选与FARR后备验证报告
+日期：2026-07-28
+
+一、结论
+
+本轮未找到同时满足完整源码、明确许可、独立Hamiltonian实现、冻结外部Ne、精确C1Q几何/角度、完整轨迹状态和受控构建九项要求的第三套求解器。screening_conclusion为no_qualified_solver_use_farr_local_fullwave。
+
+当前环境不能执行Green等（2025）论文规模的FARR算例，最终状态为validation_blocked_by_build_or_compute_resources。该状态表示FARR复现仍需Linux/MPI/HPC资源，不表示C1Q差异已经闭合。
+
+二、AU-Ray与FARR
+
+AU-Ray论文描述的是合适的三维磁离子Hamiltonian求解器，但本地公开包仅含受限Linux Demo和说明，没有完整C++核心源码，也不能设置本项目四个冻结角及现有链路。因此当前AU-Ray不能称为源代码可审计的第三求解器。若作者提供完整、无限制源码，应优先重新评估。
+
+FARR源码完整、采用GPLv3，可审计其三维FDTD Maxwell-等离子体电流更新。它直接计算有限带宽电磁场，不积分Hamiltonian规范状态，也不输出与AH3D/PHaRLAP同义的单角[r,k]轨迹。FARR不能替代C1Q第三套Hamiltonian求解器，但适合验证局部截止、转向、有限带宽、衍射、散射和后续Ray-PE/全波耦合。
+
+三、其他候选
+
+1. IONORT公开仓库保存旧Fortran和翻译资料，但无明确许可证，维护说明指出旧代码不能直接可靠编译。
+2. AutoNVIS公开代码具射线状态与多种积分器，但许可证为TBD，公开说明中的dr/ds、dk/ds采用简化语义，不能作为当前规范方程争议的独立仲裁者。
+3. HamSCI PyLap是PHaRLAP的Python/C接口，核心仍调用raytrace_3d_外部二进制，缺少独立性。
+4. andersontodds/ray-trace面向VLF/磁层传播，仍处早期阶段并含固定子午面等假设。
+5. Jones-Stephenson OT Report 75-76提供理论和代码谱系，但未发现有明确现代许可证、可重复构建的完整发布。
+
+完整逐项结果见output2/a4_pharlap/c1/c1t/c1t_candidate_admission_matrix.csv和同名PNG。
+
+四、FARR后备算例
+
+已冻结论文复现契约：1 MHz、60 deg、16阵元、7.16 deg HPBW、100 kHz带宽、150 x 37.5 x 120 km计算域。论文基线采用30/25/30 m网格、4.34e-8 s时间步和25000步，并使用3000个MPI进程。论文报告FARR飞行时间0.84 ms、首跳距离127 km、到达角58 deg；对应PHaRLAP值为0.82 ms、118 km和60 deg。
+
+本次只冻结pilot、论文基线和选定加密三级配置及验收门，没有运行FDTD或生成收敛数据。原因是论文基线约300亿网格单元，当前Windows环境不具Linux MPI依赖和论文规模HPC资源。配置和成本证据见c1t_farr_reproduction_config.json、c1t_farr_reproduction_levels.csv及c1t_farr_fallback_readiness.png。
+
+复现和网格收敛数值门是结合论文表格输出精度设置的项目预验收门，不属于Green等（2025）原文声明的正式阈值。
+
+五、风险与下一步
+
+1. 保持原C1失败及C1Q不可恢复归因，不修改生产AH3D，不进入A4-C2。
+2. 优先申请可支持至少3000 MPI进程及相应内存/I/O的HPC资源，并在运行前联系FARR开发者确认论文算例输入和使用规则。
+3. 先运行pilot排除构建、HDF5输入、PML/TFSF和主瓣提取错误，再运行paper_baseline；只有基线复现通过才运行selected_refined。
+4. FARR验收只比较飞行时间、首跳距离、到达角、反射高度及主瓣能量路径，不使用C1同角射线RMS门。
+5. 若后续获得AU-Ray完整源码或其他候选通过九项硬门，再执行C1T-2三方冻结角验证。
+
+参考依据：
+
+Green, A., Longley, W. J., Oppenheim, M. M., & Young, M. A. (2025). An open source code for modeling radio wave propagation in Earth's ionosphere. Frontiers in Astronomy and Space Sciences, 12, 1521497. https://doi.org/10.3389/fspas.2025.1521497
+
+Hirvonen, E. A. O., Kauristie, K., & Kallio, E. (2025). AU-Ray program for modeling radio wave propagation in the ionosphere. Radio Science, 60, e2024RS008209. https://doi.org/10.1029/2024RS008209

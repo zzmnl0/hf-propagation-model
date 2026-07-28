@@ -1,0 +1,92 @@
+A4-C1W Windows AH3D完整O/X生产验收与PHaRLAP追溯实施计划
+日期：2026-07-28
+阶段位置：A4-C1T之后、A4-C2之前
+执行状态：H0-H6已实施；最终状态implementation_defect_identified；A4-C2未准入
+
+一、目标与边界
+
+1. 目标限定为完整冷等离子体、无碰撞、几何光学O/X Hamiltonian射线模型的生产链验收。
+2. 不宣称全波、倏逝隧穿、模式转换、强散射或绝对功率已验证。
+3. PHaRLAP 4.7.4作为项目行为标准；其预编译核心不可进行公式级源码审计。
+4. 原A4-C1 B=0高射线同角失败保持冻结，不由本阶段覆盖。
+
+二、生产调用链
+
+main.py/main2.py
+  -> UnifiedPropagationRequest
+  -> run_unified_pipeline
+  -> WGS84NeProviderAdapter + IGRFGridGeomagneticField3D
+  -> RefractiveIndexAH3DECEF
+  -> trace_ray_ah3d_ecef / find_all_rays_ah3d_ecef
+  -> local-B absorption
+  -> scatter diagnostics / P-D output
+
+正式入口不得进入legacy ray、P2P、PE或tube实现。main.py不得再次覆盖unified pipeline已经计算的局部B吸收。tests/_verify_ah3d_dispersion.py和tests/_verify_ah3d_convergence.py仅保留为legacy历史测试，不进入A4-C1W正式证据链。
+
+三、H0-H6实施内容
+
+H0 冻结与审计
+
+1. 冻结生产源码、配置、Provider、C0R/C1证据及PHaRLAP组件哈希。
+2. 复用C0R-8入口隔离结论；正式验收使用tests/_run_a4_c1w_windows_ox_validation.py和只读验收器。
+3. 输出物理能力矩阵，编码为完整实现、受控边界和未支持现象。
+
+H1 位置相关三维地磁场
+
+1. ppigrf/IGRF-14生成冻结WGS84纬经高网格，场向量转换为ECEF Tesla。
+2. AH色散、空间导数、群速度和吸收逐点查询B(r)，回旋频率由局部|B|计算。
+3. 常量B仅用于解析回归；越界和非有限查询显式拒绝。
+
+H2 WGS84生产坐标
+
+1. 规范状态保持ECEF，外部输入统一为WGS84大地纬度、经度和椭球高。
+2. 发射方向、ENU残差、Provider查询、ground事件和输出轨迹使用同一WGS84转换。
+3. 球形坐标仅保留冻结回归，不作为最终O/X生产语义。
+
+H3 O/X方程验收
+
+1. 验证真空、B趋零、平行B、垂直B及均匀磁化等离子体解析极限。
+2. 使用独立五点中心差分复核D_r、D_k和D_omega。
+3. 使用低O稳定落地射线执行DOP853收敛与色散投影开关影子重放。
+4. 非传播根、病态导数、near-cutoff和非有限状态必须显式拒绝，不能外推。
+
+H4 吸收
+
+1. 实射线轨迹保持无碰撞；碰撞吸收作为独立路径积分。
+2. 吸收逐段查询局部Ne、碰撞频率和B(r)。
+3. main.py不得覆盖unified pipeline已经完成的局部B吸收。
+
+H5 PHaRLAP追溯
+
+1. 记录README、发布限制、MATLAB帮助、C包装器、MEX和libpropagation.lib哈希。
+2. 静态库仅核对hasel_rhs_3d_、elec_mag_pderivs_3d_和ode_bosh54_符号。
+3. 不反汇编，不把MATLAB帮助或C包装器称为核心射线源码。
+4. 固定分类为behavior_traceable_core_source_unavailable。
+
+H6 行为验证
+
+1. 冻结Chapman Ne、位置相关IGRF、WGS84几何、10 MHz、零碰撞和四个同角O/X算例。
+2. PHaRLAP采用文档定义的最高精度生产配置[1e-8, 0.01, 10 km]。ray_label=-4或-100不得进入误差统计。
+3. 仅双方均ground的轨迹计算x/y/z RMS、最大误差、落点、几何程和群程门槛。
+4. penetrated、grid_exit和AH3D拒绝状态分别记录，不伪装为落点误差。
+
+四、验收门
+
+1. 解析极限误差不超过1e-10。
+2. D_r、D_k、D_omega相对误差分别不超过1e-4、1e-5和1e-5。
+3. 收敛和投影影子轨迹RMS均不超过0.1 km。
+4. 可比较ground-ground O/X轨迹RMS不超过2 km，最大误差不超过5 km，落点差不超过1 km。
+5. 几何程和群程相对差均不超过0.1%。
+6. 任一非物理数值拒绝记为implementation_defect_identified；只有明确非传播根才记为模型适用边界。
+
+五、产物
+
+1. tests/_run_a4_c1w_windows_ox_validation.py
+2. tests/_verify_a4_c1w_windows_ox.py
+3. tests/matlab/a4_c1w_pharlap_wgs84_ox.m
+4. output2/a4_pharlap/c1/c1w/中的JSON、CSV、NPZ、日志、PNG和SHA-256 manifest
+5. word/a4_c1w_windows_ah3d_ox_pharlap_trace_implementation_report.txt
+
+六、决策门
+
+当前高O算例在n2仍为正且根状态正常时因多尺度空间导数平台失稳而被拒绝，属于数值实现缺陷。下一步应修复网格节点附近的可微场表示或导数计算，并重跑H3/H6；禁止放宽稳定性阈值或经验拟合PHaRLAP。修复通过前不进入A4-C2。

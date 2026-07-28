@@ -12,6 +12,10 @@ Visualization utilities are in viz/plot_utils.py.
 import numpy as np
 from config import C_MS, C_KMS, K_FP
 
+WGS84_A_KM = 6378.137
+WGS84_F = 1.0 / 298.257223563
+WGS84_E2 = WGS84_F * (2.0 - WGS84_F)
+
 
 # ── Electromagnetic helpers ───────────────────────────────────────────────────
 
@@ -181,6 +185,70 @@ def ecef_to_geocentric(ecef_km, earth_radius_km: float) -> np.ndarray:
     return np.stack((lat, lon, radius - radius0), axis=-1)
 
 
+def geodetic_to_ecef(lat_deg, lon_deg, height_km) -> np.ndarray:
+    """WGS84 geodetic latitude/longitude/ellipsoid height -> ECEF [km]."""
+    lat, lon, height = np.broadcast_arrays(
+        np.asarray(lat_deg, dtype=float),
+        np.asarray(lon_deg, dtype=float),
+        np.asarray(height_km, dtype=float),
+    )
+    if not (np.all(np.isfinite(lat)) and np.all(np.isfinite(lon))
+            and np.all(np.isfinite(height))):
+        raise ValueError("latitude, longitude, and height must be finite")
+    if np.any((lat < -90.0) | (lat > 90.0)):
+        raise ValueError("geodetic latitude must be in [-90, 90] degrees")
+    phi = np.radians(lat)
+    lam = np.radians(_normalized_longitude_deg(lon))
+    sin_phi = np.sin(phi)
+    prime_vertical = WGS84_A_KM / np.sqrt(1.0 - WGS84_E2 * sin_phi**2)
+    return np.stack((
+        (prime_vertical + height) * np.cos(phi) * np.cos(lam),
+        (prime_vertical + height) * np.cos(phi) * np.sin(lam),
+        (prime_vertical * (1.0 - WGS84_E2) + height) * sin_phi,
+    ), axis=-1)
+
+
+def ecef_to_geodetic(ecef_km) -> np.ndarray:
+    """ECEF [km] -> WGS84 geodetic latitude/longitude/ellipsoid height."""
+    points = np.asarray(ecef_km, dtype=float)
+    if points.ndim == 0 or points.shape[-1] != 3:
+        raise ValueError("ecef_km must have final dimension 3")
+    if not np.all(np.isfinite(points)):
+        raise ValueError("ecef_km must be finite")
+    x, y, z = points[..., 0], points[..., 1], points[..., 2]
+    horizontal = np.hypot(x, y)
+    if np.any(np.hypot(horizontal, z) <= 0.0):
+        raise ValueError("ECEF position cannot be the Earth center")
+    lon = _normalized_longitude_deg(np.degrees(np.arctan2(y, x)))
+    phi = np.arctan2(z, horizontal * (1.0 - WGS84_E2))
+    for _ in range(12):
+        sin_phi = np.sin(phi)
+        prime_vertical = WGS84_A_KM / np.sqrt(
+            1.0 - WGS84_E2 * sin_phi**2)
+        height = np.where(
+            np.abs(np.cos(phi)) > 1.0e-12,
+            horizontal / np.cos(phi) - prime_vertical,
+            np.abs(z) - prime_vertical * (1.0 - WGS84_E2),
+        )
+        updated = np.arctan2(
+            z,
+            horizontal * (1.0 - WGS84_E2 * prime_vertical
+                          / np.maximum(prime_vertical + height, 1.0e-12)),
+        )
+        if np.max(np.abs(updated - phi)) < 1.0e-14:
+            phi = updated
+            break
+        phi = updated
+    sin_phi = np.sin(phi)
+    prime_vertical = WGS84_A_KM / np.sqrt(1.0 - WGS84_E2 * sin_phi**2)
+    height = np.where(
+        np.abs(np.cos(phi)) > 1.0e-12,
+        horizontal / np.cos(phi) - prime_vertical,
+        np.abs(z) - prime_vertical * (1.0 - WGS84_E2),
+    )
+    return np.stack((np.degrees(phi), lon, height), axis=-1)
+
+
 def enu_basis(lat_deg: float, lon_deg: float,
               earth_radius_km: float) -> np.ndarray:
     """Return ECEF unit vectors as columns ordered East, North, Up."""
@@ -197,6 +265,23 @@ def enu_basis(lat_deg: float, lon_deg: float,
                       -np.sin(lat) * np.sin(lon), np.cos(lat)])
     up = np.array([np.cos(lat) * np.cos(lon),
                    np.cos(lat) * np.sin(lon), np.sin(lat)])
+    return np.column_stack((east, north, up))
+
+
+def enu_basis_wgs84(lat_deg: float, lon_deg: float) -> np.ndarray:
+    """ECEF unit vectors as columns East, North, Up at a WGS84 point."""
+    lat = float(lat_deg)
+    lon = float(lon_deg)
+    if not np.isfinite(lat) or not -90.0 <= lat <= 90.0:
+        raise ValueError("geodetic latitude must be finite and in [-90, 90]")
+    if not np.isfinite(lon):
+        raise ValueError("longitude must be finite")
+    phi, lam = np.radians([lat, float(_normalized_longitude_deg(lon))])
+    east = np.array([-np.sin(lam), np.cos(lam), 0.0])
+    north = np.array([-np.sin(phi) * np.cos(lam),
+                      -np.sin(phi) * np.sin(lam), np.cos(phi)])
+    up = np.array([np.cos(phi) * np.cos(lam),
+                   np.cos(phi) * np.sin(lam), np.sin(phi)])
     return np.column_stack((east, north, up))
 
 
@@ -219,6 +304,38 @@ def launch_direction_ecef(lat_deg: float, lon_deg: float,
     ])
     direction = enu_basis(lat_deg, lon_deg, earth_radius_km) @ local
     return direction / np.linalg.norm(direction)
+
+
+def launch_direction_ecef_wgs84(lat_deg: float, lon_deg: float,
+                                elevation_deg: float,
+                                bearing_deg: float) -> np.ndarray:
+    """Unit ECEF launch direction from WGS84 geodetic elevation/bearing."""
+    elevation = float(elevation_deg)
+    bearing = float(bearing_deg)
+    if not np.isfinite(elevation) or not -90.0 <= elevation <= 90.0:
+        raise ValueError("elevation_deg must be finite and in [-90, 90]")
+    if not np.isfinite(bearing):
+        raise ValueError("bearing_deg must be finite")
+    elevation = np.radians(elevation)
+    bearing = np.radians(bearing % 360.0)
+    local = np.array([
+        np.cos(elevation) * np.sin(bearing),
+        np.cos(elevation) * np.cos(bearing),
+        np.sin(elevation),
+    ])
+    direction = enu_basis_wgs84(lat_deg, lon_deg) @ local
+    return direction / np.linalg.norm(direction)
+
+
+def rx_enu_residual_wgs84(terminal_ecef_km, rx_lat_deg: float,
+                          rx_lon_deg: float,
+                          rx_height_km: float) -> np.ndarray:
+    """Terminal-minus-receiver residual in the receiver WGS84 ENU frame."""
+    terminal = np.asarray(terminal_ecef_km, dtype=float)
+    if terminal.shape != (3,) or not np.all(np.isfinite(terminal)):
+        raise ValueError("terminal_ecef_km must be a finite length-3 vector")
+    receiver = geodetic_to_ecef(rx_lat_deg, rx_lon_deg, rx_height_km)
+    return (terminal - receiver) @ enu_basis_wgs84(rx_lat_deg, rx_lon_deg)
 
 
 def elevation_bearing_from_ecef(direction_ecef, lat_deg: float, lon_deg: float,

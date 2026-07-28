@@ -9,17 +9,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from collections import Counter
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
 
 import config as cfg
 from utils import (enu_basis, free_space_loss_dB, haversine_km,
-                   radar_equation_W, rx_enu_residual, to_dBW)
+                   radar_equation_W, rx_enu_residual,
+                   rx_enu_residual_wgs84, to_dBW)
 from .pd_spectrum import build_pd_spectrum, identify_main_mode
-from .ne_provider_geocentric import GeocentricNeProvider3D
+from .ne_provider_geocentric import (
+    GeocentricNeProvider3D,
+    WGS84NeProviderAdapter,
+)
+from .geomagnetic_field_3d import IGRFGridGeomagneticField3D
 from .point_to_point_ah_3d_ecef import find_seeded_rays_ah3d_ecef
 from .ray_tracer_ah_3d_ecef import (
+    COORDINATE_MODEL,
+    WGS84_COORDINATE_MODEL,
     RefractiveIndexAH3DECEF,
     trace_ray_ah3d_ecef,
 )
@@ -39,6 +47,8 @@ class UnifiedPropagationRequest:
     rt_config: dict = field(default_factory=lambda: dict(cfg.RT_3D))
     p2p_config: dict = field(default_factory=lambda: dict(cfg.P2P_3D))
     solver: str = "ah3d_ecef"
+    coordinate_model: str = cfg.UPDATE2.get(
+        "AH3D_COORDINATE_MODEL", WGS84_COORDINATE_MODEL)
     observable_type: str = "communication_oneway"
     pd_method: str = "gaussian"
     pd_delay_key: str = "tau_ms"
@@ -121,6 +131,51 @@ def _fixed_geomagnetic_direction_ecef(tx_geocentric) -> np.ndarray:
     return direction / np.linalg.norm(direction)
 
 
+@lru_cache(maxsize=4)
+def _igrf_grid_cached(tx_lat: float, tx_lon: float, rx_lat: float,
+                      rx_lon: float, h_stop_km: float, epoch_iso: str,
+                      margin_deg: float, horizontal_step_deg: float,
+                      height_step_km: float):
+    from datetime import datetime
+
+    lat_min = max(-90.0, min(tx_lat, rx_lat) - margin_deg)
+    lat_max = min(90.0, max(tx_lat, rx_lat) + margin_deg)
+    lon_min = min(tx_lon, rx_lon) - margin_deg
+    lon_max = max(tx_lon, rx_lon) + margin_deg
+    latitude = np.arange(lat_min, lat_max + 0.5 * horizontal_step_deg,
+                         horizontal_step_deg)
+    longitude = np.arange(lon_min, lon_max + 0.5 * horizontal_step_deg,
+                          horizontal_step_deg)
+    height = np.arange(
+        -height_step_km, h_stop_km + 2.0 * height_step_km,
+        height_step_km)
+    return IGRFGridGeomagneticField3D.from_ppigrf(
+        latitude, longitude, height, epoch=datetime.fromisoformat(epoch_iso))
+
+
+def _geomagnetic_provider(request: UnifiedPropagationRequest):
+    if request.coordinate_model != WGS84_COORDINATE_MODEL:
+        return None
+    settings = cfg.UPDATE2.get("AH3D_GEOMAG_GRID", {})
+    epoch = cfg.IRI_DT
+    return _igrf_grid_cached(
+        float(request.tx_geocentric[0]), float(request.tx_geocentric[1]),
+        float(request.rx_geocentric[0]), float(request.rx_geocentric[1]),
+        float(request.rt_config["z_stop_km"]), epoch.isoformat(),
+        float(settings.get("horizontal_margin_deg", 5.0)),
+        float(settings.get("horizontal_step_deg", 1.0)),
+        float(settings.get("height_step_km", 25.0)),
+    )
+
+
+def _physical_ne_provider(request: UnifiedPropagationRequest):
+    if request.coordinate_model == WGS84_COORDINATE_MODEL:
+        return WGS84NeProviderAdapter(request.provider)
+    if request.coordinate_model == COORDINATE_MODEL:
+        return request.provider
+    raise ValueError("unsupported AH3D coordinate model")
+
+
 def _ah_model(request: UnifiedPropagationRequest, wave_mode: str,
               profile: str) -> RefractiveIndexAH3DECEF:
     component_scales = [
@@ -131,11 +186,15 @@ def _ah_model(request: UnifiedPropagationRequest, wave_mode: str,
     ]
     spatial_fd_base_km = min(
         0.5, min(component_scales, default=30.0) / 60.0)
+    physical_provider = _physical_ne_provider(request)
+    geomagnetic_provider = _geomagnetic_provider(request)
     return RefractiveIndexAH3DECEF(
-        request.provider, earth_radius_km=request.earth_radius_km,
+        physical_provider, earth_radius_km=request.earth_radius_km,
         freq_MHz=request.freq_MHz, wave_mode=wave_mode,
         gyro_MHz=float(cfg.GEOMAG.get("fH_MHz", 0.0)),
         b_ecef_hat=_fixed_geomagnetic_direction_ecef(request.tx_geocentric),
+        geomagnetic_provider=geomagnetic_provider,
+        coordinate_model=request.coordinate_model,
         spatial_fd_base_km=spatial_fd_base_km,
         integration_profile=profile)
 
@@ -180,12 +239,19 @@ def _trace_fan(request: UnifiedPropagationRequest, wave_mode: str,
 def _nearest_ground_seeds(rays: list, rx_geocentric, count: int) -> list:
     ranked = []
     for ray in rays:
-        landing = ray.get("landing_geocentric_lat_lon_height")
+        landing = ray.get("landing_lat_lon_height")
         if ray.get("termination_status") != "ground" or landing is None:
             continue
-        error = haversine_km(
-            float(landing[0]), float(landing[1]),
-            float(rx_geocentric[0]), float(rx_geocentric[1]))
+        if ray.get("earth_model") == "WGS84":
+            residual = rx_enu_residual_wgs84(
+                np.asarray(ray["trajectory_ecef_km"])[-1],
+                float(rx_geocentric[0]), float(rx_geocentric[1]),
+                float(rx_geocentric[2]))
+            error = float(np.linalg.norm(residual[:2]))
+        else:
+            error = haversine_km(
+                float(landing[0]), float(landing[1]),
+                float(rx_geocentric[0]), float(rx_geocentric[1]))
         ranked.append((error, ray))
     ranked.sort(key=lambda item: item[0])
     return [{
@@ -254,10 +320,16 @@ def _tag_common_semantics(modes: list, request: UnifiedPropagationRequest,
         m.setdefault("ox_solver", "ah3d_ecef_hamiltonian")
         m.setdefault("group_index_model", "ah3d_dispersion_Dk_Domega")
         m.setdefault("group_path_definition", "c*t_group")
-        m.setdefault("earth_model", "sphere")
-        m.setdefault("coordinate_model", "geocentric_spherical_ECEF_state")
+        m.setdefault("earth_model", (
+            "WGS84" if request.coordinate_model == WGS84_COORDINATE_MODEL
+            else "sphere"))
+        m.setdefault("coordinate_model", request.coordinate_model)
         m.setdefault("coordinate_semantics", (
-            "input=geocentric_lat_lon_height;state=ECEF;plot=derived_ground_range_height"))
+            "input=WGS84_geodetic_lat_lon_height;state=ECEF;"
+            "plot=derived_ground_range_height"
+            if request.coordinate_model == WGS84_COORDINATE_MODEL else
+            "input=geocentric_lat_lon_height;state=ECEF;"
+            "plot=derived_ground_range_height"))
         m.setdefault("plot_coordinate_semantics",
                      "derived_great_circle_ground_range_physical_height")
         m.setdefault("theory_reference", "Appleton-Hartree; Haselgrove Hamiltonian; Jones-Stephenson 3D ray tracing")
@@ -305,7 +377,9 @@ def _add_power(modes: list, n3d, request: UnifiedPropagationRequest) -> None:
         if complex_cfg.get("enable", False):
             from .absorption_collision import complex_absorption_ecef_ray_dB
             abs_diag = complex_absorption_ecef_ray_dB(
-                m, n3d, complex_cfg, two_way=bool(radar_mode))
+                m, _physical_ne_provider(request), complex_cfg,
+                two_way=bool(radar_mode),
+                geomagnetic_provider=_geomagnetic_provider(request))
             abs_oneway_dB = float(abs_diag.get("abs_complex_dB", 0.0))
             abs_total_dB = float(abs_diag.get("abs_total_dB", abs_oneway_dB))
             abs_model = "appleton_hartree_collision_path"
@@ -423,7 +497,11 @@ def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagati
                 "physical/numerical domain: {}".format(fan_diagnostics))
         for ray in rays3d:
             ray["coordinate_semantics"] = (
-                "input=geocentric_lat_lon_height;state=ECEF;plot=derived_ground_range_height")
+                "input=WGS84_geodetic_lat_lon_height;state=ECEF;"
+                "plot=derived_ground_range_height"
+                if request.coordinate_model == WGS84_COORDINATE_MODEL else
+                "input=geocentric_lat_lon_height;state=ECEF;"
+                "plot=derived_ground_range_height")
             ray["plot_coordinate_semantics"] = (
                 "derived_great_circle_ground_range_physical_height")
             ray["oneway_or_twoway"] = (
@@ -486,12 +564,19 @@ def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagati
                         profile=final_profile)
                     if retraced.get("termination_status") != "ground":
                         continue
-                    residual = rx_enu_residual(
+                    residual_fn = (
+                        rx_enu_residual_wgs84
+                        if request.coordinate_model == WGS84_COORDINATE_MODEL
+                        else rx_enu_residual)
+                    residual_args = [
                         np.asarray(retraced["trajectory_ecef_km"])[-1],
                         float(request.rx_geocentric[0]),
                         float(request.rx_geocentric[1]),
                         float(request.rx_geocentric[2]),
-                        float(request.earth_radius_km))
+                    ]
+                    if residual_fn is rx_enu_residual:
+                        residual_args.append(float(request.earth_radius_km))
+                    residual = residual_fn(*residual_args)
                     landing_error = float(np.linalg.norm(residual))
                     if landing_error >= float(request.p2p_config["tol_km"]):
                         continue
@@ -537,12 +622,17 @@ def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagati
         main_mode, ranked, summary = None, [], {}
     traceability = {
         "scenario": request.scenario,
-        "earth_model": "sphere",
+        "earth_model": (
+            "WGS84" if request.coordinate_model == WGS84_COORDINATE_MODEL
+            else "sphere"),
         "earth_radius_km": float(request.earth_radius_km),
-        "coordinate_model": "geocentric_spherical_ECEF_state",
+        "coordinate_model": request.coordinate_model,
         "coordinate_semantics": (
-            "TX_RX=lat_lon_height;launch=elevation_bearing;state=ECEF;"
-            "plot=derived_great_circle_range_physical_height"),
+            "TX_RX=WGS84_geodetic_lat_lon_height;launch=elevation_bearing;"
+            "state=ECEF;plot=derived_ground_range_height"
+            if request.coordinate_model == WGS84_COORDINATE_MODEL else
+            "TX_RX=geocentric_lat_lon_height;launch=elevation_bearing;"
+            "state=ECEF;plot=derived_great_circle_range_physical_height"),
         "oneway_or_twoway": (
             "two_way" if request.pd_delay_key == "tau_2way_ms" else "one_way"),
         "reflection_model": "AH3D_Appleton_Hartree_Hamiltonian_ECEF",

@@ -1,0 +1,82 @@
+A4-C1T 第三方Hamiltonian求解器筛选与FARR后备验证实施计划
+生成日期：2026-07-28
+状态：C1T-0/C1T-1已实施；无合格第三套Hamiltonian求解器；C1T-3复现配置已冻结但受Linux/MPI/HPC资源阻断；A4-C2未准入
+
+一、阶段位置与目标
+
+1. 执行关系固定为：A4-C1 -> C1R -> C1-4 -> C1P -> C1Q -> C1T -> 人工决策门 -> A4-C2或后续修复。
+2. C1T只筛选独立、源代码可审计的Hamiltonian射线求解器，并准备FARR局部全波后备验证。
+3. 不修改AH3D、PHaRLAP、P2P、PE、散射、功率模块或main.py/main2.py。
+4. 原failed_c1_chapman_high_low_external_comparison和C1Q的pharlap_effective_dynamics_not_recoverable状态保持不变。
+
+二、C1T-0 冻结准入
+
+1. 冻结code/sources中的AU-Ray说明和Demo文档。
+2. 对本地FARR源码树计算排除.git、build、__pycache__及第三方googletest后的确定性SHA-256。
+3. 冻结C1T执行器、计划、报告、候选矩阵、FARR配置、状态及图像哈希。
+4. Green等（2025）和Hirvonen等（2025）已存在reference-papers.txt，不重复写入。
+
+三、C1T-1 候选求解器硬门
+
+候选必须同时满足：
+
+1. 完整求解器源码可读，不只是接口、包装器或受限二进制。
+2. 许可证明确且允许研究使用和本地复现。
+3. 独立实现Hamiltonian射线方程，不调用PHaRLAP核心。
+4. 规范方程、状态和独立变量可审计。
+5. 支持B=0、collision=0、10 MHz。
+6. 接受冻结外部Ne/Chapman场。
+7. 可精确设置C1Q四角和相同TX/RX几何。
+8. 输出完整轨迹及足够的状态/路径量。
+9. 可在受控环境重复构建。
+
+任一硬门失败即淘汰，不为不合格候选开发适配器。
+
+四、筛选结论
+
+1. AU-Ray公开包为受限Linux Demo，无完整C++核心源码，且不能复现C1Q冻结输入。
+2. FARR为完整GPLv3三维FDTD全波程序，不是Hamiltonian射线求解器，也不输出规范[r,k]轨迹。
+3. IONORT公开档案无明确许可证，旧Fortran被维护者说明为不可直接编译。
+4. AutoNVIS许可证标记为TBD，公开方程语义采用简化的dr/ds、dk/ds表达，不能直接承担C1Q规范方程仲裁。
+5. PyLap包装代码采用MIT许可证，但核心调用PHaRLAP的raytrace_3d_二进制，不具独立性。
+6. 公开Julia ray-trace仍为早期VLF/磁层程序，含子午面及特定等离子体假设。
+7. Jones-Stephenson OT 75-76只有报告/代码谱系，没有维护中的明确许可可复现发布。
+8. 结论为no_qualified_solver_use_farr_local_fullwave，不进入C1T-2三方数值计算。
+
+五、C1T-2 三方验证（条件性）
+
+只有后续出现通过九项硬门的候选，才复用C1Q冻结四角进行三方验证。不得重新求根。
+
+1. 高射线：三维轨迹RMS <= 0.5 km，最大误差和落点差 <= 1 km。
+2. 低射线：三维轨迹RMS <= 0.15 km，落点差 <= 0.2 km。
+3. 同时报告链路局部x/y/z轨迹RMS、落点、apex、几何程和群程。
+4. 无稳定两两聚类时保持未解析状态，不修改生产公式。
+
+六、C1T-3 FARR后备复现
+
+1. FARR保持为进程级外部GPLv3验证程序，不复制或链接进生产AH3D。
+2. 首个目标是Green等（2025）的1 MHz、60 deg、16阵元、100 kHz带宽、150 x 37.5 x 120 km局部算例。
+3. 论文基线网格为30/25/30 m、dt=4.34e-8 s、25000步，原研究使用3000个MPI进程。
+4. 冻结pilot_coarse、paper_baseline和selected_refined三级配置；pilot只用于排错，不参与正式验收。
+5. 论文复现门：飞行时间误差<=0.02 ms、首跳距离误差<=5 km、到达角误差<=2 deg。
+6. 网格收敛门：baseline至refined变化分别<=0.01 ms、3 km和1 deg。
+7. 上述数值门是结合论文输出精度设置的项目预验收门，不表述为Green等（2025）给出的正式阈值。
+8. FARR轨迹定义为逐时刻最大电磁能量密度主瓣位置，不能套用AH3D/PHaRLAP同角射线RMS门。
+9. 当前Windows环境不具论文规模Linux MPI/HPC资源，状态为validation_blocked_by_build_or_compute_resources；只完成配置、成本和验收契约冻结，不生成伪收敛结果。
+
+七、风险与人工门
+
+1. FARR基线约300亿网格单元，selected_refined约586亿网格单元，未经HPC配额确认不得运行。
+2. 磁化等离子体PML可能不稳定；复现时应遵循论文的边界、密度渐消或TFSF设置。
+3. 有限带宽、阵列主瓣、旁瓣和近场使FARR路径语义不同于单角几何光学射线。
+4. FARR规则要求引用原论文，并建议联系开发者；论文发表后三年内研究成果需按README提供共同作者邀请。
+5. GPLv3源码不得无审查并入生产模块。
+6. AU-Ray完整源码若后续获得，应重新进入C1T-1并优先评估。
+7. C1T完成后仍停在人工决策门，未经确认不进入A4-C2。
+
+八、产物与验收
+
+1. tests/_run_a4_c1t_screening.py生成候选CSV/JSON、FARR配置、成本图、状态和manifest。
+2. tests/_verify_a4_c1t_screening.py只读验收，不联网、不重算射线或FDTD。
+3. 输出目录为output2/a4_pharlap/c1/c1t。
+4. 最终状态只允许qualified_hamiltonian_solver_found、no_qualified_solver_use_farr_local_fullwave或validation_blocked_by_build_or_compute_resources。

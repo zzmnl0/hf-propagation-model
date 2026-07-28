@@ -1,0 +1,88 @@
+A4-C1Q 以PHaRLAP为标准的AH3D沿链路偏差归因与修复计划
+
+版本：2026-07-28
+状态：completed_pharlap_effective_dynamics_not_recoverable；生产AH3D未修改；等待人工决策
+执行位置：A4-C1 -> C1R -> C1-4 -> C1P -> C1Q -> 人工决策门 -> A4-C2或第三求解器验证
+
+一、目标与边界
+
+1. 项目验证约定以PHaRLAP 4.7.4为标准值，定位AH3D在B=0、10 MHz、无碰撞、单程Chapman高射线中约4 km沿链路累计偏差的公式或实现来源。
+2. 固定四个同角算例：21.94290326504532、21.94562872092976、39.54254824570964、39.58701138438118 deg。
+3. PHaRLAP采用已收敛配置[tolerance,min_step_km,max_step_km]=[1e-12,0.001,1]；不重新求根、不扫描角域、不覆盖原C1失败产物。
+4. 本阶段不外推到磁化O/X、复杂三维扰动、散射、PE、功率或全波，不修改main.py/main2.py。
+5. 禁止经验拟合。只有形成公式、量纲、误差预算和双高/双低回归证据链后，才允许修改生产AH3D。
+
+二、C1Q-0 冻结准入
+
+1. 复验C1、C1R、C1P全部manifest、原C1最终失败状态、1 km Chapman输入、PHaRLAP MEX及AH3D/Provider/config源码哈希。
+2. 新增独立MATLAB状态导出脚本，严格运行四个固定角并保存完整ray_data、ray_path_data和ray_state_vec；导出结果必须与C1P严格参考轨迹一致。
+3. 固定语义：PHaRLAP_truth_for_project_validation、same_angle_forward_trace、no_root_solving、one_way、B0、collision0。
+
+三、C1Q-1 沿链路误差输运闭合
+
+1. 链路局部坐标定义为：x沿TX到RX大圆方向，y为地表水平横向，z为球面径向高度。
+2. 分别按归一化几何程、公共群程和升/降支同高度比较轨迹，区分空间轨迹差与参数化差。
+3. 在公共几何程上积分dx/ds差，并显式加入不等长尾段；累计预算对最终落点dx须闭合到max(0.01 km, 1%)。
+4. 将贡献冻结为launch、ascending、apex、descending和ground_tail五段，输出x/y/z残差、切向/曲率及累计贡献图。
+
+四、C1Q-2 PHaRLAP状态、介质与常数审计
+
+1. 逐点比较|dir|^2、ray_path.refractive_index^2、由ray_path.electron_density计算的n^2，以及共同Provider的n^2。
+2. 从|dir|^2反推Ne_eff和等效等离子体频率常数，检查Hz/MHz、m^-3/cm^-3、omega/f及2*pi语义。
+3. 比较PHaRLAP state ECEF位置与path经纬高转换结果，并比较双方初始p=n*k_hat、切向、折射率和发射角。
+4. 对现有约1e-3色散残差分类为state_output、internal_field_interpolation、physical_constant、coordinate_grid_semantics或unresolved。
+
+五、C1Q-3 B=0规范方程隔离
+
+1. 在群程P'下验证dr/dP'=p、dp/dP'=0.5*grad(n^2)、p=k/k0=n*k_hat。
+2. 局部导数采用5/7/9点三次局部多项式；三窗口须形成稳定平台。
+3. 积分检查比较r-r0与integral(p dP')、p-p0与0.5*integral(grad(n^2)dP')，作为不依赖局部差分噪声的主证据。
+4. grad(n^2)分别来自PHaRLAP输出Ne重建、共同冻结Provider和解析Chapman；低射线为控制，高射线为失败对象。
+5. 候选项必须超过数值不确定度10倍且累计解释至少0.2 km沿链路偏差。
+
+六、C1Q-4 单因素影子重放
+
+1. 独立诊断变体依次为PHaRLAP初始状态、PHaRLAP有效Ne、精确B=0规范RHS、群程参数化、关闭逐步色散投影，以及有公开依据时的PHaRLAP等价插值。
+2. 每个变体报告四个同角算例的x/y/z路径RMS、三维RMS、落点、apex、几何程、群程、色散残差和相对基线关闭率。
+3. 主因要求两个高射线锚点均关闭至少80%基线x误差，且两个低射线不退化；不得组合搜索参数或只选择一个角度。
+4. PHaRLAP内部插值没有公开且无法唯一恢复时，相关变体标记not_identifiable，不得形成生产修正。
+
+七、C1Q-5 最小生产修复
+
+1. 只有C1Q-4满足主因门槛才进入本步；否则状态必须是identified_but_not_safely_repairable、pharlap_effective_dynamics_not_recoverable或multiple_unresolved_contributors。
+2. 单位/常数/色散问题只修正models/dispersion_ah.py；发射状态/RHS/参数化/投影问题只修正ECEF AH3D公共实现；网格问题只在PHaRLAP规则可文档化或唯一复核时修正Provider。
+3. 修复验收：两个高射线同角三维RMS<=0.5 km、最大及落点差<=1 km；两个低射线RMS<=0.15 km、落点差<=0.2 km；y无新增系统偏差，z不劣化；群程和几何程相对误差<=0.1%。
+4. 真空、常折射率、解析Chapman、C0R、P2P高低射线和C1全部回归。原C1失败证据保留，新结果版本化。
+
+八、C1Q-6 报告与人工决策门
+
+1. 最终状态仅允许identified_and_repaired_formula_or_implementation、identified_but_not_safely_repairable、pharlap_effective_dynamics_not_recoverable或multiple_unresolved_contributors。
+2. 若修复通过，停止于B=0人工门，由用户决定是否开展O/X对齐；不自动进入C2。
+3. 若无法唯一定位或只能经验拟合，停止AH3D修改并建议第三套可审计Hamiltonian求解器三方验证。
+
+九、产物与验收
+
+1. 输出目录为output2/a4_pharlap/c1/c1q/c1q_0至c1q_6。
+2. 每阶段保存MAT/NPZ、CSV/JSON、日志、SHA-256 manifest和有效PNG。
+3. 必须包含沿链路累计误差预算、状态/介质闭合、规范方程积分闭合、单因素关闭率矩阵和修复前后轨迹对比图。
+4. 独立无重算验收器检查来源哈希、四角配置、数值有限性、闭合关系、图像有效性、状态枚举和原C1失败不变。
+
+十、理论依据
+
+Haselgrove, C. B., & Haselgrove, J. (1960). Twisted ray paths in the ionosphere. Proceedings of the Physical Society, 75(3), 357-363.
+
+Haselgrove, J. (1963). The Hamiltonian ray path equations. Journal of Atmospheric and Terrestrial Physics, 25(7), 397-399. https://doi.org/10.1016/0021-9169(63)90173-9
+
+Bogacki, P., & Shampine, L. F. (1996). An efficient Runge-Kutta (4,5) pair. Computers & Mathematics with Applications, 32(6), 15-28. https://doi.org/10.1016/0898-1221(96)00141-1
+
+Cervera, M. A., & Harris, T. J. (2014). Modeling ionospheric disturbance features in quasi-vertically incident ionograms using 3-D magnetoionic ray tracing and atmospheric gravity waves. Journal of Geophysical Research: Space Physics, 119(1), 431-440. https://doi.org/10.1002/2013JA019247
+
+PHaRLAP 4.7.4 local documentation: src/matlab/raytrace_3d_sp.m and RELEASE_NOTES.txt.
+
+十一、实施结果（2026-07-28）
+
+1. C1Q-0至C1Q-4均完成；C1Q-5因不存在安全主因候选而未进入生产修复，C1Q-6完成最终归因。
+2. 两个高射线基线三维轨迹RMS为2.405010845 km和2.533852270 km，x方向RMS为2.295054498 km和2.419403574 km；y方向可忽略，z方向约0.47至0.49 km。
+3. PHaRLAP发射状态、精确B=0规范RHS、群程参数化和关闭色散投影均未使两个高射线达到80%关闭门；最好关闭率仅2.1353%，高射线RMS仍大于2.36 km。
+4. 由PHaRLAP轨迹输出拼接的有效Ne剖面不具唯一介质语义，四条影子轨迹均physics_domain_rejected；该结果只排除该经验重建路线，不作为生产修复依据。
+5. 最终状态为pharlap_effective_dynamics_not_recoverable。原failed_c1_chapman_high_low_external_comparison保持不变，A4-C2未准入；建议在人工确认后引入第三套可审计Hamiltonian求解器。

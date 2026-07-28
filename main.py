@@ -291,6 +291,8 @@ def _add_power_3d(modes, n3d=None, radar_mode=False, sigma_rcs=1.0):
     from utils import (free_space_loss_dB, to_dBW, radar_equation_W,
                        d_layer_absorption_dB)
     for m in modes:
+        if 'absorption_applied_once' in m:
+            continue
         gp = float(m['group_path_km'])
         if radar_mode:
             m['Pr_W'] = radar_equation_W(cfg.PT_W, cfg.GT, cfg.GR,
@@ -372,9 +374,9 @@ def _extract_es_grazing_3d(ray3d, h_Es_km):
     using spherical physical height and the local radial Up direction.
     Returns None if no crossing is found.
     """
-    traj = np.asarray(ray3d['trajectory_geocentric_lat_lon_height'], dtype=float)
+    traj = np.asarray(ray3d['trajectory_lat_lon_height'], dtype=float)
     tangents = np.asarray(ray3d['trajectory_group_tangent_ecef'], dtype=float)
-    from utils import enu_basis
+    from utils import enu_basis, enu_basis_wgs84
     for i in range(1, len(traj)):
         s0, s1 = traj[i-1], traj[i]
         z0p, z1p = float(s0[2]), float(s1[2])
@@ -383,7 +385,9 @@ def _extract_es_grazing_3d(ray3d, h_Es_km):
             direction = tangents[i - 1] + t * (tangents[i] - tangents[i - 1])
             lat = float(s0[0] + t * (s1[0] - s0[0]))
             lon = float(s0[1] + t * (s1[1] - s0[1]))
-            up = enu_basis(lat, lon, cfg.RE_KM)[:, 2]
+            up = (enu_basis_wgs84(lat, lon)[:, 2]
+                  if ray3d.get('earth_model') == 'WGS84'
+                  else enu_basis(lat, lon, cfg.RE_KM)[:, 2])
             return float(np.degrees(np.arcsin(np.clip(
                 abs(float(np.dot(direction, up)))
                 / max(float(np.linalg.norm(direction)), 1e-30),
@@ -543,7 +547,7 @@ def _plot_mode_paths(modes, Ne_2d, x_km, z_km, title='3-D Mode Paths',
                  fraction=0.046, pad=0.04)
     colors = cm.tab10(np.linspace(0, 1, max(len(modes), 1)))
     for m, c in zip(modes, colors):
-        if 'trajectory_geocentric_lat_lon_height' in m:
+        if m.get('trajectory_lat_lon_height') is not None:
             from viz.plot_utils import _mode_xz
             xs, zs = _mode_xz(m)
         elif 'points' in m:
@@ -694,7 +698,7 @@ def run_with_tid():
     betas = [float(r['beta_deg_tx']) for r in rays_mini]
     ys = []
     for ray in rays_mini:
-        landing = ray.get('landing_geocentric_lat_lon_height')
+        landing = ray.get('landing_lat_lon_height')
         ys.append(float('nan') if landing is None else float(
             n3d_tid.derive_link_coordinates(*landing)[1]))
     fig3, ax3 = plt.subplots(figsize=(8, 4))
