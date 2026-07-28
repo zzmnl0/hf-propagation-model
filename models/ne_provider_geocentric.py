@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 import numpy as np
-from scipy.interpolate import RegularGridInterpolator
+from scipy.interpolate import PchipInterpolator, RegularGridInterpolator
 
 from utils import (ecef_to_geocentric, enu_basis, geocentric_to_ecef,
                    spherical_destination)
@@ -318,7 +318,9 @@ class GeocentricLinkGridNeProvider3D(GeocentricNeProvider3D):
     def __init__(self, Ne_m3, ground_range_km, height_km, *,
                  tx_lat_deg: float, tx_lon_deg: float,
                  link_bearing_deg: float, earth_radius_km: float,
-                 fill_value_m3: float = 0.0, source_metadata: dict | None = None):
+                 fill_value_m3: float = 0.0, source_metadata: dict | None = None,
+                 vacuum_floor_height_km: float | None = None,
+                 vertical_interpolation: str = "linear"):
         self.Ne_m3 = np.asarray(Ne_m3, dtype=float)
         self.ground_range_km = np.asarray(ground_range_km, dtype=float)
         self.height_km = np.asarray(height_km, dtype=float)
@@ -328,6 +330,10 @@ class GeocentricLinkGridNeProvider3D(GeocentricNeProvider3D):
         self.earth_radius_km = float(earth_radius_km)
         self.fill_value_m3 = float(fill_value_m3)
         self.source_metadata = dict(source_metadata or {})
+        self.vacuum_floor_height_km = (
+            None if vacuum_floor_height_km is None
+            else float(vacuum_floor_height_km))
+        self.vertical_interpolation = str(vertical_interpolation)
         if (self.ground_range_km.ndim != 1 or self.height_km.ndim != 1
                 or self.Ne_m3.shape != (self.ground_range_km.size, self.height_km.size)
                 or not np.all(np.diff(self.ground_range_km) > 0.0)
@@ -336,13 +342,29 @@ class GeocentricLinkGridNeProvider3D(GeocentricNeProvider3D):
             raise ValueError("invalid range-height background grid")
         geocentric_to_ecef(
             self.tx_lat_deg, self.tx_lon_deg, 0.0, self.earth_radius_km)
+        if self.vacuum_floor_height_km is not None:
+            if (not np.isfinite(self.vacuum_floor_height_km)
+                    or self.vacuum_floor_height_km > float(self.height_km[0])
+                    or self.earth_radius_km + self.vacuum_floor_height_km <= 0.0):
+                raise ValueError(
+                    "vacuum_floor_height_km must be finite, below the data grid, "
+                    "and above the Earth centre")
+        if self.vertical_interpolation not in {"linear", "pchip"}:
+            raise ValueError("vertical_interpolation must be 'linear' or 'pchip'")
         self._interp = RegularGridInterpolator(
             (self.ground_range_km, self.height_km), self.Ne_m3,
             method="linear", bounds_error=False, fill_value=self.fill_value_m3)
+        self._pchip_coefficients = None
+        if self.vertical_interpolation == "pchip":
+            self._pchip_coefficients = PchipInterpolator(
+                self.height_km, self.Ne_m3.T, axis=0,
+                extrapolate=False).c
         self.grid_hash = _hash_arrays({
             "coordinate_system": COORDINATE_SYSTEM,
             "derived_axes": "great_circle_ground_range,physical_height",
             "earth_radius_km": self.earth_radius_km,
+            "vacuum_floor_height_km": self.vacuum_floor_height_km,
+            "vertical_interpolation": self.vertical_interpolation,
         }, self.ground_range_km, self.height_km, self.Ne_m3)
 
     def derive_link_coordinates(self, lat_deg: float, lon_deg: float,
@@ -355,15 +377,41 @@ class GeocentricLinkGridNeProvider3D(GeocentricNeProvider3D):
                           height_km: float, t: float = 0.0) -> float:
         along, _, height = self.derive_link_coordinates(
             lat_deg, lon_deg, height_km)
+        if (self.vacuum_floor_height_km is not None
+                and self.vacuum_floor_height_km <= height < self.height_km[0]):
+            return 0.0
+        if self.vertical_interpolation == "pchip":
+            if (along < self.ground_range_km[0]
+                    or along > self.ground_range_km[-1]
+                    or height < self.height_km[0]
+                    or height > self.height_km[-1]):
+                return self.fill_value_m3
+            ix = int(np.clip(
+                np.searchsorted(self.ground_range_km, along) - 1,
+                0, self.ground_range_km.size - 2))
+            iz = int(np.clip(
+                np.searchsorted(self.height_km, height) - 1,
+                0, self.height_km.size - 2))
+            x0 = self.ground_range_km[ix]
+            wx = (along - x0) / (
+                self.ground_range_km[ix + 1] - x0)
+            dz = height - self.height_km[iz]
+            coefficients = self._pchip_coefficients[:, iz, ix:ix + 2]
+            values = ((coefficients[0] * dz + coefficients[1]) * dz
+                      + coefficients[2]) * dz + coefficients[3]
+            return max(float((1.0 - wx) * values[0] + wx * values[1]), 0.0)
         return max(float(self._interp([[along, height]])[0]), 0.0)
 
     def domain_margin_geocentric(self, lat_deg: float, lon_deg: float,
                                   height_km: float) -> float:
         along, _, height = self.derive_link_coordinates(
             lat_deg, lon_deg, height_km)
+        lower_height = (
+            float(self.height_km[0]) if self.vacuum_floor_height_km is None
+            else self.vacuum_floor_height_km)
         return float(min(
             along - self.ground_range_km[0], self.ground_range_km[-1] - along,
-            height - self.height_km[0], self.height_km[-1] - height))
+            height - lower_height, self.height_km[-1] - height))
 
     def get_metadata(self) -> dict:
         frozen = {
@@ -372,6 +420,20 @@ class GeocentricLinkGridNeProvider3D(GeocentricNeProvider3D):
             "tx_lon_deg": self.tx_lon_deg,
             "link_bearing_deg": self.link_bearing_deg,
             "background_semantics": "derived_link_range_height_y_invariant",
+            "data_height_range_km": [
+                float(self.height_km[0]), float(self.height_km[-1])],
+            "propagation_height_range_km": [
+                (float(self.height_km[0])
+                 if self.vacuum_floor_height_km is None
+                 else self.vacuum_floor_height_km),
+                float(self.height_km[-1])],
+            "lower_extension_semantics": (
+                "none" if self.vacuum_floor_height_km is None
+                else "strict_zero_Ne_vacuum_below_data_grid"),
+            "interpolation": (
+                "linear_horizontal_pchip_vertical"
+                if self.vertical_interpolation == "pchip"
+                else "bilinear"),
             "grid_hash": self.grid_hash,
             "source_metadata": self.source_metadata,
         }

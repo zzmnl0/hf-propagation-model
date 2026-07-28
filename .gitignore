@@ -7,9 +7,11 @@ __pycache__/
 output/
 output2/
 word/ppt_review_jpg*/
+word/*technical_report*/
 word/*backup*
 word/~$*
 sources/au_ray_README.pdf
+work/
 
 # IDE / OS
 .vscode/

@@ -1,0 +1,91 @@
+A4-C1R高射线前向映射数值差异隔离计划
+
+版本：2026-07-23
+状态：C1R-0至C1R-5已完成；completed_c1r5_software_difference_or_unresolved；未定位可复现AH3D生产缺陷，A4-C1仍为failed_pending_c1r
+前置状态：A4-C1-3=failed_pending_c1r
+目标：在不放宽C1门槛、不改变正式Chapman参数、不先行修改生产AH3D的前提下，将高射线约4 km同角前向映射差异隔离到积分、冻结场插值、Hamiltonian导数或仍未解析的软件实现类别。
+
+一、边界
+
+1. 只使用high_pharlap_anchor=39.54254824570964 deg作为主诊断角；high_ah3d_anchor=39.58701138438118 deg仅作最终对称复核，避免重复长算例。
+2. PHaRLAP正式冻结轨迹只读复用；仅在输入/脚本/MEX哈希漂移时阻断，不自动重算。
+3. 所有A/B试验使用B=0、collision=0、10 MHz、同一球形地球和TX，保持完整Hamiltonian方程及DOP853，不降低精度。
+4. 解析Chapman Provider或解析梯度只能标记validation_only_diagnostic，不得替换正式refined_1km输入或进入生产入口。
+5. 任一诊断通过不能直接改写C1-1；生产修复后仍须重跑C1-0至C1-3及受影响回归。
+
+二、实施顺序
+
+C1R-0 冻结失败测试
+
+实施结果（2026-07-23）：passed_c1r0_failure_signature_frozen。C1-0至C1-3冻结链、生产源码及PHaRLAP原始输入哈希均无漂移；high_pharlap_anchor的RMS、最大轨迹误差和落点差精确复现为2.4100894445、3.9247869074和3.9247869686 km。
+
+1. 将C1-1 high_pharlap_anchor的RMS=2.410089 km、max=3.924787 km和落点差3.924787 km登记为不可静默变化的最小失败签名。
+2. 复验C1-0至C1-3 manifest、AH3D/Provider/config源码哈希和PHaRLAP原始MAT。
+3. 输出失败签名JSON和一张来源/状态图；未通过时停止。
+
+C1R-1 AH3D积分误差隔离
+
+实施结果（2026-07-23）：passed_c1r1_integration_not_primary。reference与验证专用refined轨迹RMS差0.00193183 km、落点差0.00305070 km，分别远低于0.1/0.2 km诊断限；对PHaRLAP的RMS仅由2.328498降至2.326569 km，不能解释约4 km高射线偏差。refined保持完整Hamiltonian、色散投影、事件和多尺度空间导数，不进入生产配置。
+
+1. 在生产research配置外增加一个仅验证使用的更严DOP853 profile；保持相同空间导数、投影、事件和Provider。
+2. 只运行high_pharlap_anchor一次reference和一次refined；保存轨迹、落点、apex、路径量、Hamiltonian残差、投影修正和事件记录。
+3. 若两配置轨迹RMS变化小于0.1 km且落点变化小于0.2 km，积分容差不作为约4 km偏差主因；否则停止并拟积分修复。
+
+C1R-2 冻结场插值隔离
+
+实施结果（2026-07-23）：passed_c1r2_frozen_field_not_primary。冻结1 km线性Provider与同参数解析Chapman Provider的轨迹RMS差0.00638406 km、落点差0.00005104 km；显著密度区节点Ne一致，梯度误差相对峰值梯度最大4.0014e-5。解析场对PHaRLAP轨迹RMS仍为2.407259 km，冻结线性表示不是主因。
+
+1. 正式分支继续读取refined_1km线性Provider；诊断分支使用相同Chapman参数的解析Ne Provider，明确标记different_field_representation_diagnostic_only。
+2. 两分支使用同一AH3D方程、导数策略、积分和事件设置，只运行high_pharlap_anchor。
+3. 比较线性网格与解析场的Ne/梯度采样、落点、轨迹和群路径变化。若变化远小于C1-1差异，则排除AH线性场表示为主因；不得用解析分支直接声明PHaRLAP一致性通过。
+
+C1R-3 Hamiltonian空间导数隔离
+
+实施结果（2026-07-23）：passed_c1r3_spatial_derivative_not_primary。同一解析Chapman场上，多尺度中心差分与验证专用解析B=0径向D_r的轨迹RMS差6.1764e-5 km、落点差4.1178e-6 km；41个路径采样点的最大梯度相对误差4.3716e-7。解析导数未关闭PHaRLAP偏差，现有空间导数不是主因。
+
+1. 在解析Chapman诊断Provider上实现验证专用解析径向Ne梯度，并据B=0色散计算解析空间Hamiltonian导数；保留现有多尺度中心差分作为对照。
+2. 对同一高射线角比较解析导数与多尺度有限差分的逐点梯度、轨迹、落点和色散残差。
+3. 若解析导数显著关闭前向映射偏差，才允许拟定生产导数修复；否则保留现有导数并转入C1R-4。
+
+C1R-4 事件与软件实现剩余归因
+
+实施结果（2026-07-23）：completed_c1r4_remaining_implementation_attribution。冻结残差在u=0.25/0.50/0.75已达1.07844/2.10125/3.23731 km，再次排除ground事件为主因。PHaRLAP公开帮助可确认Haselgrove Hamiltonian、球形地球半径、网格平滑要求和ODE容差/步长控制；MEX内部插值公式、ODE算法及源级实现不可观察，未作无证据推断。
+
+1. 复用C1-3路径中段残差，确认差异在ground事件前形成；不重复已经关闭的终端事件试验。
+2. 对照PHaRLAP公开文档与源级可见接口，核查其网格插值、射线参数化和群路径定义；不可见内部实现明确标记unobservable_external_implementation。
+3. 若C1R-1至C1R-3均不能解释偏差，结论保持software_implementation_difference_or_unresolved，不为制造通过而修改AH3D。
+
+C1R-5 决策与回归
+
+实施结果（2026-07-23）：completed_c1r5_software_difference_or_unresolved。输入、坐标/地球模型、ground事件、DOP853积分容差、冻结场表示和AH3D空间导数均已排除或排除为主因；PHaRLAP内部实现保持unobservable_external_implementation。未修改生产AH3D，未放宽C1门槛，C1-4和C2继续阻断。
+
+1. 输出逐假设supported/excluded/unresolved矩阵和证据图。
+2. 只有定位到可复现AH3D缺陷时，另拟最小生产修复；修复前先加入高射线同角失败测试。
+3. 修复后重跑C0R轻量回归、C1-0、C1-1、C1-2和C1-3；全部正式门通过才允许进入C1-4。
+4. 若未定位AH3D缺陷，维持failed_pending_c1r并记录PHaRLAP实现差异限制，不进入C2。
+
+三、计算量控制
+
+1. 主诊断角只使用一条高射线，不进行全角域扫描、仰角精细分层或P2P求根。
+2. 每个A/B阶段最多新增两条AH3D轨迹；检查点按Provider、求解器、配置和源码哈希复用。
+3. 不通过放宽积分精度、减少方程项、关闭投影或改变物理参数节省时间。
+
+四、主要风险
+
+1. 解析Chapman与冻结网格不是同一正式离散输入，只能用于误差隔离，不能进入跨软件通过率。
+2. PHaRLAP内部插值实现可能不可观察，最终归因可能停留在外部软件实现差异。
+3. 高射线对发射角敏感，所有A/B必须使用完全相同角度，禁止重新求根吸收差异。
+4. 生产代码变更会使既有冻结哈希失效；C1R诊断优先放在tests验证工具链，确认修复前不触碰main/main2和生产入口。
+
+五、完成定义
+
+1. C1R-0至C1R-5均有机器状态、来源哈希、原始数据和可视化。
+2. 积分、插值、导数和事件/外部实现类别均具有supported、excluded或unresolved证据，不使用主观归因。
+3. 未定位AH3D缺陷时不修改生产求解器；定位后也须另行确认修复方案。
+
+六、冻结产物
+
+1. 分阶段机器结果、manifest、原始轨迹和PNG位于output2/a4_pharlap/c1/c1r/c1r_0至c1r_5。
+2. 运行入口为tests/_run_a4_c1r_isolation.py，严格无重算复验入口为tests/_verify_a4_c1r_isolation.py。
+3. 六阶段均具有独立可视化；轨迹图背景只读refined_1km冻结网格，使用jet、alpha=0.5。
+4. 本阶段未新增物理参数或文献结论；PHaRLAP接口审计使用本地4.7.4公开帮助及MEX哈希，reference-papers.txt无需新增条目。

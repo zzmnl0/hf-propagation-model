@@ -1,0 +1,838 @@
+================================================================================
+短波传播参数说明书
+HF Shortwave Propagation Parameter Reference Manual
+================================================================================
+项目: 复杂电离层环境短波反射/散射混合传播机理及建模研究
+模型: 三维 Haselgrove RK4 射线追踪 + 混合传播模型
+坐标约定: x = TX水平距离[km], y = 横向偏移[km], z = 直角坐标高度[km]
+          z_phys = z - (x^2+y^2)/(2*R_E)  [地球展平修正后物理高度]
+单位约定: 距离km, 高度km, 频率MHz, 时间ms(群延迟)/s(TID), Ne m^-3
+================================================================================
+
+
+========================================
+SS1  群延迟  tau [ms]
+========================================
+
+[定义与作用]
+群延迟是无线电波从发射机经电离层折射/反射到达接收机所用的传播时间。
+是HF传播最基础的可观测量，直接对应OTH雷达测距、TDOA定位时间差。
+tau(ms) = P'(km) / c(km/ms), 其中 c = 299792.458 km/s = 299.792 km/ms
+
+[计算模式]
+- 三维各向同性: n^2 = 1 - f_p^2/f^2, Haselgrove RK4沿射线路径积分
+  适用场景: Scenario 0(基础), 1(TID), 2(Es), 5(磁场O/X)等所有场景
+- Appleton-Hartree后处理(O/X模式):
+  各向同性轨迹不变, 沿轨迹重新积分 n_{O,X} 得 P'_{O,X} = sum(ds_i / n_{O,X,i})
+  tau_{O,X} = tau_iso * (P'_{O,X} / P'_iso)
+
+[调用的计算公式]
+Haselgrove方程组(Jones & Stephenson 1975, Cartesian形式):
+  dx/ds = p_x/n, dy/ds = p_y/n, dz/ds = p_z/n
+  dp_x/ds = (1/2n)*dn^2/dx_eff, dp_z/ds = (1/2n)*dn^2/dz_eff
+  其中 dn^2/dz_eff 含地球展平项: d(n^2)/dz + 2*n^2*(z_phys+R_E)/R_E^2
+
+数值积分: 显式 RK4, 步长 ds = RT_3D['ds'] km
+群延迟: tau = sum(ds_i) / c_kms  [ms]
+  (各段弧长累加 / 光速, 非相速度路径)
+
+[配置参数]
+config.py:
+  FREQ_MHZ        : 载频 [MHz], 默认10.0
+  RT_3D['ds']     : RK4步长 [km], 默认0.5
+  RT_3D['z_max']  : 最大追踪高度 [km], 默认600
+  RT_3D['max_steps']: 最大步数, 默认6000
+  P2P_3D['tol_km']: P2P横向收敛容限 [km], 默认15
+  C_KMS           : 光速 [km/ms], 299.792
+
+[输出字段]
+mode dict:
+  'tau_ms'       : 群延迟 [ms]
+  'group_path_km': 群路径 [km]
+  'wave_mode'    : 'O'/'X'/'iso'
+
+[可视化输出]
+plot_utils.py: plot_delay_doppler() -> output/pd_spectrum_*.png
+  横轴为 tau_ms, 功率-时延谱中各模式垂直线标注
+
+[典型值]
+TX-RX距离1169km, f=10MHz:
+  单跳F2: tau ~ 4.1-4.5 ms
+  双跳: tau ~ 8-9 ms
+  O/X差: delta_tau ~ 0.01-0.05 ms
+
+
+========================================
+SS2  群路径  P' [km]
+========================================
+
+[定义与作用]
+群路径是信号沿折射路径传播的等效自由空间距离, 比几何路径长(因n<1)。
+P' = integral(ds/n) 沿射线路径
+对应雷达伪距、Friis方程路径损耗, 也是O/X磁离子分裂后处理的基量。
+
+[计算模式]
+- 3D各向同性: P'_iso = sum(ds_i / n_iso_i)
+  n_iso = sqrt(max(n2, 1e-8)), n2由_bilin2双线性插值取自预计算网格
+- AH后处理O/X: P'_{O,X} = sum(ds_i / n_{O,X,i})
+  n_{O,X}由RefractiveIndexAH.n_batch()在(x,z_phys)点计算
+
+[调用的计算公式]
+离散近似: P' = sum_i(ds_i / n_i)
+  ds_i = |r_{i+1} - r_i|  [km]
+  n_i = sqrt(n^2) at midpoint
+
+Appleton-Hartree n^2 (简化, 无旋转):
+  X = f_p^2/f^2,  Y = f_c/f
+  n^2_{O,X} = 1 - X/(1 - Y^2*sin^2(theta)/2/(1-X)
+               +/- sqrt((Y^2*sin^2(theta)/2/(1-X))^2 + Y^2*cos^2(theta)/(1-X)^2))
+  其中: f_p = 8.978*sqrt(Ne) [Hz], f_c = eB/(2*pi*m_e) [Hz]
+        theta = B与波矢夹角, 由GEOMAG字典插值
+  O模: - 号, X模: + 号
+
+群路径比: ratio_{O,X} = P'_{O,X} / P'_iso
+tau_{O,X} = tau_iso * ratio_{O,X}
+
+[配置参数]
+config.py:
+  GEOMAG = {'B_T': ..., 'dip_deg': ..., 'dec_deg': ...}
+    B_T     : 地磁场强度 [T], 默认5e-5
+    dip_deg : 磁倾角 [deg], 默认45
+    dec_deg : 磁偏角 [deg], 默认0
+  C_KMS : 光速 [km/ms]
+
+[输出字段]
+mode dict:
+  'group_path_km': P' [km]
+  ('tau_ms' = group_path_km / C_KMS)
+
+[典型值]
+几何路径: ~1200-1400 km (单跳1169km链路)
+群路径: ~1230-1360 km (约比几何路径长2-8%)
+X模群路径 < O模群路径 (X在较低Ne处反射)
+
+
+========================================
+SS3  反射高度  h_r [km] 与模式分类
+========================================
+
+[定义与作用]
+反射高度是射线轨迹中物理高度(z_phys)的最大值, 对应折射指数n->0处。
+模式分类决定传播路径类型: E/F1/F2/MH层反射或Es散射。
+
+[计算模式]
+- 3D射线最高点: h_r = max(z_phys along trajectory)
+  z_phys_i = z_cart_i - (x_i^2 + y_i^2) / (2*R_E)
+- 模式标签由 classify_mode_3d() 根据 h_r 阈值判断
+
+[调用的计算公式]
+反射高度提取:
+  h_r = max_i(z_i - (x_i^2 + y_i^2)/(2*R_E))
+
+模式分类(models/point_to_point_3d.py, classify_mode_3d):
+  h_r < 140 km -> 'E'  (E层/低电离层反射)
+  140 <= h_r < 200 km -> 'F1'
+  200 <= h_r < 300 km -> 'F2'  (正常F2层)
+  h_r >= 300 km -> 'MH'  (多跳或高层)
+  有Es参与 -> 前缀加'Es'
+
+跳数估计:
+  n_hops = round(range_km / (2 * h_r))  [近似]
+
+[配置参数]
+config.py:
+  RE_KM      : 地球半径 [km], 6371.0
+  BG_Z       : 高度网格 [km], 范围60-600, 步长1km
+  MODE_THRESH = {'E':140, 'F1':200, 'F2':300}  (内嵌于classify_mode_3d)
+
+[输出字段]
+mode dict:
+  'h_reflect_km' : 反射高度 [km]
+  'label'        : 模式字符串, 如'1F2', '2F2', '1Es', 'MH'
+  'n_hops'       : 跳数 [int]
+
+[典型值]
+E层: h_r ~ 100-140 km (夜间Es可达)
+F1层: h_r ~ 140-200 km (夏季白天)
+F2层: h_r ~ 200-350 km (最常见单跳F2)
+MH(多跳F2): h_r > 300 km 或 n_hops >= 2
+
+
+========================================
+SS4  通信接收功率  Pr_comm [dBW]
+========================================
+
+[定义与作用]
+通信场景下HF链路接收功率, 用Friis传输方程计算。
+反映链路余量, 评估通信可靠性, 功率-时延谱的Y轴。
+
+[计算模式]
+- 3D功率后处理 _add_power_3d(): 各模式均计算
+  适用: Scenario 0/1/2/3/5/6
+- Es层有额外衰减: Pr_comm *= (1 - Es_loss_factor)
+
+[调用的计算公式]
+自由空间路径损耗(以群路径P'替代几何距离):
+  L_fs_dB = 20*log10(4*pi*P'_km*1e3 / lambda_m)
+  lambda_m = c_m/f_Hz = 299792458/(freq_MHz*1e6)
+
+接收功率(Friis):
+  Pr_dBW = Pt_dBW + Gt_dBi + Gr_dBi - L_fs_dB - L_abs_dB - L_pol_dB
+
+磁通管聚焦因子修正(3D, Coleman 1997):
+  F_focus_3d = sqrt(F_focus_el * F_focus_az)
+  F_el = R_eff * dbeta/dx  (仰角散度)
+  F_az = R_eff * (2*daz) / dy  (方位角散度)
+  Pr_corrected = Pr_Friis / F_focus_3d^2
+
+D层吸收:
+  L_abs_dB = A_D * n_hops  (SS12详述)
+
+偏振损耗(O/X分裂后):
+  L_pol_dB = 3  (O或X单模各损失约3dB)
+
+[配置参数]
+config.py:
+  PT_DBW  : 发射功率 [dBW], 默认43 (20kW)
+  GT_DBI  : 发射天线增益 [dBi], 默认6
+  GR_DBI  : 接收天线增益 [dBi], 默认6
+  L_POL_DB: 偏振损耗 [dB], 默认3
+  FREQ_MHZ: 频率 [MHz]
+
+[输出字段]
+mode dict:
+  'power_dBW'    : 接收功率 [dBW]
+  'path_loss_dB' : 路径损耗 [dB]
+  'focus_factor' : 聚焦因子 F_focus_3d
+  'abs_dB'       : D层吸收 [dB]
+
+[可视化输出]
+output/pd_spectrum_comm_*.png: 功率-时延谱(通信)
+  横轴tau[ms], 纵轴Pr[dBW], 各模式Gaussian展宽
+
+[典型值]
+单跳F2, 1169km, 10MHz, Pt=20kW:
+  L_fs ~ 110-115 dB
+  Pr_comm ~ -80 to -100 dBW (含天线增益)
+
+
+========================================
+SS5  OTH雷达接收功率  Pr_radar [dBW]
+========================================
+
+[定义与作用]
+超视距雷达(OTH)场景下目标回波功率, 包含双程路径损耗和目标RCS。
+用于评估OTH探测能力与信噪比。
+
+[计算模式]
+- 3D后处理模式, 同通信功率计算
+- 雷达方程: 双程传播(去程+回程各用同一P')
+
+[调用的计算公式]
+OTH雷达方程(双程):
+  Pr_radar = Pt * Gt * Gr * lambda^2 * sigma_rcs / ((4*pi)^3 * (P'*1e3)^4)
+
+dBW形式:
+  Pr_dBW = Pt_dBW + Gt_dBi + Gr_dBi + 20*log10(lambda) + sigma_rcs_dBsm
+           - 30*log10(4*pi) - 40*log10(P'_km*1e3) - 2*L_abs_dB
+
+双程吸收:
+  L_abs_total = 2 * A_D * n_hops
+
+聚焦因子修正:
+  Pr_radar *= 1 / F_focus_3d^4  (双程, 发收各贡献F^2)
+
+[配置参数]
+config.py:
+  PT_DBW         : 雷达峰值功率 [dBW]
+  GT_DBI         : 发射天线增益 [dBi]
+  GR_DBI         : 接收天线增益 [dBi]
+  SIGMA_RCS_DBM2 : 目标RCS [dBm^2], 默认0 (1 m^2)
+  FREQ_MHZ       : 频率
+
+[输出字段]
+mode dict:
+  'power_radar_dBW' : 雷达接收功率 [dBW]
+  'range_km'        : 目标斜距 [km] (= P'/2)
+
+[可视化输出]
+output/pd_spectrum_radar_*.png: 雷达功率-时延谱
+  横轴tau[ms]/2对应单程时延, 纵轴Pr_radar[dBW]
+
+[典型值]
+目标sigma=1m^2, 单跳F2, 1169km:
+  Pr_radar ~ -130 to -150 dBW
+  需要高增益天线阵和长积累时间
+
+
+========================================
+SS6  Es层传播参数 (Hao 2017三段模型)
+========================================
+
+[定义与作用]
+偶发E层(Sporadic-E, Es)对HF传播的影响: 反射、散射或混合。
+依据临频 foEs 与载频 f 的比值分三段, 给出Es层反射率、散射截面和附加时延。
+
+[计算模式]
+- Scenario 2 (Es only) 及 Scenario 7 (full hybrid)
+- 调用 models/es_model.py: EsModel.compute()
+- 输入: foEs[MHz], f[MHz], Es层高度h_Es[km], 厚度L_Es[km]
+
+[调用的计算公式]
+Hao 2017三段分类参数 alpha:
+  alpha = f / foEs
+  alpha < 0.7  -> 反射模式 (Es完全反射)
+  0.7<=alpha<1.2 -> 过渡模式 (反射+散射混合)
+  alpha >= 1.2 -> 散射模式 (Es散射穿透)
+
+反射功率系数(反射模式):
+  |rho|^2 = exp(-alpha^2 * (f/foEs)^2 * delta_h^2 / L_Es^2)
+  delta_h = 梯度层厚度参数
+
+散射截面(散射模式):
+  sigma_Es = sigma_0 * (foEs/f)^4 * exp(-(foEs/f-1)^2/sigma_w^2)
+  sigma_0: 归一化散射强度 (config中设置)
+
+混合系数(过渡段):
+  P_refl = (1-alpha_norm) * |rho|^2 * Pt
+  P_scat = alpha_norm * sigma_Es / (4*pi*r^2)
+  total: P_Es = P_refl + P_scat
+
+Es附加时延:
+  delta_tau = (1-alpha) * L_Es / c  [穿透时额外路径]
+  tau_with_Es = tau_F2 + delta_tau
+
+[配置参数]
+config.py:
+  ES_FO_MHZ   : Es临频 foEs [MHz], 默认8.0
+  ES_H_KM     : Es层高度 [km], 默认110
+  ES_THICK_KM : Es层厚度 [km], 默认2.0
+  ES_SIGMA0   : 散射归一化强度, 默认1e-3
+
+[输出字段]
+mode dict:
+  'es_mode'      : 'reflect'/'scatter'/'mixed'
+  'es_alpha'     : alpha = f/foEs
+  'es_refl_coef' : 反射功率系数 |rho|^2
+  'es_scat_cs'   : 散射截面 sigma_Es [m^2]
+  'delta_tau_ms' : Es附加时延 [ms]
+
+[可视化输出]
+output/es_propagation_*.png: Es层传播示意
+  显示三段分类区间, alpha分布与功率系数曲线
+
+[典型值]
+foEs=8MHz, f=10MHz -> alpha=1.25 -> 散射模式
+foEs=12MHz, f=10MHz -> alpha=0.83 -> 过渡模式
+Es层附加时延: delta_tau ~ 0.01-0.1 ms
+
+
+========================================
+SS7  功率-时延谱  P-D Spectrum
+========================================
+
+[定义与作用]
+功率-时延谱(Power-Delay Spectrum)将各传播模式的功率按群延迟分布展示。
+是OTH雷达信号处理和HF通信信道仿真的核心输出。
+横轴: 群延迟tau[ms], 纵轴: 功率密度[dBW/ms]
+
+[计算模式]
+- Gaussian模式(通信): 每个模式贡献一个Gaussian峰
+- 管道模式(雷达): 基于射线管截面积的功率加权
+
+[调用的计算公式]
+Gaussian展宽(通信场景):
+  pd(tau) = sum_i [ Pr_i * G(tau; tau_i, sigma_i) ]
+  G(tau; mu, sigma) = exp(-(tau-mu)^2 / (2*sigma^2)) / (sqrt(2*pi)*sigma)
+  sigma_i = delta_tau_spread_ms  (电离层色散展宽, 约0.02-0.1 ms)
+
+射线管功率密度(雷达场景):
+  pd_tube(tau) = Pr_i / (A_tube_i * delta_tau_i)
+  A_tube = dx_tube * dy_tube  [km^2]  (射线管横截面积)
+  delta_tau = tau_{i+1} - tau_{i-1}   [相邻模式时延差]
+
+功率-多普勒扩展:
+  若目标有径向速度v -> 多普勒偏移f_D = 2*v*cos(theta)/lambda
+  P-D-Doppler: pd(tau, f_D) = 二维功率分布
+
+[配置参数]
+config.py:
+  PD_TAU_BINS  : 时延轴bin数, 默认500
+  PD_TAU_RANGE : [tau_min, tau_max] [ms], 默认[0, 20]
+  PD_SIGMA_MS  : Gaussian展宽sigma [ms], 默认0.05
+  PD_DOPPLER   : 是否计算多普勒轴, 默认False
+
+[输出字段]
+plot返回:
+  tau_axis [ms]  : 时延轴向量
+  pd_linear      : 功率密度 [W/ms]
+  pd_dB          : 功率密度 [dBW/ms]
+  mode_list      : 各模式 (tau, Pr, label) 列表
+
+[可视化输出]
+output/pd_spectrum_comm_*.png  : 通信功率-时延谱
+output/pd_spectrum_radar_*.png : 雷达功率-时延谱
+  标注各模式标签(1F2/2F2/Es等), 颜色区分O/X模式
+
+[典型值]
+单跳F2 1169km: 主峰 tau~4.1-4.5ms, 半宽~0.1ms
+双跳F2: 次峰 tau~8-9ms, 功率低约10-15dB
+Es模式: tau~3.5-4.0ms (低反射高度)
+
+
+========================================
+SS8  O/X磁离子模式时延差  delta_tau_OX [ms]
+========================================
+
+[定义与作用]
+地磁场将HF波分裂为O(寻常)和X(非寻常)两个磁离子模式。
+两模式群速度不同 -> 时延差 delta_tau = tau_O - tau_X。
+O/X分裂是HF定位误差源之一(约0.01-0.1ms), 也可用于磁场反演。
+
+[计算模式]
+- 3D后处理: 在3D各向同性轨迹上重新积分AH折射指数
+- 入口: _apply_OX_split_3d() in main.py
+- 每个各向同性模式 -> 生成1个O模 + 1个X模(若X模有效)
+
+[调用的计算公式]
+Appleton-Hartree折射指数(完整形式):
+  n^2_{O,X} = 1 - X / (1 - Y_T^2/(2*(1-X))
+               +/- sqrt( (Y_T^2/(2*(1-X)))^2 + Y_L^2/(1-X)^2 ))
+  X = f_p^2 / f^2 = Ne*e^2 / (eps_0*m_e*(2*pi*f)^2)
+  Y_T = f_c * sin(theta) / f  (垂直分量)
+  Y_L = f_c * cos(theta) / f  (纵向分量)
+  f_c = e*B / (2*pi*m_e)  约1.4 MHz (B=50000 nT)
+  theta: 波矢与B场夹角
+
+群路径积分:
+  P'_O = sum_i(ds_i / n_{O,i})
+  P'_X = sum_i(ds_i / n_{X,i})
+  ratio_O = P'_O / P'_iso, ratio_X = P'_X / P'_iso
+  tau_O = tau_iso * ratio_O
+  tau_X = tau_iso * ratio_X
+
+时延差:
+  delta_tau = tau_O - tau_X  (通常 tau_O > tau_X)
+  X模在较低Ne处截止(X截止频率 > O截止频率)
+  -> X模反射点较低 -> P'_X < P'_O -> tau_X < tau_O
+
+X模有效性检验:
+  若沿轨迹超过50%的点 n_X > 1e-3 -> X模有效, 加入结果
+
+[配置参数]
+config.py:
+  GEOMAG = {
+    'B_T'    : 5e-5,    # 地磁场强度 [T]
+    'dip_deg': 45.0,    # 磁倾角 [deg]  (正值向下)
+    'dec_deg': 0.0      # 磁偏角 [deg]
+  }
+  FREQ_MHZ: 载频
+
+[输出字段]
+mode dict (O模):
+  'wave_mode' : 'O'
+  'tau_ms'    : tau_O [ms]
+mode dict (X模):
+  'wave_mode' : 'X'
+  'tau_ms'    : tau_X [ms]
+
+[典型值]
+f=10MHz, B=50uT, dip=45deg:
+  delta_tau ~ 0.01-0.05 ms (单跳F2)
+  验证示例: tau_O=4.154ms, tau_X=4.144ms, delta_tau=0.010ms
+
+
+========================================
+SS9  磁通管聚焦因子  F_focus (Coleman 1997/1998)
+========================================
+
+[定义与作用]
+磁通管聚焦因子描述射线束在传播过程中横截面积的变化。
+F_focus > 1: 聚焦(Ne梯度汇聚射线) -> 接收功率增加
+F_focus < 1: 散焦 -> 功率减小
+3D模型同时计算仰角(el)和方位角(az)两个方向的聚焦。
+
+[计算模式]
+- 3D射线管方法: 相邻射线对之间的横截面积比
+- 入口: _add_power_3d() in main.py
+- 需要发射 el+/-del, az+/-daz 各偏移一对射线
+
+[调用的计算公式]
+Coleman (1997) 射线管公式:
+  仰角聚焦:
+    F_el = R_eff * |d_beta / d_x|
+    d_beta = 仰角变化量 [rad]
+    d_x    = 相邻射线落地点x距离差 [km]
+    R_eff  = 有效地球半径 ~ R_E = 6371 km
+
+  方位角聚焦:
+    F_az = R_eff * (2 * d_az) / d_y
+    d_az = 方位角扰动量 [rad]
+    d_y  = 相邻射线落地点y横向距离差 [km]
+
+  3D综合聚焦因子:
+    F_focus_3d = sqrt(F_el * F_az)
+
+  接收功率修正:
+    Pr_3d = Pt * Gt * Gr * lambda^2 / (4*pi * A_tube * F_focus_3d^2 * ...)
+
+射线扰动量设置:
+  d_el = RT_3D['del_el_deg'] [deg]
+  d_az = RT_3D['del_az_deg'] [deg]
+
+[配置参数]
+config.py:
+  RT_3D = {
+    'del_el_deg': 0.1,     # 仰角扰动 [deg]
+    'del_az_deg': 0.1,     # 方位角扰动 [deg]
+    'el_range'  : [5, 50], # 仰角扫描范围
+    'az_range'  : [-30,30],# 方位角扫描范围
+    'n_el'      : 46,
+    'n_az'      : 13,
+  }
+  RE_KM: 地球半径
+
+[输出字段]
+mode dict:
+  'focus_el'      : F_el 仰角聚焦因子
+  'focus_az'      : F_az 方位角聚焦因子
+  'focus_3d'      : F_focus_3d 综合聚焦因子
+  'A_tube_km2'    : 射线管截面积 [km^2]
+  'focus_dB'      : 10*log10(F_focus_3d^2) [dB]
+
+[可视化输出]
+output/focus_factor_*.png: 聚焦因子随仰角/距离变化
+  等高线图: x轴=距离[km], y轴=F_focus[dB]
+
+[典型值]
+正常F2单跳: F_focus ~ 0.5-2.0 (聚焦效应 +/-3 dB)
+TID扰动下: F_focus波动 +/-5 dB
+强聚焦(近截止): F_focus > 10 (>10 dB增强)
+
+
+========================================
+SS10  Born弱散射  (Born Approximation)
+========================================
+
+[定义与作用]
+当电子密度扰动较弱(delta_Ne/Ne < 10%)时, 不规则体对HF的单次散射。
+Born近似给出散射功率谱, 用于电离层闪烁弱散射分析。
+适用条件: 相位屏方差 sigma_phi^2 < 0.1
+
+[计算模式]
+- Scenario 3 (plasma bubble) 中弱散射分量
+- 调用 models/pe_propagator.py: BornScatter.compute()
+- 与PE/SSF强散射结果按 sigma_phi^2 阈值混合
+
+[调用的计算公式]
+散射体积元散射截面(Born):
+  sigma_v = r_e^2 * (2*pi)^3 * Phi_Ne(kappa_B)
+  r_e = 2.818e-15 m (经典电子半径)
+  kappa_B = 2*k_0 = 4*pi*f/c  (Bragg散射波数)
+  Phi_Ne(kappa): 电子密度功率谱, 取von Karman谱:
+    Phi_Ne(kappa) = C_Ne * (kappa^2 + kappa_0^2)^{-(p/2+3/2)}
+    C_Ne: 谱强度, p: 谱指数(典型3.67), kappa_0=2*pi/L_outer
+
+总散射功率:
+  P_scat_Born = Pt * Gt^2 * lambda^2 * sigma_v * V_scat / (4*pi)^3 / R^4
+  V_scat: 散射体积 [m^3]
+
+相位方差(弱散射检验):
+  sigma_phi^2 = r_e^2 * lambda^2 * C_s * delta_L * L_outer^{p-1}
+  C_s: 结构参数, delta_L: 沿路径穿越不规则层厚度
+
+阈值判断(models/pe_propagator.py):
+  sigma_phi^2 < 0.1   -> Born弱散射
+  0.1 <= sigma_phi^2 < 10 -> Rytov中等散射 (SS11)
+  sigma_phi^2 >= 10   -> MPS强散射(PE/SSF)
+
+[配置参数]
+config.py:
+  BUBBLE = {
+    'C_s'     : 1e-3,   # 电子密度结构参数
+    'L_outer' : 10.0,   # 外尺度 [km]
+    'p_spec'  : 3.67,   # 谱指数
+    'delta_L' : 50.0,   # 不规则层厚度 [km]
+  }
+  FREQ_MHZ
+
+[输出字段]
+scatter result:
+  'sigma_phi2'    : 相位屏方差
+  'scatter_regime': 'Born'/'Rytov'/'MPS'
+  'sigma_v'       : 散射截面 [m^-1]
+  'P_scat_dBW'    : 散射功率 [dBW]
+
+[典型值]
+弱扰动(C_s=1e-4): sigma_phi^2 ~ 0.05 -> Born
+中等扰动(C_s=1e-3): sigma_phi^2 ~ 0.5-2 -> Rytov
+强等离子体泡: sigma_phi^2 > 10 -> MPS/PE
+
+
+========================================
+SS11  Rytov闪烁参数 & 相位/时延抖动
+========================================
+
+[定义与作用]
+中等散射强度下(0.1 < sigma_phi^2 < 10)用Rytov方法计算:
+  - 幅度闪烁指数 S4 (均方根强度起伏/平均强度)
+  - 相位闪烁指数 sigma_phi [rad]
+  - 时延抖动 sigma_tau [ms] (定位误差贡献)
+适用于TID/不规则体引起的中等闪烁分析。
+
+[计算模式]
+- 不规则体参数满足 0.1 <= sigma_phi^2 < 10 时自动选用
+- 调用 models/pe_propagator.py: RytovScatter.compute()
+- 可与PE强散射混合使用(按sigma_phi^2插值权重)
+
+[调用的计算公式]
+S4闪烁指数(Rino 1979/Carrano改进):
+  S4^2 = 8*pi * r_e^2 * lambda^2 * C_s * delta_L
+         * (k_F)^{2-p} / (2*(p-2)) * F_geom
+  k_F = sqrt(k_0 / (2*z_scat))  (菲涅耳波数)
+  z_scat: 到散射层距离 [km]
+  F_geom: 几何因子(卫星/地面链路不同)
+
+相位闪烁指数:
+  sigma_phi^2 = r_e^2 * lambda^2 * C_s * delta_L * L_outer^{p-1}
+  sigma_phi = sqrt(sigma_phi^2)  [rad]
+
+时延抖动(定位误差):
+  sigma_tau = sigma_phi / (2*pi*f)  [s]
+  sigma_tau_ms = sigma_tau * 1e3   [ms]
+
+群路径附加展宽:
+  delta_tau_rms = sigma_tau_ms  (等效定位误差)
+  对应距离误差: delta_R = c * sigma_tau_ms / 2  [km]
+
+多普勒展宽:
+  sigma_fD = sigma_phi_dot / (2*pi)  [Hz]
+  sigma_phi_dot ~ sigma_phi * v_TID / L_outer  [rad/s]
+
+[配置参数]
+config.py:
+  BUBBLE 或 TID_PARAMS:
+    'C_s'      : 结构参数 [m^{-2p-3}]
+    'L_outer'  : 外尺度 [km]
+    'p_spec'   : 谱指数, 通常3.67
+    'delta_L'  : 穿越不规则层厚度 [km]
+  RT_3D['ds'] : 采样步长(影响z_scat精度)
+
+[输出字段]
+scatter result:
+  'S4'            : 幅度闪烁指数 (无量纲, 0-1+)
+  'sigma_phi_rad' : 相位闪烁指数 [rad]
+  'sigma_tau_ms'  : 时延抖动 [ms]
+  'sigma_fD_Hz'   : 多普勒展宽 [Hz]
+  'scatter_regime': 'Rytov'
+
+[可视化输出]
+output/scintillation_*.png: 闪烁指数分布
+  S4等高线图叠加在Ne背景上
+
+[典型值]
+弱闪烁: S4 < 0.3, sigma_tau < 0.01 ms
+中等闪烁: S4 ~ 0.3-0.7, sigma_tau ~ 0.01-0.1 ms
+强闪烁(饱和): S4 -> 1.0, sigma_tau > 0.1 ms
+定位误差: sigma_tau=0.05ms -> delta_R ~ 7.5 km
+
+
+========================================
+SS12  D层吸收  A_D [dB]
+========================================
+
+[定义与作用]
+HF波穿越D层(60-90km)时因碰撞损耗产生的吸收衰减。
+是决定白天HF可用频段下限的主要因素, 影响所有穿越D层的模式。
+
+[计算模式]
+- 所有场景在计算接收功率时自动计入
+- 依据太阳天顶角chi和有效频率f_eff参数化
+- 跳数n_hops决定穿越D层次数
+
+[调用的计算公式]
+Sen-Wyller吸收公式(简化, Ratcliffe形式):
+  A_D = A_0 * cos(chi)^0.75 / (f_eff^2 * sin(beta))
+  A_0     : 归一化吸收系数 [dB]  (由太阳活动和季节决定)
+  chi     : 太阳天顶角 [deg]
+  f_eff   = f + f_c*cos(alpha)  有效频率(含磁场修正)
+  beta    : 射线入射仰角 [deg]  (高仰角吸收小)
+  sin(beta) ~ h_r / P'  近似
+
+每跳吸收:
+  A_total = A_D * n_hops  [dB]
+
+夜间(chi > 90 deg):
+  A_D ~ 0  (D层消散, 夜间HF传播距离远)
+
+太阳活动修正:
+  A_0 -> A_0 * (1 + 0.1*(SSN-50)/50)  SSN: 太阳黑子数
+
+[配置参数]
+config.py:
+  ABS_A0           : 归一化吸收 [dB], 默认5.0
+  SOLAR_ZENITH_DEG : 太阳天顶角 [deg], 默认30
+  FREQ_MHZ
+  GEOMAG['B_T']    : 影响f_eff
+
+[输出字段]
+mode dict:
+  'abs_dB'       : 单程D层吸收 [dB]
+  'abs_total_dB' : 总吸收(双程雷达用2倍)
+  'chi_deg'      : 太阳天顶角
+
+[典型值]
+f=10MHz, chi=30deg, beta=15deg, 单跳:
+  A_D ~ 3-8 dB (白天)
+  A_D ~ 0-0.5 dB (夜间)
+  双跳附加: +3-8 dB
+
+
+========================================
+SS13  横向偏移  y_land [km] 与方位角偏转
+========================================
+
+[定义与作用]
+TID(行进电离层扰动)含横向(cross-path)波数分量k_y时, 射线在y方向(垂直大圆平面)发生偏转。
+横向偏移y_land是三维射线追踪特有输出, 2D模型无法给出。
+在定位应用中: y_land -> 方位角误差 -> 水平定位误差。
+
+[计算模式]
+- 仅3D射线追踪输出此量
+- 当 TID_PARAMS['k_y_per_km'] != 0 时产生明显y偏移
+- TID预合并入Ne_2d后, k_y效应体现在Ne x方向梯度中
+- 3D Haselgrove方程自动计算y方向折射
+
+[调用的计算公式]
+3D Haselgrove y方向:
+  dy/ds = p_y / n
+  dp_y/ds = (1/(2n)) * dn^2/dy
+
+TID引入的横向梯度:
+  dNe/dy = dNe/dx * sin(phi_TID) / cos(phi_TID)
+  phi_TID: TID传播方向与x轴夹角
+
+地面横向偏移:
+  y_land = 射线落地点y坐标 [km]
+  (正值: 北偏, 负值: 南偏, 取决于TID方向)
+
+方位角偏转:
+  delta_az_deg = arctan(y_land / x_land) * 180/pi
+  小角近似: delta_az_deg ~ y_land / x_land * 57.3
+
+定位误差(方位角测量):
+  位置误差 = R * sin(delta_az) ~ R * delta_az [rad]
+  R = TX到目标距离 [km]
+
+[配置参数]
+config.py:
+  TID_PARAMS = {
+    'amplitude'     : 0.1,   # TID幅度 (delta_Ne/Ne_0)
+    'wavelength_km' : 300,   # TID水平波长 [km]
+    'period_s'      : 1800,  # TID周期 [s]
+    'direction_deg' : 0,     # TID传播方向(0=正东)
+    'k_y_per_km'    : 0.0,   # 横向波数 [rad/km]  (非零时产生y偏移)
+  }
+  TX_POS: [x_km, y_km, z_km]  (y=0 for in-plane TX)
+  RX_POS: [x_km, y_km, z_km]  (y=0 for in-plane RX)
+
+[输出字段]
+mode dict:
+  'y_land_km'      : 射线横向落点 [km]
+  'az_deflect_deg' : 方位角偏转 [deg]
+
+ray dict (shoot_rays_fan_3d返回):
+  ray['y_end']     : 射线最终y坐标 [km]
+  ray['y_max']     : 轨迹最大y偏移 [km]
+
+[可视化输出]
+output/ray_fan_3d_*.png: 三维射线扇面图
+  俯视图显示y_land分布, 颜色代表偏转量
+
+[典型值]
+无TID或k_y=0: y_land < 0.1 km (数值误差)
+TID振幅10%, k_y=0.01 rad/km, 1169km链路:
+  y_land ~ 5-30 km
+  delta_az ~ 0.25-1.5 deg
+  对应定位误差 ~ 5-30 km (1000km处)
+
+
+================================================================================
+附录A  模型整体流程简图
+================================================================================
+
+TX [cfg.TX_POS]
+ |
+ |---> IonosphereModel.build_Ne_field(BG_X, BG_Z)
+ |       IRI2016背景 + TID扰动(baked) + Es层 + 等离子体泡
+ |       输出: Ne_2d [m^-3], shape=(len(BG_X), len(BG_Z))
+ |
+ |---> RefractiveIndex3D(Ne_2d, BG_X, BG_Z, FREQ_MHZ)
+ |       预计算 n^2网格, _bilin2快速插值, 预计算dn^2/dx, dn^2/dz梯度
+ |
+ |---> shoot_rays_fan_3d(TX_POS, n3d, FREQ_MHZ, RT_3D)
+ |       发射扇形射线簇, Haselgrove RK4, 输出 rays3d列表
+ |
+ |---> find_all_rays_3d(TX_POS, RX_POS, n3d, FREQ_MHZ, P2P_3D, rays_fan=rays3d)
+ |       温启动(fan warm-start, n_init=6), 牛顿迭代收敛
+ |       输出: modes_iso (各向同性模式列表)
+ |
+ |---> _add_power_3d(modes_iso)          [SS4/SS5/SS9]
+ |       Friis方程, 3D聚焦因子, D层吸收
+ |
+ |---> _apply_OX_split_3d(modes_iso)    [SS8]
+ |       AH后处理: O/X群路径比, tau_O/tau_X
+ |
+ |---> EsModel.compute() [可选]          [SS6]
+ |       Hao 2017三段模型, Es反射/散射系数
+ |
+ |---> plot_delay_doppler()              [SS7]
+ |       功率-时延谱 -> output/pd_spectrum_*.png
+ |
+RX [cfg.RX_POS]
+
+
+================================================================================
+附录B  关键配置参数速查表
+================================================================================
+
+参数名称              config.py键名            单位    典型值       影响
+--------------------  -----------------------  ------  -----------  ------------------
+载频                  FREQ_MHZ                 MHz     10.0         所有传播参数
+TX位置                TX_POS                   km      [0,0,0]      射线追踪起点
+RX位置                RX_POS                   km      [1169,0,0]   P2P收敛目标
+水平网格              BG_X                     km      0:10:2000    Ne背景分辨率
+高度网格              BG_Z                     km      60:1:600     Ne背景分辨率
+地球半径              RE_KM                    km      6371.0       展平修正
+光速                  C_KMS                    km/ms   299.792      群延迟换算
+RK4步长               RT_3D['ds']              km      0.5          精度/速度
+P2P温启动数           P2P_3D['n_init']         -       6            收敛速度
+P2P收敛容限           P2P_3D['tol_km']         km      15           精度要求
+发射功率              PT_DBW                   dBW     43           接收功率
+天线增益              GT_DBI/GR_DBI            dBi     6            接收功率
+地磁场强度            GEOMAG['B_T']            T       5e-5         O/X分裂
+磁倾角                GEOMAG['dip_deg']        deg     45           O/X分裂
+TID振幅               TID_PARAMS['amplitude']  -       0.1          TID扰动强度
+TID波长               TID_PARAMS['wavelength_km'] km   300          TID空间尺度
+TID方向               TID_PARAMS['direction_deg'] deg  0            横向偏移y_land
+Es临频                ES_FO_MHZ                MHz     8.0          Es三段分类
+Es高度                ES_H_KM                  km      110          Es反射高度
+太阳天顶角            SOLAR_ZENITH_DEG         deg     30           D层吸收
+
+
+================================================================================
+附录C  输出文件命名规则
+================================================================================
+
+output/ne_background_*.png      : Ne背景场4面板图
+output/ray_fan_3d_*.png         : 3D射线扇面图(xz剖面 + xy俯视)
+output/pd_spectrum_comm_*.png   : 通信功率-时延谱
+output/pd_spectrum_radar_*.png  : 雷达功率-时延谱
+output/es_propagation_*.png     : Es层传播特性
+output/scintillation_*.png      : 闪烁指数分布
+output/focus_factor_*.png       : 聚焦因子分布
+  * = scenario编号或时间戳
+
+================================================================================
+文档结束
+================================================================================

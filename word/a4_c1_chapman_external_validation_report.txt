@@ -1,0 +1,43 @@
+A4-C1 Chapman F2无磁高/低射线PHaRLAP外部验证报告
+
+日期：2026-07-24
+机器状态：failed_c1_chapman_high_low_external_comparison
+来源集合短哈希：8b963327d56a
+
+一、验证范围
+
+1. 本阶段比较PHaRLAP 4.7.4与AH3D在同一冻结Chapman F2电子密度网格上的单程射线结果：10 MHz、B=0、碰撞关闭、球形地心纬经高输入、ECEF内部状态。
+2. C1-1固定相同发射角，直接比较两套求解器的前向轨迹；C1-2比较双方独立冻结根，只作为P2P端点约束诊断。
+3. 本结论不验证O/X分裂、复杂三维扰动、散射、Ray-PE、全波或绝对功率。
+
+二、原始输出与统一比较
+
+1. PHaRLAP原始MAT、AH3D原始NPZ/JSON、运行日志、冻结输入和源码均保留，未对轨迹执行配准、平移、旋转或缩放。
+2. 正式轨迹按累计几何路径归一化至u=0..1的201点，在ECEF中逐点直接相减；轨迹RMS门为2 km，最大误差门为5 km。
+3. 低射线两个公共角的轨迹RMS为0.105514 km和0.106068 km，全部正式门通过。
+4. 高射线PHaRLAP锚点和AH3D锚点的轨迹RMS分别为2.410089 km和2.527629 km，超过2 km门；对应最大误差为3.924787 km和4.120326 km，仍低于5 km门。
+5. 双方独立高射线根经端点约束后的轨迹RMS为0.140578 km，但该结果包含不同发射角补偿，不能覆盖同角失败。
+
+三、差异归因
+
+1. C1R已排除或排除为主因：冻结输入、坐标/地球模型、ground事件、DOP853积分容差、冻结场线性表示和AH3D多尺度Hamiltonian空间导数。
+2. PHaRLAP MEX内部插值、ODE和独立变量参数化不可观察，未定位可复现的AH3D生产缺陷；剩余状态为software_difference_or_unresolved。
+3. 未修改生产AH3D，未放宽门槛，也未用C1-2独立根结果覆盖C1-1失败。
+
+四、门槛状态与结论
+
+1. 正式失败项只有C1-1两组high_ray的trajectory_rms_3d_km；其他同角正式门及重复性门通过。
+2. A4-C1最终状态为failed，而非blocked或passed。
+3. 不允许进入A4-C2正式O/X验收；若后续运行C2，只能在另行确认后标记为诊断性结果。
+
+五、冻结与复验
+
+1. 机器产物位于output2/a4_pharlap/c1/final，包括a4_c1_validation.json、指标CSV、轨迹残差NPZ、来源清单、图像来源清单、三张可视化和freeze manifest。
+2. tests/_verify_a4_c1_finalize.py执行严格无重算复验；任一输入、源码、MEX、原始输出、比较结果或图像SHA-256漂移均拒绝恢复。
+3. 理论依据及完整论文格式沿用word/reference-papers.txt中的Haselgrove（1955）、Haselgrove与Haselgrove（1960）、Jones与Stephenson（1975）、Budden（1985）、Coleman（2011）、Nosikov等（2017、2020）及Cervera与Harris（2014）；C1-4未新增物理参数或文献结论。
+
+六、风险与下一步
+
+1. 当前证据不能判断AH3D或PHaRLAP哪一个更接近真实电离层；两套软件的接收机落点误差只能评价各自求根命中能力，不能代替独立真值。
+2. 优先获取PHaRLAP源级算法说明/中间状态，或引入第三套可审计射线实现；在定位AH3D可复现缺陷前不修改生产求解器。
+3. C1未通过，因此A4总体仍未完成，B1及后续阶段不得据此准入。

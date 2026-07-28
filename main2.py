@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import argparse
+import json
 import os
 import sys
 from contextlib import contextmanager
@@ -47,6 +48,10 @@ RUN_PRODUCTS = {
     "ray_fan": True,
     "ray_fan_x": False,
     "p2p": False,
+    "p2p_seeds": None,
+    "p2p_profile": None,
+    "p2p_final_profile": None,
+    "p2p_max_nfev": None,
     "pd": False,
     "csv": False,
 }
@@ -93,8 +98,8 @@ def _enable_reference_physics():
             "kernel": "diagnostic_only",
         },
         "RADAR_CLUTTER": {
-            "enable": True,
-            "apply_to_power": True,
+            "enable": False,
+            "apply_to_power": False,
             "surface_type": "sea",
             "sigma0_dB": cfg.RADAR.get("sigma0_ground_dB", -20.0),
             "radial_velocity_ms": 0.0,
@@ -107,6 +112,103 @@ def _save(fig, name):
     fig.savefig(os.path.join(_OUT, name), dpi=150, bbox_inches="tight")
     plt.close(fig)
     print("  Saved: output2/{}".format(name))
+
+
+def _jsonable(value):
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    return value
+
+
+def _ray_fan_is_ox(result):
+    return set(result.traceability.get("ray_fan_wave_modes", [])) == {"O", "X"}
+
+
+def _save_ray_fan_summary(kind, result):
+    is_ox = _ray_fan_is_ox(result)
+    stem = "ray_fan_ox_unified_{}" if is_ox else "ray_fan_unified_{}"
+    path = os.path.join(_OUT, stem.format(kind) + ".json")
+    disabled = ["P-D", "Ray-PE", "scatter_power_coupling"]
+    if not is_ox:
+        disabled.insert(0, "X_ray_fan")
+    if not RUN_PRODUCTS.get("p2p", False):
+        disabled.insert(1 if not is_ox else 0, "P2P")
+    payload = {
+        "schema_version": "formal_complex_scene_ray_fan_v2",
+        "scenario": kind,
+        "frequency_MHz": float(cfg.FREQ_MHZ),
+        "oneway_or_twoway": "one_way",
+        "wave_modes": result.traceability.get("ray_fan_wave_modes", []),
+        "provider_hash": result.traceability.get("provider_hash", ""),
+        "provider_config_hash": result.traceability.get(
+            "provider_config_hash", ""),
+        "provider_metadata": result.provider_metadata,
+        "ray_fan_diagnostics": result.traceability.get(
+            "ray_fan_diagnostics", {}),
+        "termination_counts": result.traceability.get(
+            "ray_fan_termination_counts", {}),
+        "warnings": result.warnings,
+        "disabled_products": disabled,
+    }
+    with open(path, "w", encoding="utf-8") as stream:
+        json.dump(_jsonable(payload), stream, ensure_ascii=False, indent=2)
+    print("  Saved: output2/{}".format(os.path.basename(path)))
+
+
+def _save_p2p_summary(kind, result):
+    path = os.path.join(_OUT, "p2p_unified_{}.json".format(kind))
+    modes = []
+    fields = (
+        "label", "wave_mode", "termination_status", "branch_status",
+        "elevation_tx_deg", "bearing_tx_deg", "apex_height_km",
+        "geom_path_km", "group_path_km", "tau_ms",
+        "p2p_landing_error_km", "p2p_residual_east_north_km",
+        "p2p_trace_profile", "p2p_optimization_trace_profile",
+        "p2p_final_retrace_applied", "p2p_search_scope", "p2p_seed_id",
+        "p2p_seed_semantics", "p2p_nfev", "p2p_njev",
+    )
+    for mode in result.modes:
+        modes.append({key: _jsonable(mode.get(key)) for key in fields})
+    payload = {
+        "schema_version": "formal_complex_scene_seeded_p2p_v1",
+        "scenario": kind,
+        "frequency_MHz": float(cfg.FREQ_MHZ),
+        "oneway_or_twoway": "one_way",
+        "search_scope": "seeded_local_roots_not_full_domain_mode_audit",
+        "candidate_nearest_per_branch": int(
+            RUN_PRODUCTS.get("p2p_seeds")
+            or cfg.P2P_3D.get("candidate_nearest", 3)),
+        "solve_profile": str(
+            RUN_PRODUCTS.get("p2p_profile") or "reference"),
+        "final_retrace_profile": str(
+            RUN_PRODUCTS.get("p2p_final_profile")
+            or RUN_PRODUCTS.get("p2p_profile") or "reference"),
+        "max_nfev": int(
+            RUN_PRODUCTS.get("p2p_max_nfev")
+            or cfg.P2P_3D.get("max_iter", 20)),
+        "completeness_claim": False,
+        "provider_hash": result.traceability.get("provider_hash", ""),
+        "provider_config_hash": result.traceability.get(
+            "provider_config_hash", ""),
+        "wave_modes": result.traceability.get("p2p_wave_modes", []),
+        "root_counts": {
+            branch: sum(str(mode.get("wave_mode")) == branch
+                        for mode in result.modes)
+            for branch in ("O", "X")
+        },
+        "modes": modes,
+        "warnings": result.warnings,
+        "disabled_products": ["P-D", "Ray-PE", "scatter_power_coupling"],
+    }
+    with open(path, "w", encoding="utf-8") as stream:
+        json.dump(_jsonable(payload), stream, ensure_ascii=False, indent=2)
+    print("  Saved: output2/{}".format(os.path.basename(path)))
 
 
 def _make_link_info(traceability=None):
@@ -211,6 +313,16 @@ def _request_for(kind):
         }
     elif kind == "bubble":
         pe_params = {**cfg.BUBBLE_3D, "enable": True}
+    p2p_config = dict(cfg.P2P_3D)
+    if RUN_PRODUCTS.get("p2p_seeds") is not None:
+        p2p_config["candidate_nearest"] = int(RUN_PRODUCTS["p2p_seeds"])
+    if RUN_PRODUCTS.get("p2p_profile") is not None:
+        p2p_config["solve_profile"] = str(RUN_PRODUCTS["p2p_profile"])
+    if RUN_PRODUCTS.get("p2p_final_profile") is not None:
+        p2p_config["final_retrace_profile"] = str(
+            RUN_PRODUCTS["p2p_final_profile"])
+    if RUN_PRODUCTS.get("p2p_max_nfev") is not None:
+        p2p_config["max_iter"] = int(RUN_PRODUCTS["p2p_max_nfev"])
     return UnifiedPropagationRequest(
         scenario="unified_{}".format(kind),
         provider=_scenario_provider(kind),
@@ -218,6 +330,7 @@ def _request_for(kind):
         rx_geocentric=cfg.RX_GEOCENTRIC,
         bearing_deg=cfg.LINK_BEARING_DEG,
         earth_radius_km=cfg.EARTH_MODEL["radius_km"],
+        p2p_config=p2p_config,
         solver="ah3d_ecef",
         observable_type="communication_oneway",
         pd_delay_key="tau_ms",
@@ -250,6 +363,10 @@ def run_unified_scenario(kind):
             float(result.main_mode.get("Pr_dBW", -999.0))))
     for warning in result.warnings:
         print("  Warning: {}".format(warning))
+    if RUN_PRODUCTS.get("ray_fan", True):
+        _save_ray_fan_summary(kind, result)
+    if RUN_PRODUCTS.get("p2p", False):
+        _save_p2p_summary(kind, result)
 
     pert_info = _make_pert_info(kind)
     if RUN_PRODUCTS.get("ray_fan", True) and result.rays3d:
@@ -260,12 +377,15 @@ def run_unified_scenario(kind):
                 fan_modes, kind),
             link_info=_make_link_info(result.traceability), pert_info=pert_info,
             xlim=_plot_x_limits())
-        _save(fig, "tx_fan_unified_{}.png".format(kind))
+        fan_stem = ("tx_fan_ox_unified_{}" if _ray_fan_is_ox(result)
+                    else "tx_fan_unified_{}")
+        _save(fig, fan_stem.format(kind) + ".png")
 
-    if RUN_PRODUCTS.get("p2p", True) and result.modes:
+    if RUN_PRODUCTS.get("p2p", True):
         fig, _ = plot_p2p_modes(
             result.modes, Ne_plot, cfg.BG_X, z_plot,
-            title="P2P Modes (O/X) - unified {} Ne background".format(kind),
+            title=("Seeded receiver-hitting P2P roots (O/X) - "
+                   "unified {} Ne background").format(kind),
             link_info=_make_link_info(result.traceability), pert_info=pert_info,
             xlim=_plot_x_limits())
         _save(fig, "p2p_modes_unified_{}.png".format(kind))
@@ -280,7 +400,7 @@ def run_unified_scenario(kind):
             info_text=info_text)
         _save(fig, "pd_unified_{}.png".format(kind))
 
-    if RUN_PRODUCTS.get("csv", True) and result.modes:
+    if RUN_PRODUCTS.get("csv", True) and RUN_PRODUCTS.get("p2p", False):
         csv_path = save_modes_csv(
             "unified_{}".format(kind), result.modes, result.tau_axis, result.pd_W,
             cfg.FREQ_MHZ, _OUT, pd_delay_key=request.pd_delay_key)
@@ -303,6 +423,36 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ray-fan-x", action="store_true",
         help="Include and distinguish X-mode rays in the ray fan; default is O only")
+    parser.add_argument(
+        "--p2p", action="store_true",
+        help="Run seeded local O/X P2P roots; not a full-domain mode audit")
+    parser.add_argument(
+        "--p2p-seeds", type=int, choices=range(1, 4), default=None,
+        help="Nearest ground-ray seeds per O/X branch; default uses config")
+    parser.add_argument(
+        "--p2p-profile", choices=("smoke", "research", "reference"),
+        default=None,
+        help="P2P optimization integration profile; default is reference")
+    parser.add_argument(
+        "--p2p-final-profile", choices=("research", "reference"),
+        default=None,
+        help="Forward-retrace converged roots at this stricter profile")
+    parser.add_argument(
+        "--p2p-max-nfev", type=int, choices=range(1, 21), default=None,
+        help="Maximum bounded-TRF residual evaluations per local seed")
+    parser.add_argument(
+        "--csv", action="store_true",
+        help="Save the P2P mode table, including a header when no root converges")
+    parser.add_argument(
+        "--no-ray-fan", action="store_true",
+        help="Disable ray-fan image output; P2P may still trace internal seed fans")
     args = parser.parse_args()
     RUN_PRODUCTS["ray_fan_x"] = bool(args.ray_fan_x)
+    RUN_PRODUCTS["p2p"] = bool(args.p2p)
+    RUN_PRODUCTS["p2p_seeds"] = args.p2p_seeds
+    RUN_PRODUCTS["p2p_profile"] = args.p2p_profile
+    RUN_PRODUCTS["p2p_final_profile"] = args.p2p_final_profile
+    RUN_PRODUCTS["p2p_max_nfev"] = args.p2p_max_nfev
+    RUN_PRODUCTS["csv"] = bool(args.csv)
+    RUN_PRODUCTS["ray_fan"] = not bool(args.no_ray_fan)
     main(args.scenarios)

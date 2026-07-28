@@ -1,6 +1,6 @@
 A4 PHaRLAP外部验证详细实施方案
 生成日期：2026-07-20
-状态：A4-C0R-0至C0R-8已通过，坐标契约已关闭；A4-C1-Prep-0至Prep-6已完成并通过C1准入，A4-C1正式物理对照尚未开始
+状态：A4-C0R及A4-C1-Prep已通过；A4-C1已完成失败冻结；A4-C1P已完成PHaRLAP侧积分/状态/RHS归因，最终状态completed_c1p4_software_difference_or_unresolved；原C1失败不变，C2等待人工决策且未自动准入，A4总体未完成
 上位计划：ah3d_full3d_wave_upgrade_plan.txt、a3rnew_accuracy_first_implementation_plan.txt
 
 A4-C0R修复门（2026-07-20）
@@ -23,6 +23,13 @@ A4-C0R修复门（2026-07-20）
 0.8 A4-C0R-8已完成：正式main/main2/unified及共享下游无旧坐标fallback，旧flux-tube/tube计算体从main删除且产品入口继续显式拒绝；旧源码仅登记为historical_reference_only。Chapman reference/半步长最大轨迹变化1.52498e-5 km、群路径相对变化7.89811e-11，10项阶段/入口回归全部通过，最终状态passed_pharlap_coordinate_contract_closed。下一步只开放C1-Prep，不把C0R表述为电离层反射外部验证通过。
 0.9 A4-C1-Prep-5已完成：冻结refined_1km网格下PHaRLAP/AH3D各自low/high根均重新求解并通过1 km对2 km稳定性门；最大仰角变化0.007647752 deg、最大apex变化0.083200194 km、最大群时延相对变化0.009929129%，四根均ground且端点残差小于1 km。完整签名、独立checkpoint、JSON/CSV/NPZ和PNG已冻结，状态passed_1km_grid_stability_and_signatures。该状态不是A4-C1跨软件正式误差验收。
 0.10 A4-C1-Prep-6已完成：Prep-1至Prep-5冻结哈希链和全部数值门复验通过；双方177角完整粗扫、四条低/高根和三类可视化已汇总冻结，Ne背景只读refined_1km网格并使用jet、alpha=0.5。状态passed_c1_prep_admission，仅允许进入C1正式对照，不表示跨软件误差或外部物理验证通过。
+0.11 A4-C1-0已完成：冻结输入、四根签名、Provider/AH3D源码、MATLAB脚本、PHaRLAP MEX和环境来源均无漂移，状态passed_c1_0_frozen_admission。
+0.12 A4-C1-1已完成：四组同角双锚点、双方重复运行、原始输出和三类可视化均闭环；低射线全部门通过，高射线两个锚点的归一化trajectory RMS为2.410089/2.527629 km，超过2 km门槛，其他正式门通过。状态failed_c1_1_numeric_thresholds；C1-2仅可作为diagnostic_after_same_angle_failure，不得据此进入C2。
+0.13 A4-C1-2已完成：只读Prep-5冻结独立根，low-to-low和high-to-high全部适用门通过；低/高角差0.002725/0.044463 deg，独立根轨迹RMS 0.093311/0.140578 km，根端点残差均远小于1 km。状态completed_c1_2_diagnostic_after_same_angle_failure；结果支持高分支前向range-elevation映射条件敏感性，而非一般求根收敛失败，但不覆盖C1-1失败，须进入C1-3归因。
+0.14 A4-C1-3已完成：逐case/逐gate自动矩阵保留C1-1两项high_ray RMS失败；输入、坐标和终端事件已排除为主因。冻结高射线前向映射偏差为-3.08至-4.99 km，路径中点已累积2.10/2.20 km残差；主归因numerical_difference，具体插值、Hamiltonian导数、积分或软件内部实现仍未隔离。状态failed_pending_c1r，未修改生产求解器，C2继续阻断。
+0.15 A4-C1R已完成：reference/refined DOP853、冻结线性/解析Chapman Provider、多尺度/解析Hamiltonian空间导数三组单角A/B分别产生0.001932、0.006384和0.0000618 km轨迹RMS差，均不能解释约4 km高射线偏差；残差在ground事件前持续累积。PHaRLAP公开接口不能观察MEX内部插值及ODE实现，最终状态completed_c1r5_software_difference_or_unresolved。未修改生产AH3D、未放宽门槛；该节点阻断C2，后续C1-4仅按用户确认执行失败报告与冻结。
+0.16 A4-C1-4已完成：按用户确认将C1正式失败结论冻结，未重算射线、未修改生产AH3D、未放宽2 km门槛。正式失败仅为两组high_ray同角trajectory RMS；报告、汇总CSV、轨迹残差NPZ、来源/图像清单、三张最终可视化、机器JSON和完整SHA-256 manifest均已生成并通过严格无重算复验。最终状态failed_c1_chapman_high_low_external_comparison，C2正式验收未准入。
+0.17 A4-C1P已完成：在四个冻结角上执行10组PHaRLAP tolerance/min/max-step配置，共40组profile-case；全部ground单转向且基线/参考重复性通过。两条高射线PHaRLAP基线至严格参考仅变化0.00924871/0.0101752 km，严格参考已收敛，跨软件RMS仅关闭0.2107%或反向变化0.2462%，故PHaRLAP积分不是主因。B=0状态语义、色散及局部RHS审计未触发高射线特有异常，最终归因为software_difference_or_unresolved。原C1失败状态保持，C2进入manual_decision_required_formal_c1_still_failed而非自动准入。
 1. A4-C0已完成，机器状态passed；数值与三类图像证据均已闭环。该状态仅表示PHaRLAP运行时、真空输入单位/轴、坐标方向/尺度和非地面退出状态映射通过，不表示A4外部物理验证通过。
 2. MATLAB R2024a Update 7成功加载PHaRLAP 4.7.4 raytrace_3d_sp.mexw64；真空射线ray_label=-2，无catastrophic_error。
 3. 前250 km无配准ECEF对照：轨迹RMS差1.777205 km，最大差3.943964 km；PHaRLAP解析直线最大误差7.42e-12 km。
@@ -162,6 +169,15 @@ A4-C1：Coleman引导的Chapman F2无磁高/低射线正式门槛
 5. 根搜索语义为full_domain_forward_map_ground_root；它验证当前平滑Chapman算例的全角域可见分支，不证明复杂三维场多径完整性。
 6. Coleman论文只提供约1100 km链路；本项目1185.848260 km为冻结双根距离。因此结果继续标记literature_guided_parameterized_reproduction，不称为严格论文复现。
 
+A4-C1P：PHaRLAP侧数值归因与人工决策门
+
+1. 详细实施、配置矩阵、归因规则和产物契约以word/a4_c1p_pharlap_numerical_attribution_implementation_plan.txt为唯一执行清单。
+2. C1P位于C1-4失败冻结之后、C2之前；只使用四个冻结角，不重新求根或修改物理输入。
+3. C1P-1已完成10组PHaRLAP积分配置扫描；高精度参考已收敛，积分变化不足以解释高射线同角RMS失败。
+4. C1P-2/3已完成ray_state_vec、B=0色散和局部RHS审计；未发现高射线相对低射线控制的十倍异常。
+5. C1P-4最终状态为completed_c1p4_software_difference_or_unresolved。该completed只表示归因链完整，不表示C1通过。
+6. 执行关系固定为A4-C1 -> C1R -> C1-4 -> C1P -> 人工决策门 -> A4-C2/C3/C4或修复/第三方验证。未经用户确认不得执行剩余A4。
+
 A4-C2：冻结磁场下O/X单轨迹正式门槛
 
 1. 电子密度继续使用C1同一平滑Chapman网格，避免IRI模型版本差异污染磁离子轨迹比较。
@@ -212,9 +228,16 @@ A4-2 执行C0和C1
 3. C1所有门槛分别计算，不允许只给综合平均分。
 4. C0失败立即停止；C1失败则先完成差异归因，不运行C2。
 
+A4-2P 执行C1P PHaRLAP侧归因
+
+1. 复验C1/C1R/C1-4冻结链后运行固定四角PHaRLAP积分收敛扫描。
+2. 审计ray_state_vec状态语义、色散约束和可恢复的局部dr/ds、dp/ds。
+3. 按预先冻结规则输出integration、state/RHS或software_difference_or_unresolved归因。
+4. C1P完成后停止于人工决策门；不得因诊断完成而自动运行C2。
+
 A4-3 执行C2 O/X正式对照
 
-1. 使用同一Ne、同一冻结磁场和同一发射条件运行O、X。
+1. 仅在用户审阅C1P报告并明确确认后，使用同一Ne、同一冻结磁场和同一发射条件运行O、X；C1失败限制必须保留。
 2. 比较单分支指标及O-X分裂量，检查PHaRLAP和AH3D的分支标签没有互换。
 3. 若单分支满足阈值但分裂量方向相反，判branch_semantics_failed，不得按绝对值判通过。
 
@@ -267,6 +290,7 @@ A4-6 报告、计划状态和下一阶段门
 3. blocked：PHaRLAP/MATLAB不可运行、MEX缺依赖、安装许可限制阻止运行或关键输入无法构造。
 4. diagnostic_only：仅C3/C4结果，不参与正式通过率。
 5. 当前A4通过语义固定为pharlap_smooth_field_limited_pass；P2-6H仍为deferred_full_completeness_audit。
+6. C1P completed只表示PHaRLAP侧归因链闭合；不能覆盖C1 failed，也不构成C2准入。
 
 九、计划文件和产物
 
@@ -281,6 +305,8 @@ A4-6 报告、计划状态和下一阶段门
 1. tests/_run_a4_pharlap_validation.py：生成冻结输入、调用MATLAB、转换和比较结果、生成图像与报告。
 2. tests/_verify_a4_pharlap_validation.py：检查schema、哈希、case状态、阈值和语义禁止项。
 3. 不新增生产级PHaRLAP抽象层，不把外部程序接入main.py/main2.py；A4只属于验证工具链。
+4. tests/_run_a4_c1p_pharlap_attribution.py：执行C1P-0至C1P-4；tests/_verify_a4_c1p_pharlap_attribution.py：严格无重算冻结验收。
+5. tests/matlab/a4_c1p_pharlap_scan.m：固定角PHaRLAP参数扫描；独立于已冻结C1 MATLAB脚本。
 
 9.3 输出目录code/output2/a4_pharlap
 
@@ -290,6 +316,7 @@ A4-6 报告、计划状态和下一阶段门
 4. a4_pharlap_validation.json。
 5. trajectory_<case_id>.png、residual_<case_id>.png和branch_split_c2.png。
 6. run.log、matlab_diary.txt和failure_diagnostics.json。
+7. c1/c1p/c1p_0至c1p_4：C1P原始MAT、CSV/JSON/NPZ、五类可视化、实施报告和分阶段manifest。
 
 9.4 报告
 
@@ -311,6 +338,7 @@ A4-6 报告、计划状态和下一阶段门
 10. near-cutoff风险：A4正式case选择远离cutoff的稳定ground轨迹。该选择是限定射线理论适用范围，不表示near-cutoff问题已解决。
 11. 运行时间风险：正式case仅含少量轨迹和两个局部角度区间，不运行高密度二维O/X角域。不得通过降低方程精度、关闭正式分支或放宽阈值节省时间。
 12. 内部循环验证风险：AH3D输入生成器和比较器可能共享错误。PHaRLAP原始输出必须保留，关键转换增加独立解析自检，不只检查最终JSON。
+13. PHaRLAP内部可观察性风险：C1P已排除公开接口可检查的积分参数、B=0状态语义和局部RHS高射线特有异常；MEX内部插值、导数尺度和事件实现仍不可观察，最终归因允许保持software_difference_or_unresolved，不通过修改AH3D制造一致。
 
 十一、禁止项
 

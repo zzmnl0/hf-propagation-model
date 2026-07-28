@@ -8,13 +8,14 @@ scatter modules.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections import Counter
 from typing import Any
 
 import numpy as np
 
 import config as cfg
 from utils import (enu_basis, free_space_loss_dB, haversine_km,
-                   radar_equation_W, to_dBW)
+                   radar_equation_W, rx_enu_residual, to_dBW)
 from .pd_spectrum import build_pd_spectrum, identify_main_mode
 from .ne_provider_geocentric import GeocentricNeProvider3D
 from .point_to_point_ah_3d_ecef import find_seeded_rays_ah3d_ecef
@@ -122,16 +123,25 @@ def _fixed_geomagnetic_direction_ecef(tx_geocentric) -> np.ndarray:
 
 def _ah_model(request: UnifiedPropagationRequest, wave_mode: str,
               profile: str) -> RefractiveIndexAH3DECEF:
+    component_scales = [
+        float(component["minimum_structure_scale_km"])
+        for component in request.provider.get_metadata().get("components", [])
+        if component.get("enabled", False)
+        and float(component.get("minimum_structure_scale_km", 0.0)) > 0.0
+    ]
+    spatial_fd_base_km = min(
+        0.5, min(component_scales, default=30.0) / 60.0)
     return RefractiveIndexAH3DECEF(
         request.provider, earth_radius_km=request.earth_radius_km,
         freq_MHz=request.freq_MHz, wave_mode=wave_mode,
         gyro_MHz=float(cfg.GEOMAG.get("fH_MHz", 0.0)),
         b_ecef_hat=_fixed_geomagnetic_direction_ecef(request.tx_geocentric),
+        spatial_fd_base_km=spatial_fd_base_km,
         integration_profile=profile)
 
 
 def _trace_fan(request: UnifiedPropagationRequest, wave_mode: str,
-               profile: str = "smoke") -> list:
+               profile: str = "smoke") -> tuple[list, dict]:
     model = _ah_model(request, wave_mode, profile)
     elevations = np.linspace(
         float(request.rt_config["beta_min"]),
@@ -142,6 +152,7 @@ def _trace_fan(request: UnifiedPropagationRequest, wave_mode: str,
         request.rt_config.get("max_steps", 4000)
         * request.rt_config.get("ds_max_km", 2.0)))
     rays = []
+    failures = Counter()
     for elevation in elevations:
         try:
             rays.append(trace_ray_ah3d_ecef(
@@ -152,9 +163,18 @@ def _trace_fan(request: UnifiedPropagationRequest, wave_mode: str,
                 bearing_deg=float(request.bearing_deg),
                 h_stop_km=float(request.rt_config["z_stop_km"]),
                 max_path_km=max_path_km, profile=profile))
-        except (ValueError, RuntimeError, FloatingPointError):
-            continue
-    return rays
+        except (ValueError, RuntimeError, FloatingPointError) as exc:
+            failures["{}: {}".format(type(exc).__name__, str(exc))] += 1
+    diagnostics = {
+        "wave_mode": wave_mode,
+        "attempted": int(elevations.size),
+        "returned": len(rays),
+        "exception_counts": dict(sorted(failures.items())),
+        "termination_counts": dict(sorted(Counter(
+            str(ray.get("termination_status", "unknown"))
+            for ray in rays).items())),
+    }
+    return rays, diagnostics
 
 
 def _nearest_ground_seeds(rays: list, rx_geocentric, count: int) -> list:
@@ -383,13 +403,24 @@ def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagati
         request.x_km, request.z_km)
     n3d = request.provider
     fan_by_mode = {}
+    fan_diagnostics = {}
     rays3d = []
     if request.make_ray_fan:
         wave_modes = (("O", "X") if cfg.UPDATE2.get("RAY_FAN_INCLUDE_X", False)
                       else ("O",))
         for wave_mode in wave_modes:
-            fan_by_mode[wave_mode] = _trace_fan(request, wave_mode)
+            fan_by_mode[wave_mode], fan_diagnostics[wave_mode] = _trace_fan(
+                request, wave_mode)
             rays3d.extend(fan_by_mode[wave_mode])
+        if not rays3d:
+            raise RuntimeError(
+                "all requested AH3D ray-fan launches failed: {}".format(
+                    fan_diagnostics))
+        if all(ray.get("termination_status") == "physics_domain_rejected"
+               for ray in rays3d):
+            raise RuntimeError(
+                "all requested AH3D ray-fan launches were rejected by the "
+                "physical/numerical domain: {}".format(fan_diagnostics))
         for ray in rays3d:
             ray["coordinate_semantics"] = (
                 "input=geocentric_lat_lon_height;state=ECEF;plot=derived_ground_range_height")
@@ -409,19 +440,23 @@ def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagati
         for wave_mode in ("O", "X"):
             candidate_fan = fan_by_mode.get(wave_mode)
             if candidate_fan is None:
-                candidate_fan = _trace_fan(request, wave_mode)
+                candidate_fan, fan_diagnostics[wave_mode] = _trace_fan(
+                    request, wave_mode)
             seeds = _nearest_ground_seeds(
                 candidate_fan, request.rx_geocentric,
                 request.p2p_config.get("candidate_nearest", 3))
             if not seeds:
                 continue
-            model = _ah_model(request, wave_mode, "reference")
+            p2p_profile = str(request.p2p_config.get(
+                "solve_profile", "reference"))
+            model = _ah_model(request, wave_mode, p2p_profile)
             roots = find_seeded_rays_ah3d_ecef(
                 model, tx_geocentric=request.tx_geocentric,
                 rx_geocentric=request.rx_geocentric, seeds=seeds,
                 h_stop_km=float(request.rt_config["z_stop_km"]),
                 max_path_km=float(request.rt_config.get("max_path_km", 8000.0)),
-                profile="reference", tol_km=float(request.p2p_config["tol_km"]),
+                profile=p2p_profile,
+                tol_km=float(request.p2p_config["tol_km"]),
                 max_nfev=int(request.p2p_config["max_iter"]),
                 d_elevation_deg=float(request.p2p_config["d_beta"]),
                 d_bearing_deg=float(request.p2p_config["d_az"]),
@@ -432,6 +467,48 @@ def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagati
                 dedup_trajectory_rms_km=float(request.p2p_config.get("clust_trajectory_rms_km", 1.0)),
                 dedup_apex_km=float(request.p2p_config.get("clust_h_km", 10.0)),
                 dedup_tau_ms=float(request.p2p_config.get("clust_tau_ms", 0.05)))
+            final_profile = str(request.p2p_config.get(
+                "final_retrace_profile", p2p_profile))
+            if final_profile != p2p_profile:
+                final_model = _ah_model(request, wave_mode, final_profile)
+                verified = []
+                for root in roots:
+                    retraced = trace_ray_ah3d_ecef(
+                        final_model,
+                        tx_lat_deg=float(request.tx_geocentric[0]),
+                        tx_lon_deg=float(request.tx_geocentric[1]),
+                        tx_height_km=float(request.tx_geocentric[2]),
+                        elevation_deg=float(root["elevation_tx_deg"]),
+                        bearing_deg=float(root["bearing_tx_deg"]),
+                        h_stop_km=float(request.rt_config["z_stop_km"]),
+                        max_path_km=float(request.rt_config.get(
+                            "max_path_km", 8000.0)),
+                        profile=final_profile)
+                    if retraced.get("termination_status") != "ground":
+                        continue
+                    residual = rx_enu_residual(
+                        np.asarray(retraced["trajectory_ecef_km"])[-1],
+                        float(request.rx_geocentric[0]),
+                        float(request.rx_geocentric[1]),
+                        float(request.rx_geocentric[2]),
+                        float(request.earth_radius_km))
+                    landing_error = float(np.linalg.norm(residual))
+                    if landing_error >= float(request.p2p_config["tol_km"]):
+                        continue
+                    p2p_metadata = {
+                        key: value for key, value in root.items()
+                        if key.startswith("p2p_") or key == "convergence_status"
+                    }
+                    retraced.update(p2p_metadata)
+                    retraced.update({
+                        "p2p_optimization_trace_profile": p2p_profile,
+                        "p2p_trace_profile": final_profile,
+                        "p2p_final_retrace_applied": True,
+                        "p2p_residual_east_north_km": residual.tolist(),
+                        "p2p_landing_error_km": landing_error,
+                    })
+                    verified.append(retraced)
+                roots = verified
             for index, m in enumerate(roots, start=1):
                 m["label"] = "{}-ECEF-{:02d}".format(
                     wave_mode, len(modes) + index)
@@ -482,6 +559,10 @@ def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagati
         "feature_gates": _feature_gates(),
         "ranked_modes": len(ranked),
         "ray_fan_wave_modes": sorted({str(r.get("wave_mode", "iso")) for r in rays3d}),
+        "ray_fan_diagnostics": fan_diagnostics,
+        "ray_fan_termination_counts": dict(sorted(Counter(
+            str(ray.get("termination_status", "unknown"))
+            for ray in rays3d).items())),
         "p2p_wave_modes": sorted({str(m.get("wave_mode", "iso")) for m in modes}),
     }
     warnings = []
@@ -492,6 +573,13 @@ def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagati
     })
     if bad_status:
         warnings.append("AH3D rejected/non-mainline branch statuses present: {}".format(",".join(bad_status)))
+    fan_exception_count = sum(
+        sum(diag.get("exception_counts", {}).values())
+        for diag in fan_diagnostics.values())
+    if fan_exception_count:
+        warnings.append(
+            "AH3D ray fan recorded {} launch exception(s); see "
+            "traceability.ray_fan_diagnostics.".format(fan_exception_count))
     if "spreadf_diagnostic_only" in traceability.get("provider_components", ""):
         warnings.append("Spread-F provider component remains diagnostic in P0.")
     if "es_diagnostic_only" in traceability.get("provider_components", ""):

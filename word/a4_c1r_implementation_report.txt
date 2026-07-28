@@ -1,0 +1,48 @@
+A4-C1R高射线数值隔离实施报告
+
+日期：2026-07-23
+机器状态：completed_c1r5_software_difference_or_unresolved
+正式A4-C1状态：failed_pending_c1r
+
+一、实施边界
+
+1. 主诊断仅使用high_pharlap_anchor=39.54254824570964 deg，不重新求根、不扫描角域、不重算PHaRLAP冻结轨迹。
+2. 全部算例为单程、10 MHz、B=0、碰撞关闭、球形地心输入/ECEF状态；散射、PE、全波和功率均不参与。
+3. 未修改main.py、main2.py、生产AH3D、Provider或config；验证专用refined profile、解析Chapman Provider和解析空间导数不会进入生产入口。
+4. 各阶段均输出机器JSON、来源哈希、manifest和独立PNG；轨迹图Ne背景只读refined_1km冻结网格，使用jet、alpha=0.5。
+
+二、分阶段结果
+
+C1R-0：passed_c1r0_failure_signature_frozen。C1-0至C1-3冻结链及生产源码哈希复验通过；正式失败签名精确复现：trajectory RMS=2.4100894445 km，trajectory max=3.9247869074 km，landing error=3.9247869686 km。
+
+C1R-1：passed_c1r1_integration_not_primary。reference与更严refined DOP853之间的轨迹RMS为0.00193183 km，最大差0.00305075 km，落点差0.00305070 km，远低于0.1/0.2 km诊断限。refined对PHaRLAP轨迹RMS仍为2.326569 km，因此积分容差不能解释正式失败。
+
+C1R-2：passed_c1r2_frozen_field_not_primary。冻结1 km线性场与同参数解析Chapman场的轨迹RMS为0.00638406 km，最大差0.0124245 km，落点差0.00005104 km。显著密度区网格节点Ne一致，梯度误差相对峰值梯度最大4.0014e-5；解析场对PHaRLAP RMS仍为2.407259 km。
+
+C1R-3：passed_c1r3_spatial_derivative_not_primary。同一解析场上，多尺度中心差分D_r与解析B=0径向D_r的轨迹RMS为6.1764e-5 km，最大差1.2588e-4 km，落点差4.1178e-6 km；41点最大梯度相对误差4.3716e-7。解析导数对PHaRLAP RMS为2.407266 km，未关闭偏差。
+
+C1R-4：completed_c1r4_remaining_implementation_attribution。冻结AH3D-PHaRLAP残差在归一化路径u=0.25/0.50/0.75/1.00分别为1.07844/2.10125/3.23731/3.92479 km，确认差异在ground事件前形成。PHaRLAP公开帮助仅能确认Haselgrove Hamiltonian、球形地球、网格平滑要求及ODE容差/步长控制；MEX内部插值公式、ODE算法和源级实现不可观察。
+
+C1R-5：completed_c1r5_software_difference_or_unresolved。输入、坐标/地球模型、ground事件、DOP853积分容差、冻结场表示和AH3D Hamiltonian空间导数均排除或排除为主因；剩余类别为PHaRLAP_internal_implementation=unobservable_external_implementation。
+
+三、验收
+
+1. tests/_verify_a4_c1r_isolation.py严格无重算复验C1R-0至C1R-5，结果0 failures。
+2. 六阶段均存在有效PNG，尺寸、有限像素、像素方差和冻结哈希通过。
+3. 正式C1-1状态仍为failed_c1_1_numeric_thresholds；未以诊断结果覆盖2 km轨迹RMS门槛。
+4. 生产AH3D、Provider和config哈希在C1R期间未变化。
+
+四、结论、风险与下一步
+
+1. 当前没有证据支持修改AH3D的DOP853容差、冻结场线性插值或多尺度Hamiltonian空间导数；盲目修复会破坏已通过的低射线、独立根和C0R回归。
+2. 剩余约4 km同角差异可能属于PHaRLAP不可观察的内部插值、独立变量参数化、ODE实现或其他软件实现差异，但现有证据不能进一步唯一归因。
+3. A4-C1仍未通过，C1-4和C2不得开始；也不能表述为AH3D已通过PHaRLAP Chapman高射线外部验证。
+4. 下一步建议优先取得PHaRLAP raytrace_3d_sp的源级算法说明或可控制的中间状态输出；若无法取得，应将该高射线同角差异记录为外部软件实现限制，并选择另一套可审计的独立射线实现进行第三方交叉验证。
+5. 仅在后续证据定位到可复现AH3D缺陷时，另拟最小生产修复方案，再重跑C0R轻量回归、C1-0至C1-3及C1R相关阶段。
+
+五、产物
+
+1. 机器产物：output2/a4_pharlap/c1/c1r/c1r_0至c1r_5。
+2. 运行入口：tests/_run_a4_c1r_isolation.py。
+3. 冻结复验：tests/_verify_a4_c1r_isolation.py。
+4. 本阶段未新增物理参数或文献结论；使用既有Haselgrove、Jones与Stephenson、Budden及PHaRLAP文献链，并审计本地PHaRLAP 4.7.4公开帮助，无需修改reference-papers.txt。

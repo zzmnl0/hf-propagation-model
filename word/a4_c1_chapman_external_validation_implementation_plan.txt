@@ -1,7 +1,7 @@
 A4-C1 Chapman F2无磁高/低射线PHaRLAP外部验证实施计划
 
 版本：2026-07-23
-状态：方案已确认，待按C1-0至C1-4顺序实施
+状态：C1-0通过；C1-1高射线RMS失败；C1-2/3及C1R诊断完成；C1-4已将正式失败结论、机器产物、三类可视化和完整哈希链冻结；A4-C1最终状态为failed_c1_chapman_high_low_external_comparison，C2未准入
 上位计划：a4_pharlap_external_validation_implementation_plan.txt
 前置状态：A4-C1-Prep-0至Prep-6已完成，passed_c1_prep_admission
 
@@ -98,12 +98,16 @@ A4-C1 Chapman F2无磁高/低射线PHaRLAP外部验证实施计划
 
 C1-0 冻结准入复核
 
+实施状态（2026-07-23）：passed_c1_0_frozen_admission。Prep-5/6、refined_1km输入、四根签名、Provider/AH3D源码、MATLAB脚本、PHaRLAP MEX及环境哈希均严格复验通过；产物位于output2/a4_pharlap/c1/admission。
+
 1. 无重建参数运行Prep-5和Prep-6严格冻结复验；检查输入、四根签名、轨迹、Provider、AH3D源码、MATLAB脚本和PHaRLAP MEX哈希。
 2. 检查PHaRLAP 4.7.4、MATLAB R2024a、D:\Matlab\PHaRLAP脚本和D:\pharlap\pharlap_4.7.4工具箱可用。
 3. 输出c1_0_admission.json和一张来源/哈希/状态可视化。
 4. 任一状态或哈希漂移则状态blocked_input_or_source_drift，停止；禁止自动重建Prep结果。
 
 C1-1 同角前向比较
+
+实施状态（2026-07-23）：failed_c1_1_numeric_thresholds。四组双锚点、双方重复运行、原始输出、统一ECEF比较及三类图像均完成；全部语义、重复性和除轨迹RMS外的数值门通过。high_ray在PHaRLAP/AH3D锚点的trajectory_rms_3d_km分别为2.410089/2.527629 km，高于2 km门槛；未放宽门槛，未修改生产求解器。按既定停止语义，C1-2仅可作为diagnostic_after_same_angle_failure，C1R修复须另行确认。
 
 1. 按第四节双锚点矩阵运行8条独立轨迹及各自重复轨迹，不执行求根。
 2. 先完成原始输出保存和重复性检查，再转换为统一ECEF比较量。
@@ -113,6 +117,8 @@ C1-1 同角前向比较
 
 C1-2 独立冻结根比较
 
+实施状态（2026-07-23）：completed_c1_2_diagnostic_after_same_angle_failure。仅读取Prep-5冻结四根和轨迹，未重新扫描或求根；low-to-low、high-to-high全部适用数值门通过。低/高独立根角差为0.002725/0.044463 deg，归一化轨迹RMS为0.093311/0.140578 km。该结果表明双方各自端点约束根经角度补偿后路径形状一致，但不能覆盖C1-1同角高射线RMS失败；剩余差异指向高分支前向range-elevation映射及其条件敏感性，具体插值、Hamiltonian导数、积分或事件映射归因留待C1-3。
+
 1. 只读取Prep-5冻结四根及严格checkpoint，不重新全域扫描、不重新选择根。
 2. 按low-to-low、high-to-high比较发射角、落点、apex、几何路径、群路径、群时延和轨迹；禁止交叉配对或跨求解器平均。
 3. 输出c1_independent_roots.png、c1_independent_root_residuals.png、指标CSV和机器JSON。
@@ -120,12 +126,18 @@ C1-2 独立冻结根比较
 
 C1-3 自动验收与差异归因
 
+实施状态（2026-07-23）：failed_pending_c1r。逐case/逐gate矩阵确认正式失败仅为C1-1两组high_ray trajectory_rms_3d_km；C1-2全部通过但不覆盖失败。冻结哈希和C0R-8证据排除输入、坐标/地球模型差异；高射线在u=0.5前已出现2.10/2.20 km残差，AH3D事件定位小于1e-9 km且双方落点高度闭合，事件映射不是主因。高射线冻结前向映射AH3D-PHaRLAP偏差为-3.08至-4.99 km，主归因numerical_difference；该阶段未修改生产求解器，后续C1R隔离结果见下一段。
+
+C1R实施状态（2026-07-23）：completed_c1r5_software_difference_or_unresolved。reference/refined DOP853轨迹RMS差0.001932 km，冻结线性/解析Chapman轨迹RMS差0.006384 km，多尺度/解析空间导数轨迹RMS差6.1764e-5 km；三类均不能解释约4 km偏差。PHaRLAP MEX内部插值和ODE实现不可观察，未定位可复现AH3D生产缺陷；C1-1失败及2 km门槛保持不变，C1-4和C2继续阻断。
+
 1. 对每个branch/anchor和独立根逐项计算pass/fail/not_applicable，输出阈值、实际值、单位、分母和来源哈希。
 2. 超阈值必须归入input_difference、coordinate_earth_model_difference、physics_formula_difference、numerical_difference、event_mapping_difference、software_implementation_difference或unresolved。
 3. 输出c1_acceptance_matrix.png；图像只佐证机器数值，不得覆盖失败门槛。
 4. 若需修改AH3D，先结束本轮并标记failed_pending_c1r；另拟C1R修复计划和最小失败测试，未经确认不修改生产求解器。
 
 C1-4 报告与冻结
+
+实施状态（2026-07-24）：failed_c1_chapman_high_low_external_comparison。正式失败仅为C1-1两组high_ray的trajectory_rms_3d_km超过2 km；C1-2独立根及C1R诊断未覆盖该失败。已生成报告、汇总CSV、轨迹残差NPZ、来源/图像清单、三张最终可视化、机器JSON和严格freeze manifest；tests/_verify_a4_c1_finalize.py执行无重算哈希复验。C2正式验收不准入。
 
 1. 生成word/a4_c1_chapman_external_validation_report.txt，区分raw output、统一坐标comparison metrics、差异归因和gate status。
 2. 输出a4_c1_validation.json、指标CSV、轨迹NPZ、图像来源清单和freeze_manifest；manifest记录全部输入、源码、脚本、MEX、原始输出、比较结果和图像SHA-256。
@@ -169,4 +181,3 @@ C1-4 报告与冻结
 3. 输入、重复性、分支、termination、turning_count、群路径语义和轨迹比较均闭合。
 4. 报告明确限制为B=0平滑Chapman高/低射线外部对照，不使用external physics fully validated或full-wave validated等扩大表述。
 5. 只有达到passed_c1_chapman_high_low_external_comparison，才允许整理A4-C2实施事项。
-

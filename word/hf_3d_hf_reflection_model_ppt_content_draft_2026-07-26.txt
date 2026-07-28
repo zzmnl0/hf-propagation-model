@@ -1,0 +1,310 @@
+复杂电离层短波反射模型技术汇报PPT内容草稿
+版本：2026-07-27
+建议页数：12页
+用途：依据《复杂电离层短波反射模型总路线与阶段进展报告》制作正式科研汇报PPT
+
+统一表述约束
+1. AH3D是三维磁离子几何光学射线追踪模型，不是全波求解器。
+2. Ray Fan反映固定发射角采样响应，不等同于接收机约束传播模式集合。
+3. 五场景P2P是受限局部种子命中解，不代表P2-6H全角域模式完整性。
+4. Bubble是F区底边约束的参数化耗空管，不是动力学EPB/Spread-F羽流模型。
+5. Es视觉放大只改变电子密度介质图的显示窗口，不改变传播电子密度；正式Ray Fan不叠加局部放大窗。
+6. 绝对接收功率尚未完成实测校准；A4外部验证尚未闭环。
+
+第1页  项目目标与研究对象
+核心结论：
+建立面向复杂三维电离层环境的短波反射路径与传播参数计算链，为后续反射/散射混合传播建模提供统一几何光学基础。
+正文要点：
+- 输入为统一三维电子密度场Ne(x,y,z,t)，传播算法不依赖TID、Spread-F、Es或Bubble标签。
+- 输出包括O/X轨迹、落点、反射高度、几何程、群程、群时延、分支状态和数值残差。
+- 当前重点已由场景入口收敛推进到AH3D反射、P2P模式识别和内部精度验收。
+公式：
+Ne(x,y,z,t) -> D(r,k,omega)=0 -> r(s), k(s) -> propagation observables
+推荐配图：
+output2/report_assets/reflection_route_2026-07-26/01_overall_route.png
+数据依据：
+word/hf_3d_hf_reflection_model_route_and_progress_2026-07-26.docx
+讲解提示：
+先说明本阶段解决“路径与时延”，后续才扩展“相干场、散射和功率”。
+
+第2页  五类复杂电离层介质及物理修正
+核心结论：
+Baseline、TID、Spread-F、Es和Bubble通过同一Provider形成可区分的三维电子密度结构；传播计算、背景绘制和数据日志采样自同一物理场。
+正文要点：
+- Baseline提供平滑背景；TID描述长尺度传播型扰动；Spread-F为F区随机不规则结构的阶段性参数化入口。
+- Es为约110 km附近的窄层增强。全高度图中采用hEs±0.6 km局部显示窗增强可读性，但不改变foEs、层厚、Provider哈希或传播采样值。
+- Bubble采用F区底边约束的场向高斯耗空管；底边高度200 km、过渡尺度20 km，消除原110 km非物理耗空。
+- Bubble在110 km最大相对耗空不超过1%，350 km中心耗空约0.6，沿磁场延展大于横向延展且Ne不小于0。
+- Spread-F、Es和Bubble均为参数化研究入口，不宣称完成电离层动力学演化。
+公式：
+delta_Ne_norm=(Ne_scene-Ne_baseline)/max(Ne_baseline)
+Wb(z)=0.5[1+tanh((z-zb)/Delta_zb)]
+delta_Ne_bubble=-delta_max Wb(z) G_parallel G_perp
+推荐配图（三图并列/主图+双辅图）：
+output2/report_assets/reflection_route_2026-07-26/02_ne_scene_comparison.png
+output2/report_assets/reflection_route_2026-07-26/03_ne_relative_perturbations.png
+output2/report_assets/reflection_route_2026-07-26/10_bubble_morphology_closure.png
+数据依据：
+output2/report_assets/reflection_route_2026-07-26/formal_complex_scene_manifest.json
+output2/report_assets/reflection_route_2026-07-26/formal_complex_scene_ray_fan_acceptance.json
+各场景ray_fan_unified_<scene>.json中的Provider元数据与哈希
+讲解提示：
+先展示五场景总体介质差异，再解释Es显示增强和Bubble低高度物理修正；强调所有视觉处理均未改写传播Ne。
+
+第3页  AH3D三维磁离子反射方程与数值求解
+核心结论：
+AH3D以Appleton-Hartree色散关系和Hamiltonian特征线描述三维磁化冷等离子体中的O/X反射路径，并以自适应积分和色散投影控制数值误差。
+正文要点：
+- 由Ne和磁场分别构造等离子体频率与电子回旋频率，O/X波选择连续的Appleton-Hartree分支。
+- 状态采用ECEF位置与物理波矢；射线始终约束在D(r,k,omega)=0色散面附近。
+- 接受步后执行色散面投影，控制Hamiltonian漂移；near-cutoff和evanescent状态显式拒绝。
+- DOP853根据局部误差自适应调整步长；research/reference配置用于终值复算与收敛比较。
+- turning、ground、upper-boundary、grid-exit及physics-domain-rejected均作为独立终止状态记录。
+- 多尺度中心差分用于空间梯度与P2P落点映射；变分Jacobian仅作为实验诊断，不作为正式加速前提。
+公式：
+X=omega_p^2/omega^2, Y=omega_B/omega, Z=nu/omega
+n^2=1-X/[1-iZ-Y_T^2/(2(1-X-iZ)) +/- sqrt(Y_T^4/(4(1-X-iZ)^2)+Y_L^2)]
+D(r,k,omega)=0
+dr/dtau=partial D/partial k,  dk/dtau=-partial D/partial r
+vg=-D_k/D_omega,  tau_g=integral ds/|vg|
+推荐配图（两张唯一图）：
+output2/report_assets/reflection_route_2026-07-26/06_ah3d_output_structure.png
+output2/report_assets/reflection_route_2026-07-26/05_ah3d_numerical_flow.png
+数据依据：
+AH3D冻结配置、轨迹JSON、Hamiltonian残差日志及O/X跨频连续性验收记录
+讲解提示：
+按“折射物理—Hamiltonian方程—数值流程—终止状态”顺序讲解；明确AH3D求解几何光学特征线，不求解完整Maxwell波场。
+
+第4页  AH3D输出证据与P2P接收机约束
+核心结论：
+模型将接收机命中约束转化为发射仰角/方位角二维有界求根，并对每条正式轨迹保存可复核的物理量、状态、配置和哈希。
+正文要点：
+- P2P落点残差由沿链路和横链路分量组成；多尺度中心差分计算落点映射Jacobian。
+- 有界TRF限制发射角搜索范围；优化阶段采用smoke配置，收敛角度必须以research配置前向复算。
+- 正式根必须ground终止、数据有限且落点误差小于5 km。
+- PNG负责视觉检查，CSV/JSON保存数值结果，日志和SHA-256 manifest保证配置及产物可追踪。
+公式：
+F(beta,az)=[Delta_x,Delta_y]^T=0
+J_ij=[F_i(theta+h_j)-F_i(theta-h_j)]/(2h_j)
+
+表4-1  AH3D输出字段、单位与物理语义
+| 类别 | 关键字段/结果 | 单位 | 物理或验收语义 |
+| 轨迹状态 | trajectory_ecef_km、链路局部x/y/z | km | 三维ECEF正式状态及派生绘图坐标 |
+| 落点 | landing位置、east/north残差 | km | 与接收机地理位置的二维命中差 |
+| 反射几何 | apex/turning、反射高度 | km | 转向点和最高传播高度 |
+| 路径量 | geom_path_km | km | 沿三维轨迹积分的几何程 |
+| 群传播量 | group_path_km、tau_ms | km、ms | 冷等离子体群程与群时延，不与几何程混用 |
+| 波模与状态 | O/X、branch_status、termination_status | 枚举 | 分支连续性及ground/grid_exit等终止原因 |
+| 数值诊断 | Hamiltonian/色散残差、步长、投影状态 | 无量纲/步长量 | 色散面约束、积分稳定性和异常拒绝依据 |
+| 追踪证据 | Provider/config/code hash、manifest | SHA-256 | 输入、配置、源码和产物的一致性签名 |
+
+表4-2  五场景局部P2P配置与正式根门槛
+| 环节 | 固定配置 | 正式要求 |
+| 种子选择 | O/X每分支1个最近地面Ray Fan种子 | 仅局部搜索，不宣称全角域模式完整性 |
+| 优化器 | 有界TRF，最多5次残差评估 | 仰角/方位角不得越出风险单元边界 |
+| 优化积分 | smoke配置 | 仅用于降低搜索成本，不作为最终物理结果 |
+| 终值复算 | research配置 | 复算后的轨迹和路径量进入正式图表 |
+| 终止状态 | ground | 非ground根显式拒绝 |
+| 落点门槛 | p2p_landing_error_km<5 | 残差有限且满足接收机命中门槛 |
+| 完整性语义 | seeded_local_roots_not_full_domain_mode_audit | P2-6H复杂场全角域完整性仍延期 |
+
+推荐配图：
+无。采用公式、双表格和右侧结论框构成高信息密度页面。
+数据依据：
+output2/report_assets/reflection_route_2026-07-26/formal_complex_scene_ox_p2p_manifest.json
+output2/report_assets/reflection_route_2026-07-26/formal_complex_scene_ox_p2p_acceptance.json
+output2/p2p_unified_<scene>.json
+讲解提示：
+先说明“如何命中接收机”，再说明“保存哪些结果、如何判定正式根、如何追踪证据”。
+
+第5页  五场景正式O波Ray Fan（一）：Baseline、TID、Spread-F
+核心结论：
+Baseline、TID和Spread-F均已在统一ECEF AH3D入口完成10 MHz、单程、O波、33个固定仰角计算；背景与轨迹来自同一Provider。
+正文要点：
+- Baseline：ground 26、grid_exit 2、physics_domain_rejected 5。
+- TID：ground 22、grid_exit 3、physics_domain_rejected 8；F区长尺度扰动改变转向高度及返回位置。
+- Spread-F：ground 30、grid_exit 2、physics_domain_rejected 1；F区随机结构改变局部折射环境。
+- 每场景33次发射均完整计入返回、异常或拒绝状态，不静默删除失败轨迹。
+- Ray Fan表示固定发射角采样响应，不是接收机约束传播模式集合。
+推荐配图（三图横排或一主两辅）：
+output2/tx_fan_unified_baseline.png
+output2/tx_fan_unified_tid.png
+output2/tx_fan_unified_spreadf.png
+数据依据：
+output2/ray_fan_unified_baseline.json
+output2/ray_fan_unified_tid.json
+output2/ray_fan_unified_spreadf.json
+讲解提示：
+统一坐标轴和色标，依次比较平滑背景、长尺度扰动和F区随机结构对O波轨迹的影响。
+
+第6页  五场景正式O波Ray Fan（二）：Es、Bubble
+核心结论：
+Es和Bubble场景完成相同33仰角O波计算，分别体现E区薄层增强与F区场向耗空结构对反射路径的影响。
+正文要点：
+- Es：ground 32、physics_domain_rejected 1；正式Ray Fan删除局部放大窗，避免遮挡射线追踪路线。
+- Es电子密度局部放大仅保留在介质结构页，传播Ne及射线计算未变化。
+- Bubble：ground 26、grid_exit 2、physics_domain_rejected 5；低高度耗空已由F区底边门控消除。
+- Bubble仍是参数化耗空管，不是动力学EPB或Spread-F羽流模拟。
+- 两图均为10 MHz、单程、O波、正式ECEF AH3D；P2P、P-D、Ray-PE和散射功率改写关闭。
+推荐配图（双图并列）：
+output2/tx_fan_unified_es.png
+output2/tx_fan_unified_bubble.png
+数据依据：
+output2/ray_fan_unified_es.json
+output2/ray_fan_unified_bubble.json
+讲解提示：
+重点区分“Es窄层增强”和“Bubble F区耗空”两种相反介质特征，并指出图中已无遮挡轨迹的局部窗。
+
+第7页  五场景O/X Ray Fan对比（一）：Baseline、TID、Spread-F
+核心结论：
+相同介质和发射角下，O/X分支采用独立Appleton-Hartree折射关系，可直接比较磁离子分支的轨迹与终止状态。
+正文要点：
+- 图例统一为O波红色实线、X波蓝色虚线，每分支各33次发射。
+- Baseline：O ground 26、X ground 30；两分支physics_domain_rejected分别为5和1。
+- TID：O ground 22、X ground 29；TID对两分支返回状态和轨迹的影响不同。
+- Spread-F：O/X均ground 30，均grid_exit 2、physics_domain_rejected 1。
+- 终止数量反映固定角采样下的数值/物理状态，不直接等价于可接收模式数。
+推荐配图（三图横排或一主两辅）：
+output2/tx_fan_ox_unified_baseline.png
+output2/tx_fan_ox_unified_tid.png
+output2/tx_fan_ox_unified_spreadf.png
+数据依据：
+output2/ray_fan_ox_unified_baseline.json
+output2/ray_fan_ox_unified_tid.json
+output2/ray_fan_ox_unified_spreadf.json
+讲解提示：
+先比较同场景O/X分裂，再比较不同复杂介质对两分支终止状态的影响。
+
+第8页  五场景O/X Ray Fan对比（二）：Es、Bubble
+核心结论：
+Es和Bubble的O/X联合Ray Fan保留完整磁离子分支及终止统计，但不能据此判断接收机约束模式完整性。
+正文要点：
+- Es：O ground 32，X ground 31；X波另有grid_exit 1，两分支physics_domain_rejected均为1。
+- Es O/X正式图删除局部放大窗，O/X路径、图例和接收机位置无遮挡。
+- Bubble：O ground 26，X ground 30；O/X的grid_exit均为2，physics_domain_rejected分别为5和1。
+- 两场景均采用相同10 MHz、单程、球形地球和33个固定仰角。
+- Ray Fan不等于P2P模式集合，更不能替代P2-6H复杂三维场全角域模式审计。
+推荐配图（双图并列）：
+output2/tx_fan_ox_unified_es.png
+output2/tx_fan_ox_unified_bubble.png
+数据依据：
+output2/ray_fan_ox_unified_es.json
+output2/ray_fan_ox_unified_bubble.json
+output2/report_assets/reflection_route_2026-07-26/formal_complex_scene_ox_p2p_acceptance.json
+讲解提示：
+说明O/X图用于分支轨迹和终止状态比较，模式数量必须由接收机约束求根及完整角域审计确定。
+
+第9页  已收敛的局部种子P2P结果：Baseline、TID、Bubble
+核心结论：
+受限局部搜索在Baseline、TID和Bubble中获得经research终值复算且满足接收机命中门槛的正式根。
+正文要点：
+- Baseline：O波1根、X波1根，最大落点误差0.017712 km。
+- TID：O波1根、X波0根，最大落点误差0.024634 km。
+- Bubble：O波1根、X波1根，最大落点误差0.085660 km。
+- 所有保留根均为ground终止、数值有限，并通过落点误差小于5 km门槛。
+- 图中轨迹代表当前局部种子已找到的接收机命中解，不代表全角域全部传播模式。
+- 不比较或推断绝对接收功率；吸收、海况、天线方向图和接收机链尚未实测校准。
+结果摘要表：
+| 场景 | O根 | X根 | 最大落点误差/km | 结果语义 |
+| Baseline | 1 | 1 | 0.017712 | O/X局部接收机命中解 |
+| TID | 1 | 0 | 0.024634 | 当前仅O波局部命中解 |
+| Bubble | 1 | 1 | 0.085660 | O/X局部接收机命中解 |
+推荐配图（三图横排或一主两辅）：
+output2/p2p_modes_unified_baseline.png
+output2/p2p_modes_unified_tid.png
+output2/p2p_modes_unified_bubble.png
+数据依据：
+output2/p2p_unified_baseline.json
+output2/p2p_unified_tid.json
+output2/p2p_unified_bubble.json
+output2/modes_unified_baseline.csv
+output2/modes_unified_tid.csv
+output2/modes_unified_bubble.csv
+讲解提示：
+先报告根数量和落点误差，再强调“已找到命中解”与“证明模式完整性”是不同结论。
+
+第10页  未收敛场景诊断与质量效率平衡：Es、Spread-F
+核心结论：
+Es和Spread-F在当前1种子、最多5次TRF评估的受限局部搜索中未获得正式命中根；该结果只说明局部搜索未收敛，不等于无传播模式或无O/X分支。
+正文要点：
+- Es：O根0、X根0；Spread-F：O根0、X根0。两张空轨迹画布是显式未收敛诊断，不是无模式证据。
+- 两场景Ray Fan均存在大量ground返回轨迹，进一步说明“局部P2P未收敛”不能解释为“不存在传播路径”。
+- 未收敛可能来自种子与根吸引域不匹配、5次评估不足或落点映射局部非线性，不能通过制造轨迹或放宽门槛处理。
+- 每分支仅取1个最近地面Ray Fan种子；smoke配置参与TRF优化，收敛角度必须由research配置重新前向积分。
+- 正式根仍要求ground终止、数据有限、落点误差小于5 km；本轮未简化Hamiltonian方程、色散投影或中心差分Jacobian。
+- 效率折中发生在搜索覆盖度，不发生在单条射线物理方程；若需完整模式，应扩大角域、增加种子并恢复多级自适应细化。
+- 当前结果语义固定为seeded_local_roots_not_full_domain_mode_audit；P2-6H仍延期。
+质量—效率配置表：
+| 项目 | 本轮配置 | 影响 |
+| Ray Fan | O/X各33个固定仰角 | 保留分支与终止状态统计 |
+| P2P种子 | 每分支1个最近地面种子 | 降低搜索覆盖度与耗时 |
+| TRF评估 | 最多5次 | 可能无法进入远离种子的根吸引域 |
+| 优化积分 | smoke | 仅用于局部优化 |
+| 正式复算 | research | 决定最终轨迹与落点误差 |
+| 正式门槛 | ground且误差<5 km | 未放宽 |
+推荐配图（两张诊断图+一张统计图）：
+output2/p2p_modes_unified_es.png
+output2/p2p_modes_unified_spreadf.png
+output2/report_assets/reflection_route_2026-07-26/13_formal_ray_fan_statuses.png
+数据依据：
+output2/p2p_unified_es.json
+output2/p2p_unified_spreadf.json
+output2/report_assets/reflection_route_2026-07-26/formal_complex_scene_ox_p2p_acceptance.json
+讲解提示：
+先用空根图说明“未收敛”，再用Ray Fan状态统计证明“仍有返回路径”，最后解释质量—效率折中和后续完整性升级条件。
+
+第11页  外部验证进度、能力边界与风险
+核心结论：
+坐标契约和真空对照已闭环，低射线跨软件一致性较好，但高射线同角轨迹RMS仍超限；在差异源关闭前，A4及后续全波/散射升级不能宣称完成。
+正文要点：
+- AH3D已统一为与PHaRLAP可对照的地心纬经高输入和ECEF内部状态。
+- C1低射线跨软件一致性良好；高射线差异主要沿链路方向累积，轨迹RMS仍超过2 km门槛。
+- PHaRLAP积分扫描、状态语义和可见局部RHS尚不能解释全部高射线偏差，当前归因为software_difference_or_unresolved。
+- A4总体未通过；A4-C2 O/X外部验证仍位于人工决策门之后。
+- AH3D是几何光学射线模型，不能描述完整三维横向波动、衍射、路径间相干耦合和三维边界条件。
+- P2-6H复杂场全角域模式完整性未验证；Ray-PE仍是local_2p5d，不代表完整3D PE/全波。
+- Spread-F、Es和Bubble为参数化入口；散射影响、吸收、海况、天线方向图和接收机处理链尚未形成绝对功率校准闭环。
+风险与限制表：
+| 风险项 | 当前状态 | 对结论的限制 |
+| 高射线外部一致性 | 同角轨迹RMS超限 | A4-C1失败状态保持 |
+| 复杂场模式完整性 | P2-6H延期 | 局部根不能代表全部模式 |
+| 波动求解能力 | AH3D几何光学、Ray-PE local_2p5d | 不能宣称完整3D全波 |
+| 复杂环境真实性 | 参数化扰动入口 | 不能宣称动力学复现 |
+| 功率真实性 | 未实测校准 | 不报告绝对接收功率可信度 |
+推荐配图（保留两张，删除阶段状态图）：
+output2/a4_pharlap/figures/trajectory_c0_comparison.png
+output2/a4_pharlap/c1/c1p/c1p_4/c1p_4_attribution_matrix.png
+数据依据：
+word/a4_c1_chapman_external_validation_implementation_plan.txt
+word/a4_c1p_pharlap_numerical_attribution_implementation_plan.txt
+word/hf_3d_hf_reflection_model_route_and_progress_2026-07-26.docx
+讲解提示：
+只报告验证事实和能力边界，不将内部一致性替代外部软件验证，也不因局部结果通过而解除A4失败状态。
+
+第12页  下一步工作路线
+核心结论：
+先关闭高射线外部差异并恢复反射模型可信度，再开展O/X外部验证、复杂场模式完整性和完整三维波动/散射升级。
+实施顺序与准入条件：
+1. 高射线差异决策：在第三套可审计Hamiltonian求解器与最小PHaRLAP兼容修复之间形成版本化方案。
+   准入条件：能够逐项比较同角轨迹、落点、反射高度、路径量、群时延和局部RHS。
+2. AH3D修复与回归：修复后重跑真空、B=0、Chapman、截止状态、O/X分裂、跨频连续性及P2P参考根。
+   准入条件：内部冻结阈值全部通过，原结果不得被静默覆盖。
+3. A4-C1复验：完整重跑PHaRLAP与AH3D同角高低射线对比。
+   准入条件：低/高射线轨迹RMS、最大误差、落点、反射高度和群路径均满足冻结门槛。
+4. A4-C2/C3/C4：在C1通过后开展O/X外部验证及有限复杂度诊断。
+   准入条件：继续保留C1状态，不以独立求根差异覆盖同角前向积分误差。
+5. P2-6H模式完整性：按研究需要扩大角域、增加种子和多级自适应细化。
+   准入条件：明确接受计算时长，并冻结配置、Provider及代码哈希。
+6. B1-B5波动/散射升级：推进完整3D PE、反射—散射相干耦合、吸收和功率校准。
+   准入条件：反射路径模型外部验证闭环，外部Ne契约和实测校准数据可用。
+阶段性成果保持：
+- 保留统一三维Provider、正式ECEF AH3D、O/X Ray Fan、局部P2P和内部验收证据链。
+- 保留A4未完成、AH3D非全波、P2-6H未验证和绝对功率未校准等限制语义。
+推荐配图：
+无。采用纵向阶段箭头、准入门和关键验收指标构成文字型路线页。
+数据依据：
+word/ah3d_full3d_wave_upgrade_plan.txt
+word/a3rnew_accuracy_first_implementation_plan.txt
+word/a4_c1p_pharlap_numerical_attribution_implementation_plan.txt
+讲解提示：
+结尾强调“先保证反射路径可信，再增加模式覆盖、波动、散射和功率复杂度”，各阶段必须通过准入条件后才能进入下一阶段。

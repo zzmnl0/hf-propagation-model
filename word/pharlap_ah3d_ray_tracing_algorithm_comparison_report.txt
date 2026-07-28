@@ -1,0 +1,133 @@
+PHaRLAP与AH3D三维射线追踪算法对比报告
+
+版本：2026-07-24
+范围：PHaRLAP 4.7.4 raytrace_3d_sp与当前生产AH3D ECEF实现
+结论边界：本报告比较三维磁离子几何光学射线追踪算法，不涉及PE、散射、功率、全波或模式耦合验证。
+材料筛选：PHaRLAP目录中的Cervera与Harris（2014）直接公开3D核心算法；其余本地OTHR、噪声、干扰和遥感论文主要使用PHaRLAP输出，不足以反推MEX内部离散公式，故只作应用背景，不作为核心算法细节证据。
+
+1. 总结结论
+
+1. PHaRLAP与AH3D具有相同的理论类别：均以Haselgrove Hamiltonian射线方程和Appleton-Hartree磁离子色散为基础，在三维球形地球环境中求解射线位置与波法向状态；二者均不是全波求解器。
+2. 两者并非同一数值实现。PHaRLAP公开资料确认采用Cartesian形式的6个一阶ODE、Bogacki-Shampine嵌入式RK(4,5)和自适应步长；AH3D采用物理ECEF位置/波矢、几何弧长参数化、DOP853、自适应步长、每个接受步显式D=0投影和可审计的多尺度空间差分。
+3. 连续、精确且使用等价色散函数时，状态缩放和独立变量变化只应改变射线参数化，不应改变空间轨迹。实际差异来自离散RHS、状态归一化、插值/梯度、步长控制、分支处理、事件定位或未公开内部实现。
+4. PHaRLAP功能覆盖更完整：支持位置相关三维B网格、碰撞频率、O/X/no-field、相位程/群程/几何程、吸收、TEC、Doppler和偏振。当前AH3D的优势是核心方程和数值诊断完全可审计，D=0约束、Hamiltonian残差、事件定位及Provider哈希均显式记录；不足是B仍为固定ECEF方向和固定gyro频率，轨迹只允许无碰撞实色散，吸收另作路径积分。
+5. 当前A4-C1高射线同角轨迹RMS 2.410089/2.527629 km超出2 km门槛，不能据此判定PHaRLAP或AH3D哪一个“更准确”。C1R已排除AH3D端DOP853容差、冻结场线性表示、空间导数和ground事件为主要原因，但PHaRLAP MEX内部插值、导数、磁化时独立变量和事件算法仍不可观察。
+
+2. PHaRLAP三维射线追踪算法
+
+2.1 理论与状态
+
+1. PHaRLAP 3D引擎基于Haselgrove Hamiltonian射线方程，采用Cartesian形式积分；对外输入输出使用球形地球的地心纬度、经度和高度。
+2. 公开论文将状态写为位置向量r和沿波法向、模等于相折射率的方向向量k，共6个一阶ODE。PHaRLAP帮助文件的ray_state_vec同样说明dir_x/dir_y/dir_z的模为折射率，而不是AH3D使用的物理波数km^-1。
+3. 支持O波、X波和忽略磁场三种模式；介质输入为Ne、5分钟后Ne、碰撞频率及Bx/By/Bz三维网格。
+
+2.2 数值积分
+
+1. 采用Bogacki-Shampine八阶段嵌入式RK(4,5)，用四阶/五阶解差估计局部误差并自适应调整步长，返回四阶解。
+2. 用户可控制ODE tolerance、最小步长和最大步长；PHaRLAP 4.7.4公开帮助给出的有效范围分别为1e-12至1e-2、0.001至1 km、1至100 km。
+3. 无磁场时公开论文明确使用群程作为独立变量。磁化条件下论文只说明不再使用群程作为积分独立变量，公开帮助仅输出indep_var和ODE_step_size，未给出该变量的明确物理定义。
+4. 群程按P'=∫n_g cos(alpha) dl积分，其中alpha为波法向与射线方向夹角，n_g=d(nf)/df并由Appleton-Hartree方程的频率导数获得。
+
+2.3 可见功能与不可观察部分
+
+1. 可见输出包括轨迹、群程、相位程、几何程、折射率、波法向/射线夹角、波法向/B夹角、三维B、碰撞频率、累计吸收、TEC、Doppler及偏振量。
+2. MATLAB包装层和帮助文件公开，但核心为编译后的MEX/Fortran程序。当前安装包未提供可审计的核心源代码。
+3. Release notes只说明曾改进高度插值及Ne/B偏导效率，未公开三维网格插值阶次、空间偏导公式、磁化时独立变量、色散约束恢复和事件定位公式。
+4. 因此PHaRLAP可作为主流外部软件参照，但在未取得核心算法说明或源代码前，不能把其每个离散结果直接定义为绝对真值。
+
+3. 当前AH3D算法
+
+3.1 理论、坐标与状态
+
+1. 生产入口为models/ray_tracer_ah_3d_ecef.py；状态为[r_ECEF(km), k_ECEF(km^-1), t_group(s)]。
+2. 色散函数为
+   D(r,k,omega)=|k|^2-(omega/c)^2 n_AH^2(r,k,omega)=0。
+3. 以物理几何弧长s为独立变量：
+   dr/ds=D_k/|D_k|，
+   dk/ds=-D_r/|D_k|，
+   dt_group/ds=1/|v_g|，
+   v_g=-D_k/D_omega。
+4. ECEF只表达物理位置和波矢；Provider采用球形地球的地心纬度、东经和高度，禁止旧link-local/earth-flattening坐标进入生产链。
+
+3.2 数值积分与约束
+
+1. 使用SciPy DOP853显式八阶自适应积分器；reference配置为rtol=3e-9、位置绝对容差1e-7 km、最大几何步长0.5 km。
+2. D_r在物理ECEF方向采用多尺度中心差分，并以尺度间稳定平台决定是否接受；无效Provider域、near-cutoff病态和非有限结果显式拒绝。
+3. D_k与D_omega采用对称复步长差分；群速度直接由-D_k/D_omega计算。
+4. 每个接受步沿D_k方向作最小波矢修正，将状态投影回D=0色散面；同时记录最大Hamiltonian归一化残差和最大投影修正。
+5. ground、upper boundary、Provider grid exit及turning/apex事件使用DOP853 dense output和二分定位；终止状态和事件误差均进入结果语义。
+
+3.3 当前物理边界
+
+1. Ne可来自解析、冻结三维网格、参数化扰动或严格外部三维Provider；冻结网格目前使用纬度-经度-高度线性插值。
+2. 当前磁场为固定gyro_MHz和固定b_ecef_hat，尚不是位置相关IGRF/三维B Provider。
+3. 当前轨迹严格使用无碰撞实色散面；collision_s非零会被拒绝，碰撞吸收在独立路径积分中处理。
+4. near-cutoff仅有状态分类、步长和拒绝控制，尚未像AU-Ray那样引入Appleton-Hartree/Booker quartic切换，因此spitze、耦合点和共振附近仍是需单独验证的区域。
+
+4. 逐项对比
+
+项目                   PHaRLAP 4.7.4                         当前AH3D
+理论类别               Haselgrove 3D磁离子几何光学          同类
+空间坐标               内部Cartesian；外部地心球坐标       物理ECEF；Provider地心球坐标
+射线状态               r + 模为n的波法向向量               r_ECEF + 物理k_ECEF + 群时延
+色散分支               O/X/no-field                         O/X；B=0退化
+积分器                 Bogacki-Shampine RK(4,5)，返回4阶    DOP853显式8阶
+步长                   自适应，可设tol/min/max              自适应，可设rtol/atol/max_step
+独立变量               B=0为群程；磁化时公开资料未明确     几何弧长
+空间场                 Ne、碰撞频率、Bx/By/Bz三维网格       Ne Provider；固定B
+插值与梯度             MEX内部实现未公开                    线性Ne插值；多尺度ECEF中心差分
+D_k、D_omega            核心实现未公开                       对称复步长差分
+色散约束               公开资料未说明显式投影              每接受步显式D=0投影
+事件定位               核心实现未公开                       dense output + 二分
+群程                   AH频率导数积分                        c乘累计群时延
+碰撞/吸收              复AH折射率及独立吸收输出             实轨迹；吸收另作路径积分
+诊断可审计性           接口和状态可见，核心MEX不可见         RHS、残差、投影、事件、哈希可见
+全波能力               无                                    无
+
+5. 对A4-C1高射线差异的解释
+
+1. C1-1使用完全相同发射角比较两套前向轨迹。低射线RMS约0.106 km并通过；高射线RMS为2.410089/2.527629 km并失败，差异以沿链路水平累积为主。
+2. C1-2双方独立求根后高射线RMS降至0.140578 km，但发射角相差0.044463 deg。这说明高分支的落点-发射角映射具有较高条件敏感性；不同角补偿不能覆盖同角失败。
+3. C1R诊断结果：
+   reference/refined DOP853轨迹RMS差0.001932 km；
+   冻结线性/解析Chapman Provider轨迹RMS差0.006384 km；
+   多尺度/解析空间导数轨迹RMS差6.18e-5 km。
+   以上量级均不足以解释约2.4 km同角RMS，因此不能继续通过收紧AH3D容差或替换已验证导数来制造通过。
+4. 尚未关闭的差异主要是：PHaRLAP核心中的状态归一化、磁化时参数化、RK误差尺度、内部插值/偏导、色散分支处理和逐步事件逻辑。该结论是“软件离散实现差异未解析”，不是“AH3D错误”或“PHaRLAP错误”。
+5. Coleman（2011）指出高射线对应光程泛函极小分支且对端点约束和初始条件敏感；这支持高射线放大微小离散差异，但不能免除同角门槛失败。
+
+6. 后续隔离建议（按优先级）
+
+1. 对PHaRLAP同一高射线角执行tolerance/min_step/max_step收敛扫描，比较轨迹、落点、indep_var和ODE_step_size；先判断PHaRLAP自身离散收敛平台。
+2. 利用PHaRLAP ray_state_vec中的位置、折射率波法向、indep_var和ODE_step_size，统一转换到ECEF与归一化相空间，比较相邻状态的局部dr/dlambda、dk/dlambda方向；不得只比较最终落点。
+3. 在B=0解析Chapman同一状态点比较两套RHS方向和色散不变量。B=0结果只能诊断数值实现，不得外推到O/X。
+4. 若公开接口仍无法隔离，采用第三套可审计Hamiltonian实现作三方比较；AU-Ray论文可提供算法依据，但其程序未公开获取时不能作为立即可执行工具。
+5. 只有定位到可复现的AH3D生产缺陷后才修改生产求解器；修改后重跑C0R、C1同角/独立根和C1R。当前不得放宽2 km门槛，C2仍未准入。
+
+7. 适用边界
+
+1. 本次PHaRLAP/AH3D直接证据主要来自B=0、无碰撞、平滑水平分层Chapman F2单程高/低射线。
+2. 不能把该结果外推为O/X、三维复杂扰动、外部Ne、散射、Ray-PE、功率或全波验证通过。
+3. PHaRLAP功能较完整不等于每个个案均为真值；AH3D可审计性较强也不等于已完成外部验证。
+
+8. 主要依据
+
+Haselgrove, J. (1963). The Hamiltonian ray path equations. Journal of Atmospheric and Terrestrial Physics, 25(7), 397-399. https://doi.org/10.1016/0021-9169(63)90173-9
+
+Bogacki, P., & Shampine, L. F. (1996). An efficient Runge-Kutta (4,5) pair. Computers & Mathematics with Applications, 32(6), 15-28. https://doi.org/10.1016/0898-1221(96)00141-1
+
+Cervera, M. A., & Harris, T. J. (2014). Modeling ionospheric disturbance features in quasi-vertically incident ionograms using 3-D magnetoionic ray tracing and atmospheric gravity waves. Journal of Geophysical Research: Space Physics, 119(1), 431-440. https://doi.org/10.1002/2013JA019247
+
+Coleman, C. J. (2011). Point-to-point ionospheric ray tracing by a direct variational method. Radio Science, 46(5), RS5016. https://doi.org/10.1029/2011RS004748
+
+Hirvonen, E. A. O., Kauristie, K., & Kallio, E. (2025). AU-Ray program for modeling radio wave propagation in the ionosphere. Radio Science, 60, e2024RS008209. https://doi.org/10.1029/2024RS008209
+
+PHaRLAP 4.7.4 local documentation: src/matlab/raytrace_3d_sp.m and RELEASE_NOTES.txt.
+
+9. 本地实现依据
+
+models/ray_tracer_ah_3d_ecef.py
+models/dispersion_ah.py
+models/ne_provider_geocentric.py
+word/a4_c1_chapman_external_validation_report.txt
+word/a4_c1r_implementation_report.txt

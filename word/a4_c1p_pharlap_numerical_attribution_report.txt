@@ -1,0 +1,30 @@
+A4-C1P PHaRLAP侧数值归因实施报告
+
+日期：2026-07-24T07:39:36.751393+00:00
+机器状态：completed_c1p4_software_difference_or_unresolved
+最终归因：software_difference_or_unresolved
+
+一、实施范围
+
+1. 使用冻结Chapman 1 km网格、B=0、collision=0、10 MHz和四个C1公共角。
+2. 完成10组PHaRLAP tolerance/min/max-step扫描、状态语义审计和局部RHS比较。
+3. 未重新求根，未修改AH3D、PHaRLAP MEX、原C1/C1R产物或2 km门槛。
+
+二、积分归因
+
+PHaRLAP积分分类：pharlap_integration_not_primary。
+high_pharlap_anchor: E_base=2.41008944 km, E_ref=2.40501084 km, pharlap_shift=0.00924870833 km, closure=0.210722%, reference_converged=True。
+high_ah3d_anchor: E_base=2.52762871 km, E_ref=2.53385227 km, pharlap_shift=0.0101751782 km, closure=-0.246221%, reference_converged=True。
+
+三、状态与局部RHS
+
+1. PHaRLAP ray_state_vec按公开语义转换：ECEF位置为m，dir向量模为相折射率。
+2. B=0下indep_var与group_path闭合；色散、路径单调性和局部RHS统计均已冻结。
+3. state_or_rhs_semantics_candidate=False。
+
+四、结论与门控
+
+1. 当前差异源分类为software_difference_or_unresolved。
+2. 原A4-C1状态仍为failed_c1_chapman_high_low_external_comparison。
+3. C1P完成不自动开放C2；后续由用户审阅本报告后决定修复、第三方验证或有限诊断。
+4. 本结论仅适用于B=0平滑Chapman单程高/低射线，不外推到O/X、复杂3D扰动、散射、PE或全波。

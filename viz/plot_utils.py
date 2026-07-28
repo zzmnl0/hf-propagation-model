@@ -86,11 +86,12 @@ def build_ray_info_text(link_info: dict,
             p.get('foEs_MHz', 0), p.get('h_Es_km', 0)))
     if 'Bubble' in pert:
         p = pert['Bubble']
-        lines.append("[Bub] z0={:.0f} km  sperp={:.0f} km  spar={:.0f} km  dep={:.2f}".format(
+        lines.append("[Bub] z0={:.0f} km  sperp={:.0f} km  spar={:.0f} km  dep={:.2f}  zbase={:.0f} km".format(
             p.get('z0_km', 0),
             p.get('sigma_perp_km', p.get('Lx_km', 0)),
             p.get('sigma_para_km', p.get('Lz_km', 0)),
-            p.get('delta_max', 0)))
+            p.get('delta_max', 0),
+            p.get('bottomside_height_km', 200.0)))
     if 'SpreadF' in pert:
         p = pert['SpreadF']
         lines.append("[Spread-F] dNe_rms={:.2f} Cs={:.1e} p={:.2f} h={:.0f} km".format(
@@ -348,16 +349,20 @@ def plot_p2p_modes(modes: list,
                             cmap='jet', shading='auto', alpha=0.5)
         plt.colorbar(pcm, ax=ax, label='Ne  [x10^10 m^-3]',
                      fraction=0.046, pad=0.04)
-    colors = plt.cm.tab10(np.linspace(0, 1, max(len(modes), 1)))
-    for m, c in zip(modes, colors):
+    styles = {'O': ('crimson', '-'), 'X': ('deepskyblue', '--'),
+              'iso': ('purple', '-')}
+    for m in modes:
         xs, zs = _mode_xz(m)
         if not xs:
             continue
+        branch = str(m.get('wave_mode', 'iso'))
+        color, linestyle = styles.get(branch, ('purple', '-'))
         beta = float(m.get('beta_deg_tx', m.get('elevation_tx_deg', m.get('beta_deg', 0.0))))
-        label = '{} tau={:.3f}ms h={:.0f}km beta={:.1f}deg'.format(
+        landing = float(m.get('p2p_landing_error_km', float('nan')))
+        label = '{} tau={:.3f}ms h={:.0f}km beta={:.1f}deg err={:.3f}km'.format(
             m.get('label', '?'), float(m.get('tau_ms', 0.0)),
-            float(m.get('h_reflect_km', 0.0)), beta)
-        ax.plot(xs, zs, lw=1.8, color=c, label=label)
+            float(m.get('h_reflect_km', 0.0)), beta, landing)
+        ax.plot(xs, zs, lw=1.8, color=color, ls=linestyle, label=label)
     ax.axvline(tx_pos[0], color='g', lw=1.2, ls='--', label='TX')
     ax.axvline(rx_pos[0], color='b', lw=1.2, ls='--', label='RX')
     ax.set_xlabel('Distance  (km)')
@@ -368,6 +373,14 @@ def plot_p2p_modes(modes: list,
     ax.set_title(title)
     ax.grid(True, alpha=0.25)
     ax.legend(fontsize=7, loc='upper left', ncol=1)
+    if not modes:
+        ax.text(
+            0.5, 0.48,
+            'No converged receiver-hitting root from the local fan seeds.\n'
+            'This is not evidence that the scene has no propagation mode.',
+            transform=ax.transAxes, ha='center', va='center', fontsize=10,
+            bbox=dict(boxstyle='round,pad=0.5', facecolor='white',
+                      alpha=0.9, edgecolor='crimson', lw=1.0))
     if link_info is not None:
         info_text = build_ray_info_text(link_info, ne_2d, z_km, pert_info)
         ax.text(0.99, 0.97, info_text, transform=ax.transAxes,

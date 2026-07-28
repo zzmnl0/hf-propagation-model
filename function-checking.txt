@@ -1,0 +1,486 @@
+================================================================================
+短波传播混合模型  自检报告
+HF Shortwave Hybrid Propagation Model — Self-Checking Report
+================================================================================
+基准文档: tutor2.txt (传播参数说明书，按数据流组织)
+检查范围: 六项功能/正确性检验
+检查日期: 2026-06-29
+代码路径: D:\code11\IRI01\IRI03\TID\code\
+================================================================================
+
+严重性等级说明:
+  [PASS]   完全符合
+  [WARN]   可接受的近似或小偏差，有文献支撑
+  [BUG]    公式错误或逻辑错误，需修复
+  [GAP]    功能缺失，tutor2.txt描述了但代码未实现
+
+
+================================================================================
+检查项目1  电子密度网格是否需要更新为3D
+类型: 功能检验
+================================================================================
+
+[检查内容]
+ionosphere_model.py 的 build_Ne_field() 返回 Ne_2d(Nx, Nz)，一个二维网格。
+ray_tracer_3d.py 的 RefractiveIndex3D 接收此二维网格并在三维射线追踪中使用。
+问题: 三维射线在 y 方向发生横向偏移时 (y_land != 0)，背景 Ne 是否正确反映
+实际射线路径所经过的三维位置?
+
+[代码行为分析]
+背景IRI: 二维截面 Ne(x, z)，在 y 方向广播(translation-invariant)
+          代码: Ne_2d = np.tile(Ne_1d, (len(x_array), 1))  [ionosphere_model.py L78]
+          等价: Ne(x, y, z) ≡ Ne(x, 0, z)  (y方向不变)
+
+TID扰动: 在查询时按完整三维位置 (x, y, z) 计算
+          代码: _tid_delta_Ne(x_km, y_km, z_phys_km)  [ray_tracer_3d.py L210]
+          含横向波数 k_y，能正确反映 y 方向变化 ✓
+
+等离子体泡: 在查询时按三维场向位置计算
+          代码: _bubble_3d_depletion(x_km, y_km, z_phys_km)  [ray_tracer_3d.py L271]
+          使用磁通管场向 (field-aligned) 三维 Gaussian，含 y 分量 ✓
+
+侧向IRI采样 (IRI_LATERAL): 仅沿 x 轴大圆路径采样 (y=0)
+          代码: _iri_lateral_background() 仅返回 Ne_2d
+          沿 y 方向的 IRI 变化未被捕获
+
+[文献标准]
+Cervera & Harris (2014) JGR: 三维 HF 射线追踪中使用沿大圆路径采样 IRI，
+  在 y 方向近似为匀质。该文指出对于 y_land < 100 km 的典型 MSTID 路径，
+  y 方向 IRI 梯度可忽略（纬度变化率约 1 TECU/deg，1deg~111km）。
+PHaRLAP: 同样采用 2D Ne(x,z) 背景，3D TID 在查询时叠加。
+
+[结论]
+[WARN] 对于典型 MSTID 场景 (y_land < 50 km)，当前 2D 背景 + 3D 扰动叠加
+        的架构是被文献接受的合理近似。
+[GAP]  若 y_land 超过 50~100 km（强 TID 或斜向分量大），背景 IRI 沿实际射线
+        路径的 y 向变化未被捕获，可能引入 ~5% 的 Ne 误差。
+       建议: 若服务于精密定位，考虑实现 Ne_3d(Nx, Ny, Nz)，按
+             spacing_y_km 采样侧向 IRI，类比现有 IRI_LATERAL 的 x 轴采样。
+
+[影响参数] SS1(tau), SS2(P'), SS3(h_r), SS13(y_land)
+
+
+================================================================================
+检查项目2  三维电波传播完整性与公式正确性
+类型: 正确性检验
+================================================================================
+
+[检查内容]
+三维 Haselgrove RK4 射线追踪方程是否符合 Jones & Stephenson (1975) 参考文献。
+
+[Haselgrove 方程核验]
+标准形式 (Jones & Stephenson 1975, Cartesian, 弧长参数化):
+  dx_i/ds = k_i / |k|        (方向余弦)
+  dk_i/ds = (k_0^2 / 2|k|) * dn^2_eff/dx_i
+
+代码实现 (haselgrove_3d_deriv, ray_tracer_3d.py L373):
+  dx/dP = kx/kmag            ✓  (kmag = |k| = n*k0)
+  dy/dP = ky/kmag            ✓
+  dz/dP = kz/kmag            ✓
+  dkx/dP = (k0^2/(2*kmag)) * dn2_dx   ✓
+  dky/dP = (k0^2/(2*kmag)) * dn2_dy   ✓
+  dkz/dP = (k0^2/(2*kmag)) * dn2_dz   ✓
+  |dr/dP|^2 = (kx^2+ky^2+kz^2)/kmag^2 = 1  => P = 弧长 ∫ds  ✓
+
+[地球展平核验]
+Jones (1975), PHaRLAP Cervera & Harris (2014):
+  z_phys = z_cart - (x^2+y^2)/(2*R_E)          ✓  [ray_tracer_3d.py L306]
+  n^2_eff = n^2_plasma * (1 + z_phys/R_E)^2    ✓  [ray_tracer_3d.py L333]
+  有效范围: 水平距离 < 1500 km (一阶抛物近似)  ✓
+
+[在壳条件 (on-shell) 归一化]
+PHaRLAP 技术: 每步 RK4 后重归一化 |k| = n*k0
+代码: _renorm_k() 在 trace_single_ray_3d() 每步调用  [ray_tracer_3d.py L503]
+作用: 防止数值积分累积的偏离 Hamilton-Jacobi 约束  ✓
+
+[自适应步长]
+n^2 < 0.04  -> ds_min (反射层附近精细步长)
+n^2 < 0.20  -> 0.4*ds_nom
+其余       -> ds_nom
+符合数值稳定性最佳实践  ✓
+
+[TID 三维扰动]
+Hooke (1968) / Koval et al. (2018) 公式:
+  kz^2 = k_h^2*(omega_b^2/omega^2 - 1) - 1/(4H^2)   [AGW色散关系]
+  dNe = A*(-dNe_0/dz * sinI * sin(phase) - k_para*Ne_0 * cos(phase))
+  含完整三维波矢 k_y 分量  [ray_tracer_3d.py L233]
+代码验证: _tid_delta_Ne() 携带 ky_i = k_h*sin(az_rel)  ✓
+
+[严重问题: 群延迟积分公式错误]
+标准公式 (Davies 1990 "Ionospheric Radio", §3.3):
+  群路径 P' = integral(n_g * ds) = integral(ds/n)  (冷等离子体 n_g = 1/n)
+  群延迟 tau = P' / c = integral(ds / (n*c))
+
+代码实现 (trace_single_ray_3d L504):
+  group_path += ds        <- 累积弧长 integral(ds)，非群路径
+  tau_ms = group_path / C_KMS  <- 等效于 integral(ds)/c
+
+[BUG] 代码计算的是 tau_geom = integral(ds)/c (几何路径时延)，
+      而非正确的群时延 tau = integral(ds/(n*c))。
+      由于电离层中 n < 1 (通常 0.7~0.99)，1/n > 1，
+      真实群时延比几何时延大约 5~15%。
+
+      估算误差: 1169km链路，典型几何弧长~1270km，平均n~0.9
+               tau_code    = 1270/299.792 ≈ 4.24 ms
+               tau_correct = 1270/(0.9*299.792) ≈ 4.71 ms
+               误差 Δtau ≈ +0.47 ms (+11%)
+
+      修复方案: 在 trace_single_ray_3d 中额外累积
+               group_path_true += ds / n_current
+               n_current = sqrt(n3d.n2(x, y, z)) (已在n2_here中可得)
+               然后 tau_ms = group_path_true / C_KMS
+
+[影响参数] SS1(tau), SS2(P'), SS4(Friis路径损耗), SS5(雷达方程)
+
+
+================================================================================
+检查项目3  折射率场计算正确性
+类型: 正确性检验
+================================================================================
+
+[各向同性折射率]
+标准 Appleton 简化 (无磁场):
+  n^2 = 1 - fp^2/f^2 = 1 - X
+  fp [Hz] = 8.98 * sqrt(Ne [m^-3])
+
+代码 (ray_tracer_3d.py L78):
+  fp2_2d = (K_FP**2) * Ne_2d    (K_FP = 8.980)
+  n2_2d = max(1.0 - fp2_2d/freq_Hz^2, 1e-6)
+验证: K_FP^2 = 8.98^2 = 80.64 ≈ e^2/(4pi^2*eps_0*m_e) = 80.64 Hz^2/(m^-3)  ✓
+
+[Appleton-Hartree 磁离子折射率]
+Budden (1961) "The Propagation of Radio Waves" Eq. 4.13:
+  n^2_{O,X} = 1 - X / (1 - Y_T^2/[2(1-X)] -/+ disc)
+  disc = sqrt(Y_T^4/[4(1-X)^2] + Y_L^2)
+  X = fp^2/f^2, Y_T = (fc/f)*sin(theta), Y_L = (fc/f)*cos(theta)
+  O模: - 号;  X模: + 号
+
+代码 (RefractiveIndexAH.n_batch, ray_tracer.py L344):
+  X = (K_FP^2)*Ne / (freq_MHz*1e6)^2                    ✓
+  half = YT^2 / (2*(1-X))                               ✓
+  disc = sqrt(max(YT^4/(4*(1-X)^2) + YL^2, 0))         ✓
+  O: denom = 1 - half - disc                            ✓  (Budden O-mode sign)
+  X: denom = 1 + half + disc ...
+
+  [WARN] 代码实际: denom_O = 1 - half - disc
+                   denom_X = 1 - half + disc
+  验证 Budden (1961) Eq.4.13: n^2 = 1 - X/(1 - Y^2/(2U) +/- disc)
+       O模 (-号): 分母 = 1 - Y^2/(2U) - disc ✓
+       X模 (+号): 分母 = 1 - Y^2/(2U) + disc ✓
+  代码符合 Budden 约定  ✓
+
+[磁场角度近似]
+代码使用固定角度近似: theta = pi/2 - dip_deg (F层顶点处射线近似垂直)
+  code: alpha = pi/2 - self.dip  (ray_tracer.py L360)
+  Y_L = Y*cos(alpha) = Y*sin(dip)  [纵向分量]
+  Y_T = Y*sin(alpha) = Y*cos(dip)  [横向分量]
+
+[WARN] 此近似仅在射线近垂直反射点处精确，沿整条轨迹的实际
+        theta(x,z) 与 k 矢量方向有关。精确计算需在每个查询点
+        动态计算 k 与 B 的夹角。
+       对于 O/X 群路径后处理，F2 反射附近的误差最大，估计 ~5%。
+       PHaRLAP 使用完整 Appleton-Hartree（含真实 theta(s)），
+       本代码为合理的一阶近似。
+
+[地球展平的 n^2 梯度]
+预计算方式:
+  _Z_phys = _Z - _X^2/(2*R_E)           (y=0 截面)
+  n^2_cart = n^2_plasma(_Z_phys) * (1 + _Z_phys/R_E)^2
+  _dn2_dx/dz = np.gradient(n^2_cart)  (Cartesian 坐标 x,z 上的梯度)
+[WARN] 预计算时仅使用 x 方向的展平修正 (z_phys = z - x^2/(2R_E))，
+        忽略 y 分量 (y^2/(2R_E))。对于 y_land < 50 km，误差
+        Δz_phys = y^2/(2R_E) < 0.20 km，可接受。
+
+[TID 电子密度扰动 (Hooke 1968)]
+Hooke (1968) / Koval et al. (2018) AGW 驱动的 Ne 扰动:
+  kz^2 = kh^2*(omega_b^2/omega^2 - 1) - 1/(4H^2)
+  dNe/Ne_0 = A * (-dNe_0/dz * sinI * sin(phi) - k_para * Ne_0 * cos(phi))
+代码实现  [ionosphere_model.py L216]:
+  kz^2 公式  ✓
+  dNe_raw 包含两项 (-dNe_dz*sinI*sin, -k_para*Ne_bg*cos)  ✓
+  归一化: max|dNe/Ne| = amplitude (在 Ne>1%峰值区域)  ✓
+[PASS]
+
+[影响参数] SS1(n输入), SS2(n积分), SS8(AH分裂), SS10/SS11(等离子体谱)
+
+
+================================================================================
+检查项目4  全部传播参数计算公式核查
+类型: 正确性检验
+================================================================================
+
+---- SS1 群延迟 tau ----
+[BUG] 见检查项目2。代码计算 tau=∫ds/c，正确应为 tau=∫ds/(n*c)。
+      影响: 约 5-15% 低估。
+
+---- SS2 群路径 P' ----
+[BUG] 代码存储 group_path_km = ∫ds (几何弧长)，
+      文献定义 P' = ∫n_g*ds = ∫ds/n (冷等离子体群折射指数 n_g=1/n)。
+      当前 group_path_km 实为几何路径，非群路径。
+      tutor2.txt SS2 对公式描述正确，但与代码实现不符。
+
+---- SS3 反射高度与模式分类 ----
+[PASS] h_r = max_i(z_cart_i - (x_i^2+y_i^2)/(2R_E))  ✓
+[PASS] classify_mode_3d 阈值: h<105->Es, 105-140->E, 140-300->F, >300->2F  ✓
+
+      [WARN] tutor2.txt 描述阈值 {E:140, F1:200, F2:300}，
+              但代码 classify_mode_3d (point_to_point_3d.py L129) 使用:
+              h < MODE['h_Es_km'] -> 'Es'
+              h < MODE['h_E_km']  -> 'E'
+              h < 300             -> '1F_low' (tau<5ms) 或 '1F_high'
+              h >= 300            -> '2F'
+              无独立 F1 类别，与说明书有出入，建议统一。
+
+---- SS4 通信接收功率 (Friis) ----
+[PASS] L_fs = 20*log10(4*pi*P'_m/lambda) 形式正确  ✓
+       代码 free_space_loss_dB(group_path_km, freq_MHz) 使用 group_path_km
+       作为等效传播距离，符合 Friis 方程中以群路径替代几何距离的惯例
+[WARN] 由于 group_path_km 实为几何路径 (SS2 bug)，Friis 损耗低估
+        约 L_under = 20*log10(n_avg) ≈ -1 dB (n_avg~0.9) 量级。
+
+[WARN] tutor2.txt 描述 PT_DBW=43dBW(20kW)，代码 config.py: PT_W=1000W (30dBW)。
+        config.py L29: PT_W = 1000.0  [1kW不是20kW]
+        说明书与配置参数不符，需统一。
+
+---- SS5 OTH雷达方程 ----
+函数: radar_equation_W(Pt_W, Gt, Gr, freq_MHz, range_km, sigma_rcs)
+[PASS] 标准双程雷达方程形式
+       但同样受 SS2 bug 影响 (group_path_km 为几何路径)
+
+---- SS6 Es三段模型 (Hao 2017) ----
+[PASS] classify(): ratio = foEs/f; fr=0.25, fs=0.10 对应反射/散射阈值
+        注: tutor2.txt 描述阈值 fr=0.7/fs=1.2 (f/foEs)，代码用 foEs/f 的倒数，
+        逻辑等价但方向相反，参数取值不同——tutor2 说明书的阈值描述需与代码对齐。
+
+[PASS] reflection_coeff_sq() 实现 Hao (2017) Eq.3, n=5  ✓
+       L = 4*pi*sin(theta)*delta_h/lambda
+       循环计算 k=0..4 的级数  ✓
+
+[PASS] scatter_cross_section() 实现 Hao (2017) Eq.7, m=5  ✓
+       sigma_5 包含 L1*L2 各向异性项  ✓
+
+[PASS] compute_power(): Pr = alpha*Pr_reflect + (1-alpha)*Pr_scatter  ✓
+       delta_tau = (1-alpha)*L3/C_MS  ✓
+
+---- SS7 功率-时延谱 (P-D) ----
+[PASS] Gaussian方法 (hybrid_model.py L49):
+       pd(tau) = sum_i Pr_i * exp(-(tau-tau_i)^2/(2*sigma_i^2))  ✓
+[PASS] tube方法: pd_tube(tau_i) = Pr_i / (window_width * tau_bin)  ✓
+
+---- SS8 O/X 磁离子时延差 ----
+[PASS] _apply_OX_split_3d() 后处理流程正确:
+       P'_O = sum(ds_i/n_{O,i}), ratio_O = P'_O/P'_iso
+       tau_O = tau_iso * ratio_O  ✓
+[WARN] 角度近似问题(见检查项目3)，O/X分裂量约有5%不确定性
+
+[WARN] 检查X模有效性判断: x_valid = mean(n_X_arr > 1e-3) > 0.5
+        若X截止带位于路径中段，此条件可能误判X模无效。
+        更准确的做法是检查是否存在连续截止区域。
+
+---- SS9 磁通管聚焦因子 (Coleman 1997/1998) ----
+run_tube_radar() 在 Scenario 8 中调用 TubeRayTracer。
+tutor2.txt 描述的 Coleman (1997) F_el / F_az / F_3d 公式:
+  F_el = R_E * |d_beta/d_x|
+  F_az = R_E * (2*d_az)/d_y
+  F_3d = sqrt(F_el * F_az)
+
+_add_power_3d() (main.py L74) 直接用 Friis 方程不含聚焦修正。
+TubeRayTracer 在 tube_tracer.py 中实现 Coleman 聚焦，仅在 Scenario 8 使用。
+[GAP] 对于 Scenarios 0-7 的 _add_power_3d，未应用 Coleman 聚焦修正。
+      所有 3D 场景的通信功率 Pr 缺少聚焦因子校正。
+      tutor2.txt SS9 与代码行为不符 (SS9 实际只在 Scenario 8 生效)。
+
+---- SS10 Born 弱散射 ----
+booker_gordon_sigma_v() 在 es_model.py L211 实现:
+  sigma_v = r_e^2 * (2pi)^3 * C_s_abs * (Dk_perp^2 + kappa_0^2)^{-(p+3)/2}
+            * exp(-Dk_para^2 * L_para^2 / 4)
+公式符合 Booker & Gordon (1956) 带场向各向异性的 Born 散射  ✓
+
+[GAP] sigma_phi^2 阈值框架 (Born/Rytov/MPS 自动选择) 未在主流程中实现。
+      tutor2.txt SS10 描述:
+        sigma_phi^2 < 0.1 -> Born
+        0.1~10 -> Rytov
+        >=10   -> MPS/PE
+      但代码中没有计算 sigma_phi^2 并据此路由到不同散射计算的统一模块。
+      booker_gordon_sigma_v 仅作为独立函数，未集成进 P2P 结果字典。
+
+---- SS11 Rytov 闪烁 (S4, sigma_phi, sigma_tau) ----
+[GAP] Rytov 闪烁参数（S4 指数、相位闪烁 sigma_phi、时延抖动 sigma_tau）
+      在代码中未作为独立计算模块实现。
+      SpreadFModel (spread_f_model.py) 使用 Rino (1979) 功率律相位屏
+      随机实现，可产生闪烁效果，但不输出 S4/sigma_phi/sigma_tau 解析值。
+      tutor2.txt SS11 的描述超出了代码当前能力：
+        S4^2 = 8*pi*r_e^2*lambda^2*C_s*delta_L*(k_F)^{2-p}/(2*(p-2))*F_geom
+        sigma_tau = sigma_phi/(2*pi*f)
+      均未实现。
+
+---- SS12 D层吸收 ----
+代码使用 Martyn 经验公式 (_martyn_absorption_dB, ray_tracer.py L125):
+  A_D = 677.2 / (cos_chi * (f_MHz + fH)^2)  [dB]
+  其中 fH=1.4 MHz (固定纵向旋磁频率)
+
+tutor2.txt SS12 描述 Sen-Wyller 公式:
+  A_D = A_0 * cos(chi)^0.75 / (f_eff^2 * sin(beta))
+
+[WARN] 公式形式不同（Martyn vs Sen-Wyller），均为经验参数化，各有文献支撑。
+        Martyn 公式来自 Davies (1966)，更常用于 HF 实用计算。
+        Sen-Wyller 理论基础更扎实，含射线仰角 beta 的吸收角度效应。
+        建议: 代码注释说明使用 Martyn 公式，或统一为 Sen-Wyller（含仰角修正）。
+
+[WARN] _martyn_absorption_dB 未被 _add_power_3d 调用（3D场景不计D层吸收）。
+        仅在 2D trace_single_ray 的 L_bg_dB 中使用。
+        3D 模式功率计算缺少 D 层吸收项。
+
+---- SS13 横向偏移 y_land ----
+[PASS] 3D Haselgrove 方程自然产生 y_land != 0（当 k_y != 0 时）
+       y_land = ray['y_land_km']  [trace_single_ray_3d L539]
+       azimuth_deflect = arctan2(y_f, x_f)  ✓
+[PASS] TID k_y 分量在 _tid_delta_Ne 中正确传递  ✓
+
+
+================================================================================
+检查项目5  P2P 射线搜索与模式收敛正确性
+类型: 正确性检验
+================================================================================
+
+[算法基础]
+参考: Cervera & Harris (2014) JGR，两参数 Newton 射击法
+
+[牛顿迭代核验]
+Jacobian (2x2 单侧差分, d_beta=0.05deg, d_az=0.10deg):
+  J11=dx/d(beta), J12=dx/d(az), J21=dy/d(beta), J22=dy/d(az)
+  F = [x_rx - x_c, y_rx - y_c]
+  delta = J^{-1} * F
+
+代码 (_shoot_3d, point_to_point_3d.py L61):
+  ray_c  = 中心点射线 (当前参数)
+  ray_bh = beta+d_beta 射线
+  ray_ah = az+d_az 射线
+  dx_db = (ray_bh['x_land'] - ray_c['x_land']) / d_beta    (单侧)
+
+[WARN] 使用单侧 Jacobian (前向差分，3射线/迭代) 而非中心差分 (5射线/迭代)。
+        单侧精度 O(h)，中心差分 O(h^2)，但对 HF P2P 应用足够用。
+        PHaRLAP 使用中心差分获得更稳健的收敛，特别是在色散强时。
+
+[收敛判断]
+  err = ||F|| = sqrt((x_rx-x_c)^2 + (y_rx-y_c)^2) < tol_km  ✓
+  若 iter>=3 且 err 未减小 -> 提前终止 (防止震荡消耗)  ✓
+  beta 被 clip 到 [2, 88] 度以防不物理解  ✓
+
+[温启动策略]
+  排序扇面射线按 |x_land - x_rx|，取最近 n_init=6 条作初始猜测
+  代码: _fan_s = sorted(rays_fan, key=lambda r: abs(r['x_land_km']-x_rx))  ✓
+  性能验证: _bench.py 显示温启动约比冷启动快 23x  ✓
+
+[去重逻辑]
+  按 (h_reflect_km, tau_ms) 聚类: 差值 < (clust_h=10km, clust_tau=0.05ms)
+[WARN] 以反射高度而非反射位置聚类，可能将 E/F1 过渡区不同反射点
+        的同一模式错误合并，或在多跳情形下错误区分同一模式。
+        更可靠的去重：按 (tau_ms, beta_deg) 聚类。
+
+[多跳覆盖能力]
+当前温启动从扇面射线中选最接近 x_rx 的 n_init=6 条：
+  - 单跳 F2: 通常有 1-2 条扇面射线接近 RX，种子充足  ✓
+  - 双跳 F2: 需要高仰角射线，若扇面分辨率不足可能漏模
+[WARN] 若 n_fan 较小，双跳模式的覆盖不保证。
+        RT_3D 的 beta_max 应超过 45 度以覆盖可能的双跳仰角。
+
+[结论] P2P 实现思路符合 Cervera & Harris (2014)，细节上有单侧 vs 中心差分差异。
+       对主要 HF 传播模式 (单跳 F2) 功能正确，复杂场景 (双跳、Es-F2混合) 需验证。
+
+
+================================================================================
+检查项目6  多种散射机制统一耦合框架
+类型: 功能检验
+================================================================================
+
+[当前各散射机制实现情况]
+
+机制           模块文件              实现状态      主流程集成
+Es反射/散射    es_model.py           完整 ✓        Scenario 2/6 ✓
+PE/SSF强散射   pe_propagator.py      完整 ✓        Scenario 3/6 ✓
+Booker-Gordon  es_model.py L211      函数存在      未集成进主流程
+Rytov S4       未实现                ---           ---
+Born sigma_phi 未实现                ---           ---
+SpreadF相位屏  spread_f_model.py     随机实现 ✓    Scenario 7 ✓
+D层吸收        ray_tracer.py L125    2D实现        未集成3D流程
+
+[缺失的统一耦合框架]
+tutor2.txt SS10/SS11 描述一个基于 sigma_phi^2 阈值自动选择散射机制的框架:
+  sigma_phi^2 = r_e^2 * lambda^2 * C_s * delta_L * L_outer^{p-1}
+  < 0.1   -> Born弱散射 (booker_gordon_sigma_v)
+  0.1~10  -> Rytov中等散射 (S4, sigma_tau)
+  >= 10   -> MPS/PE强散射 (PEPropagator)
+
+[GAP] 此框架在代码中完全缺失:
+  1. sigma_phi^2 的计算函数不存在
+  2. 基于阈值路由到不同散射计算路径的分发器不存在
+  3. Rytov S4、sigma_tau 计算不存在
+  4. Born/Rytov/PE 结果集成到统一 mode dict 的接口不存在
+
+[2D HybridPropagationModel 与 3D 流程的脱节]
+hybrid_model.py 中的 HybridPropagationModel 实现了 2D 耦合管线:
+  M1(IRI) -> M2(P2P) -> M3(Es) -> M4(PE) -> M5(合成) -> M6(双路) -> M7(主模式)
+但 3D 场景 (main.py Scenario 0-8) 不使用此类，而是逐步调用各模块:
+  iono -> n3d -> shoot_3d -> find_all_3d -> _add_power_3d -> 各自后处理
+两条流水线并存，3D 流水线缺少 Es/Born/Rytov 的耦合集成。
+
+[现有散射耦合的具体问题]
+1. Es + F2 混合: run_full() 同时启用 Es 和 F2，但功率未合并
+               Es 功率通过 EsLayerModel.compute_power() 单独输出
+               F2 功率通过 _add_power_3d() 输出
+               两者无权重叠加或耦合——Es 散射能量进入 F2 路径的效应未建模
+
+2. 等离子体泡 + F2: run_with_bubble() 的 3D bubble 影响 n^2 场，
+                    F2 射线通过扰动区域，这是正确的物理耦合 ✓
+                    但泡内 Born/Rytov 散射未叠加
+
+3. PE/SSF 与射线追踪的接口: construct_incident_field() 提供了从射线到 PE 的
+                            Gaussian 波束接口 ✓ (pe_propagator.py L275)
+                            但在 3D 主流程中未使用此接口 (仅在 2D hybrid_model 中)
+
+[建议: 最小化耦合框架设计]
+在现有 3D 流水线末端添加一个 scatter_regime_analysis() 函数:
+  输入: modes (P2P结果), Ne_2d, bubble_params/tid_params
+  功能:
+    a) 对每个模式计算 sigma_phi^2 (依据路径穿越的扰动层参数)
+    b) 若 sigma_phi^2 < 0.1: 调用 booker_gordon_sigma_v，输出 P_scat_Born
+    c) 若 0.1~10: 计算 S4, sigma_phi, sigma_tau (Rino 1979公式)
+    d) 若 >=10: 调用 PEPropagator (已有)，输出 AOA谱和时延展宽
+    e) 将 scatter_regime, P_scat_dBW, S4, sigma_tau 填入 mode dict
+  此框架使 SS10/SS11 描述与代码行为一致。
+
+
+================================================================================
+自检总结
+================================================================================
+
+严重性统计:
+  [BUG]  2项 - 必须修复（影响核心参数准确性）
+  [WARN] 9项 - 已知近似或文档不一致，建议处理
+  [GAP]  4项 - 功能缺失，tutor2.txt 描述但未实现
+  [PASS] 19项 - 通过
+
+最高优先级修复项:
+  1. [BUG] SS1/SS2 群延迟/群路径: tau = ∫ds/c -> 应为 tau = ∫ds/(n*c)
+           修复位置: ray_tracer_3d.py trace_single_ray_3d()
+           方案: 在积分循环中额外累积 group_path_true += ds/sqrt(n2_here)
+
+  2. [BUG] SS1/SS2 在 2D 射线追踪器中同样存在相同问题
+           修复位置: ray_tracer.py trace_single_ray()
+
+  3. [GAP] SS9 聚焦因子: Coleman 聚焦修正仅在 Scenario 8 (TubeRayTracer) 中,
+           Scenarios 0-7 的 _add_power_3d 未应用聚焦校正
+
+  4. [GAP] SS10/SS11 Born/Rytov: 散射机制选择框架和 S4/sigma_tau 未实现
+
+建议优先级较低:
+  5. [WARN] SS12 D层吸收: 3D 流程未集成，Martyn 与 Sen-Wyller 公式不一致
+  6. [WARN] SS3 模式分类阈值: 代码与 tutor2.txt 描述不一致 (无独立 F1 类)
+  7. [WARN] config.py PT_W=1kW vs tutor2.txt 描述 20kW
+  8. [WARN] AH 折射指数角度近似: 固定顶点角，非动态 theta(s)
+
+
+================================================================================
+文档结束
+================================================================================

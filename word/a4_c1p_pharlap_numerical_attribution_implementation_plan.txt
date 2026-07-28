@@ -1,0 +1,114 @@
+A4-C1P PHaRLAP侧数值归因实施计划
+
+版本：2026-07-24
+状态：C1P-0至C1P-4已完成；completed_c1p4_software_difference_or_unresolved；C2保持人工决策门且未自动准入
+上位计划：a4_pharlap_external_validation_implementation_plan.txt
+前置状态：A4-C1-4=failed_c1_chapman_high_low_external_comparison
+位置：A4-C1-4之后、A4-C2之前
+
+一、目标与边界
+
+1. 分析PHaRLAP积分收敛、ray_state_vec状态语义和公开状态可恢复的局部离散导数，判断其能否解释C1高射线同角偏差。
+2. 不修改生产AH3D、PHaRLAP安装目录/MEX、原C1/C1R脚本或冻结产物。
+3. 不降低2 km轨迹RMS门槛，不重新求根，不改变Chapman参数、发射角或地球模型。
+4. C1P是失败后的数值归因门，不是C1补通过；完成后必须经人工决策才能进入C2或其他A4阶段。
+
+二、冻结算例
+
+1. 物理条件：B=0、collision=0、10 MHz、单程、球形地球半径6371 km、refined_1km冻结Chapman网格。
+2. 公共角固定为：
+   low_pharlap_anchor=21.94290326504532 deg；
+   low_ah3d_anchor=21.94562872092976 deg；
+   high_pharlap_anchor=39.54254824570964 deg；
+   high_ah3d_anchor=39.58701138438118 deg。
+3. C1P-0必须复验C1-0/1/2/3、C1R-0至5、C1-4 manifest、MEX、输入、AH3D/Provider/config哈希；漂移时阻断。
+
+三、分步实施
+
+C1P-0 冻结准入
+
+实施结果（2026-07-24）：passed_c1p0_frozen_admission。C1/C1R/C1-4、MEX、refined_1km输入及AH3D/Provider/config哈希均无漂移；正式C1失败状态保持不变。
+
+1. 只读复验全部前置manifest和冻结产物SHA-256。
+2. 检查频率、模式、碰撞、球半径、输入哈希和四个公共角。
+3. 输出准入JSON、来源状态图和freeze manifest。
+4. 通过状态：passed_c1p0_frozen_admission。
+
+C1P-1 PHaRLAP积分收敛扫描
+
+实施结果（2026-07-24）：completed_c1p1_pharlap_convergence_scan。40组profile-case均为ground单转向，基线和高精度参考重复性通过。两条高射线基线至参考的PHaRLAP内部轨迹RMS仅0.00924871/0.0101752 km；参考邻近配置RMS仅0.000268603/0.0000829664 km，参考已收敛。严格PHaRLAP对AH3D的RMS为2.40501/2.53385 km，相对原2.41009/2.52763 km只关闭0.2107%或反向变化0.2462%，积分归因=pharlap_integration_not_primary。
+
+1. 仅运行四个冻结角，不做完整角域扫描或求根。
+2. 固定10组[tolerance,min_step_km,max_step_km]：
+   [1e-8,0.01,10]；
+   [1e-6,0.01,10]；
+   [1e-10,0.01,10]；
+   [1e-12,0.01,10]；
+   [1e-10,0.01,5]；
+   [1e-10,0.01,2]；
+   [1e-10,0.01,1]；
+   [1e-12,0.1,1]；
+   [1e-12,0.01,1]；
+   [1e-12,0.001,1]。
+3. 第一组为原C1基线，最后一组为高精度参考；两组各重复一次，其余各运行一次。
+4. 比较termination、turning count、重复性、轨迹、落点、apex、几何程、群程、群时延、indep_var和ODE_step_size。
+5. 高精度参考收敛门：与[1e-12,0.01,1]相比，轨迹RMS<=0.02 km且落点差<=0.05 km。
+6. 输出原始MAT、扫描CSV/JSON、三张收敛图和freeze manifest。
+
+C1P-2 状态与色散语义审计
+
+实施结果（2026-07-24）：completed_c1p2_state_semantics_audit。八组基线/参考状态的群程、几何程、相位程和indep_var均单调；B=0下indep_var与group_path闭合至2.84e-14 km以内。重构色散残差最大值低射线约5.55e-4、高射线约9.73e-4，未形成高射线相对低射线十倍异常。
+
+1. 完整读取PHaRLAP ECEF位置、dir向量、群程、几何程、相位程、indep_var和ODE_step_size。
+2. PHaRLAP无量纲相折射向量定义为p=dir；AH3D等价定义为p=c*k/omega。
+3. 在同一冻结Provider计算|p|^2-n^2、路径量单调性，以及indep_var分别对群程/几何程的闭合残差。
+4. 对基线和高精度参考、两个低射线控制和两个高射线对象分别报告，禁止跨分支平均。
+5. 输出逐点CSV/NPZ、状态语义JSON、色散/路径闭合图和freeze manifest。
+
+C1P-3 局部RHS与离散轨迹比较
+
+实施结果（2026-07-24）：completed_c1p3_local_rhs_audit。严格配置高射线切向P95为0.03009/0.03426 deg，低射线控制最大0.03148 deg；高射线dp/ds中位相对残差为0.002832/0.004028，低射线控制最大0.004766。两个高射线均未触发state_or_rhs_semantics_candidate。
+
+1. 使用累计几何程作共同参数，以中心差分恢复PHaRLAP dr/ds和dp/ds。
+2. 将同一PHaRLAP状态转换为AH3D物理波矢，并调用正式B=0 Hamiltonian RHS。
+3. 比较切向夹角、dp/ds相对残差、dp/ds方向夹角和色散残差；仅在有效内点和显著弯曲区计算dp/ds统计。
+4. 最多均匀抽取81个内点调用AH3D RHS；减少样本不改变方程。
+5. state_or_rhs_semantics_candidate判据：严格配置下两个高射线均满足以下至少一项，并各有不少于20个有效弯曲点：
+   tangent_p95_deg>max(0.01 deg,10*low_control_max)；
+   dp_ds_relative_median>max(0.1,10*low_control_max)。
+6. 输出局部指标CSV/NPZ、u/高度残差图、阶段JSON和freeze manifest。
+
+C1P-4 归因与人工决策门
+
+实施结果（2026-07-24）：completed_c1p4_software_difference_or_unresolved。PHaRLAP积分不是主因，公开状态和可恢复局部RHS未发现高射线特有异常；剩余差异仍归为software_difference_or_unresolved。原C1失败状态未改变，C2_gate=manual_decision_required_formal_c1_still_failed。
+
+1. 对两个高射线分别计算：
+   E_base=原PHaRLAP基线相对冻结AH3D同角RMS；
+   E_ref=高精度PHaRLAP相对冻结AH3D同角RMS；
+   closure=(E_base-E_ref)/E_base；
+   pharlap_shift=基线与高精度参考之间的RMS。
+2. 归因规则：
+   pharlap_integration_not_primary：两个高射线pharlap_shift<=0.1 km且|closure|<=5%；
+   pharlap_integration_primary_candidate：参考序列已收敛且任一高射线closure>=50%；
+   pharlap_integration_contributor：介于上述两类之间；
+   state_or_rhs_semantics_candidate：满足C1P-3双高射线控制判据；
+   software_difference_or_unresolved：积分、状态和可见RHS均不能解释偏差。
+3. 最终归因优先级：integration_primary -> state_or_rhs -> integration_contributor -> software_difference_or_unresolved。
+4. 输出归因矩阵图、机器JSON、实施报告、最终freeze manifest。
+5. 原C1最终状态必须保持failed_c1_chapman_high_low_external_comparison。
+
+四、产物与验收
+
+1. 执行器：tests/_run_a4_c1p_pharlap_attribution.py。
+2. 只读验收器：tests/_verify_a4_c1p_pharlap_attribution.py。
+3. MATLAB源：tests/matlab/a4_c1p_pharlap_scan.m；运行时部署到D:\Matlab\PHaRLAP，不修改PHaRLAP安装目录。
+4. 输出目录：output2/a4_pharlap/c1/c1p/c1p_0至c1p_4。
+5. 每阶段至少一张非空白PNG，并冻结原始数据、配置、来源和代码SHA-256。
+6. 验收器不得重算射线；任一哈希、状态、配置矩阵、公共角或图像漂移均失败。
+
+五、C1P后决策
+
+1. 定位PHaRLAP基线积分问题：另拟版本化PHaRLAP配置修复并完整重跑C1。
+2. 定位AH3D方程/状态映射缺陷：停止A4，先拟最小生产修复和回归计划。
+3. 仍不可解析：保持C1失败，优先采用第三套可审计Hamiltonian实现。
+4. C1P完成后不自动执行C2/C3/C4；用户审阅归因报告后另行确认。

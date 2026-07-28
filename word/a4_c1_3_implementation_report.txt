@@ -1,0 +1,49 @@
+A4-C1-3自动验收与差异归因实施报告
+
+日期：2026-07-23
+机器状态：failed_pending_c1r
+总体语义：C1-3机器验收与归因已完成；A4-C1正式失败仍成立，当前结果不是C1通过，也不授权修改生产AH3D。
+
+一、自动验收结果
+
+1. C1-0、C1-1、C1-2及Prep-5冻结manifest和全部来源哈希复验通过。
+2. 验收按每个case、每个gate独立计算，不跨分支平均。正式失败仅有两项：
+   high_pharlap_anchor trajectory_rms_3d_km=2.410089 km，门槛2 km；
+   high_ah3d_anchor trajectory_rms_3d_km=2.527629 km，门槛2 km。
+3. C1-1低射线全部门通过；两组高射线除轨迹RMS外的落点、apex、几何路径、群路径、群时延、最大轨迹误差和重复性均通过。
+4. C1-2独立根全部适用门通过，但保持diagnostic_after_same_angle_failure，不覆盖C1-1失败。
+
+二、归因证据
+
+1. 输入差异：排除。双方读取同一refined_1km冻结MAT，SHA-256为0a978478b52f5363c93cbc77b0ee1868a4f50e488c82c829eb7794f0cf1235a7，单位、轴序和Provider契约已通过。
+2. 坐标/地球模型差异：排除。C0R-8状态为passed_pharlap_coordinate_contract_closed，双方使用球形地心纬经高输入和ECEF状态。
+3. 终端事件映射：排除为主因。AH3D最大事件定位区间9.31e-10 km，落点高度误差小于2.45e-10 km；PHaRLAP终点高度为0。高射线残差在u=0.25已达1.08/1.13 km，在u=0.50已达2.10/2.20 km，明显早于ground事件。
+4. 高射线冻结前向映射：在39.3至39.8 deg共同扫描角内，AH3D-PHaRLAP落点距离差为-3.08至-4.99 km；拟合根角中点偏差-3.93 km。PHaRLAP/AH3D局部斜率为92.77/89.42 km/deg，相对差3.61%。
+5. 低射线前向映射：落点差仅0.05至0.20 km，局部斜率相对差0.375%，与其同角通过一致。
+6. AH3D约束：最大Hamiltonian残差9.89e-11，低于1e-8门槛；多尺度有限差分无拒绝，最大稳定比0.0268；四组重复轨迹完全一致。这些证据排除明显失稳，但不能证明不存在系统数值偏差。
+7. 冻结1 km Chapman网格的诊断性解析检查显示，显著密度区线性插值中点Ne最大相对误差约0.0799%，梯度误差相对全局最大梯度约1.00e-5。该检查不替代正式冻结场，也不能代表PHaRLAP内部插值。
+
+三、归因结论
+
+1. 主类别：numerical_difference，置信度moderate。
+2. 输入差异和坐标/地球模型差异已排除；事件映射已排除为主因。
+3. physics_formula_difference当前证据不支持但未完全排除，因为PHaRLAP内部公式和插值实现不能由输出直接审计。
+4. 具体子因仍为unresolved_interpolation_derivative_integration_or_implementation，置信度low。现有证据不足以把误差唯一归于AH3D插值、Hamiltonian导数、DOP853积分或PHaRLAP内部实现。
+5. C1状态固定为failed_pending_c1r，C2继续阻断。
+
+四、产物与验证
+
+1. output2/a4_pharlap/c1/attribution包含逐gate CSV/JSON、归因JSON、机器报告和freeze manifest。
+2. c1_acceptance_matrix.png显示六组case的PASS/FAIL/N/A；失败仅位于C1-1两组高射线trajectory RMS。
+3. c1_attribution_evidence.png汇总前向映射偏差、路径中段残差、约束/事件/插值诊断和归因类别。
+4. tests/_verify_a4_c1_attribution.py提供不重算射线的状态、哈希、失败签名和归因复验。
+
+五、风险与下一步
+
+1. 当前不能基于“数值差异”直接修改生产AH3D；盲目修改可能破坏已通过的低射线、独立根、C0R和P2P回归。
+2. C0R-8步长收敛属于支持性先验，并非本次高射线同角case，不能代替高射线专属积分容差试验。
+3. 解析Chapman检查仅用于诊断冻结线性场表示误差，不能作为正式输入替换，也不能证明PHaRLAP内部插值方式。
+4. 下一步应先执行a4_c1r_high_ray_numerical_isolation_plan.txt中的验证性隔离；仅当某一A/B试验稳定复现并关闭约4 km偏差时，再拟生产修复及全量回归。
+5. 本阶段未新增物理参数，沿用reference-papers.txt现有Haselgrove、Jones与Stephenson、Budden、Coleman、Nosikov及Cervera与Harris文献链，无需新增引用。
+
+建议：确认实施C1R验证性隔离，暂不进入C1-4/C2，不修改生产求解器。

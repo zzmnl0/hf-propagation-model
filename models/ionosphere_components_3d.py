@@ -28,15 +28,17 @@ LITERATURE_REFERENCES = {
     ),
     "es": (
         "Haldoupis, C. (2011). A tutorial review on sporadic E layers. In "
-        "Aeronomy of the Earth's Atmosphere and Ionosphere, 381-394. Springer."
+        "Aeronomy of the Earth's Atmosphere and Ionosphere, 381-394. Springer. "
+        "Hao et al. (2017), Acta Physica Sinica, 66, 119401."
     ),
     "booker_gordon": (
         "Booker, H. G., & Gordon, W. E. (1950). A theory of radio scattering "
         "in the troposphere. Proceedings of the IRE, 38(4), 401-412."
     ),
     "bubble": (
-        "Kelley, M. C. (2009). The Earth's Ionosphere: Plasma Physics and "
-        "Electrodynamics (2nd ed.). Academic Press."
+        "Zalesak and Ossakow (1980), JGR, 85(A5), 2131-2142; "
+        "Retterer (2010), JGR, 115(A3), A03306; "
+        "Carrano et al. (2020), URSI GASS, 1-4."
     ),
 }
 
@@ -171,10 +173,13 @@ class Bubble3DComponent(BaseIonosphere3DComponent):
         r_perp = r - r_para * self._b_hat
         sig_perp = max(float(self.params.get("sigma_perp_km", self.params.get("Lx_km", 50.0))), 1e-6)
         sig_para = max(float(self.params.get("sigma_para_km", self.params.get("Lz_km", 500.0))), 1e-6)
+        bottomside = float(self.params.get("bottomside_height_km", 200.0))
+        transition = max(float(self.params.get("bottomside_transition_km", 20.0)), 1e-6)
+        bottomside_gate = 0.5 * (1.0 + np.tanh((z - bottomside) / transition))
         frac = float(self.params.get("delta_max", 0.0)) * np.exp(
             -0.5 * float(np.dot(r_perp, r_perp)) / sig_perp ** 2
             -0.5 * r_para ** 2 / sig_para ** 2
-        )
+        ) * bottomside_gate
         return float(np.clip(frac, 0.0, 1.0))
 
     def delta_Ne(self, x: float, y: float, z: float, t: float, Ne_bg: float) -> float:
@@ -188,6 +193,10 @@ class Bubble3DComponent(BaseIonosphere3DComponent):
             "sigma_para_km": float(self.params.get("sigma_para_km", self.params.get("Lz_km", 500.0))),
             "anisotropy_ratio": float(self.params.get("sigma_para_km", self.params.get("Lz_km", 500.0)))
             / max(float(self.params.get("sigma_perp_km", self.params.get("Lx_km", 50.0))), 1e-12),
+            "morphology_model": "bottomside_gated_field_aligned_gaussian_depletion_tube",
+            "bottomside_height_km": float(self.params.get("bottomside_height_km", 200.0)),
+            "bottomside_transition_km": float(self.params.get("bottomside_transition_km", 20.0)),
+            "validity_limit": "parameterized_F_region_depletion_not_dynamical_EPB_plume",
             "b_hat": [float(v) for v in self._b_hat],
         })
         return meta
@@ -258,6 +267,9 @@ class SpreadF3DComponent(BaseIonosphere3DComponent):
             "spectral_index": float(self.params.get("p", self.params.get("spectral_index", 3.0))),
             "outer_scale_km": float(self.params.get("L0_km", self.params.get("outer_scale_km", 50.0))),
             "inner_scale_m": float(self.params.get("l0_m", self.params.get("inner_scale_m", 100.0))),
+            "minimum_structure_scale_km": float(
+                self.params.get("l0_m", self.params.get("inner_scale_m", 100.0)))
+            / 1000.0,
             "sigma_phi": float(self.params.get("sigma_phi", 0.0)),
             "anisotropy_ratio": float(self.params.get("anisotropy_ratio", self.params.get("field_aligned_anisotropy", 20.0))),
             "n_modes": int(self.params.get("n_modes", 96)),
@@ -308,6 +320,9 @@ class Es3DComponent(BaseIonosphere3DComponent):
             "Ne_peak_m3": ne_from_plasma_frequency_mhz(float(self.params.get("foEs_MHz", 5.0))),
             "h_Es_km": float(self.params.get("h_Es_km", 110.0)),
             "delta_h_km": float(self.params.get("delta_h_m", 115.0)) / 1000.0,
+            "minimum_structure_scale_km": min(
+                float(self.params.get("delta_h_m", 115.0)),
+                float(self.params.get("L3_m", 30.0))) / 1000.0,
             "L_perp_m": l_perp_m,
             "L_para_m": l_para_m,
             "aspect_sensitivity": "Booker-Gordon field-aligned Gaussian factor",

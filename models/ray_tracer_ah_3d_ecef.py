@@ -706,6 +706,8 @@ def integrate_fixed_path_ah3d_ecef(
         "provider_hash": model.provider_hash,
         "coordinate_mapping_hash": metadata["coordinate_mapping_hash"],
         "spatial_fd_evaluation_count": model.fd_evaluation_count,
+        "spatial_fd_base_km": model.spatial_fd_base_km,
+        "spatial_fd_scales": list(model.spatial_fd_scales),
         "spatial_fd_rejection_count": model.fd_rejection_count,
         "spatial_fd_relative_spread_max": float(model.fd_relative_spread_max),
         "spatial_fd_absolute_spread_max": float(model.fd_absolute_spread_max),

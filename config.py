@@ -288,8 +288,9 @@ P2P_3D = {
 # ── Phase 7 upgrades: 3-D flux-tube, field-aligned bubble, BG Es, phase screen
 # ─────────────────────────────────────────────────────────────────────────────
 
-# B4: 3-D field-aligned plasma bubble (Martinis 2023; Ma et al. 2023)
-# Gaussian depletion elongated along the geomagnetic field direction.
+# B4: parameterized field-aligned F-region depletion tube.
+# The smooth bottomside gate prevents an F-region depletion from extending
+# into the E/D region. This is not a dynamical plasma-bubble plume model.
 # sigma_perp_km : half-width perpendicular to B  (~50 km, cross-field)
 # sigma_para_km : half-length parallel to B      (~550 km, field-aligned)
 BUBBLE_3D = {
@@ -300,6 +301,8 @@ BUBBLE_3D = {
     'z0_km':         350.0,      # bubble centre height        [km]
     'sigma_perp_km': 50.0,       # perpendicular-to-B half-width [km]
     'sigma_para_km': 550.0,      # parallel-to-B half-length    [km]
+    'bottomside_height_km': 200.0,    # F-region bottomside gate midpoint [km]
+    'bottomside_transition_km': 20.0, # smooth gate transition scale [km]
 }
 
 # A3: 3-D flux-tube tracer (Coleman 1997/1998 extended to 3-D)

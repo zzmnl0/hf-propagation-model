@@ -1,0 +1,428 @@
+﻿================================================================================
+短波传播混合模型 参数说明书（按数据流组织）
+HF Shortwave Hybrid Propagation Model - Parameter Reference Manual
+================================================================================
+项目: 复杂电离层环境短波反射/散射混合传播机理及建模研究
+版本: 全三维 Haselgrove RK4 + 混合传播模型（2026-07-01 公式修复同步版）
+工作目录: code/
+
+坐标与单位:
+  x = TX 水平距离 [km]
+  y = 横向偏移 [km]
+  z = 直角坐标高度 [km]
+  z_phys = z - (x^2 + y^2) / (2 * R_E)  [地球展平修正后的物理高度]
+  距离/高度: km；频率: MHz；时间: ms；电子密度 Ne: m^-3
+
+核心约定:
+  geom_path_km  = integral(ds)       [几何射线路径]
+  group_path_km = integral(ds / n)   [冷等离子体群路径, n_g ~= 1/n]
+  tau_ms        = group_path_km / c  [群延迟, c = 299.792 km/ms]
+
+重要说明:
+  1. group_path_km 不是几何路径，功率链和 tau_ms 均以 group_path_km 为基础。
+  2. 当前 O/X 是沿 3D 各向同性轨迹做 Appleton-Hartree 后处理；完整 3D AH 射线追踪仍是后续升级项。
+  3. TID 场景优先采用 baked TID：先由 IonosphereModel 烘焙进 Ne_2d，再构造 RefractiveIndex3D。
+  4. 3D 功率链可选 D 层吸收；通信按单程扣除，雷达按双程扣除。
+  5. scatter_coupler 只附加 Born/Rytov/MPS 诊断，默认不改变 Pr_W。
+================================================================================
+
+
+================================================================================
+第0章 当前代码结构
+================================================================================
+
+顶层运行文件:
+  config.py    : 配置和物理参数单一来源。
+  utils.py     : 电磁、功率、坐标、地磁等通用物理工具。
+  main.py      : 9 个主要场景的驱动脚本。
+  output/      : 生成图件和 CSV 输出，git 忽略。
+
+核心模型:
+  models/ionosphere_model.py   : IRI-2016 背景 + TID + Es + 2D bubble + Spread-F 扰动。
+  models/ray_tracer.py         : 2D Haselgrove RK4、RefractiveIndex、RefractiveIndexAH。
+  models/point_to_point.py     : 2D P2P 变分求解。
+  models/tube_tracer.py        : 2D Coleman flux-tube 雷达追踪。
+  models/ray_tracer_3d.py      : 3D Haselgrove、RefractiveIndex3D、3D TID、展平地球、场向 bubble。
+  models/point_to_point_3d.py  : 3D P2P Newton shooting，变量为 (beta, az)。
+  models/tube_tracer_3d.py     : 3D flux-tube 雷达追踪。
+  models/es_model.py           : Hao 2017 Es 三段模型和 Booker-Gordon 各向异性散射工具。
+  models/pe_propagator.py      : PE/SSF plasma-bubble 散射。
+  models/scatter_selector.py   : 按相位方差选择 Born/Rytov/MPS。
+  models/scatter_born.py       : Born 弱散射工具。
+  models/scatter_rytov.py      : Rytov 闪烁工具。
+  models/scatter_coupler.py    : 3D 模式的 Born/Rytov/MPS 诊断耦合。
+  models/scatter_phase_screen.py : Rino phase screen 和 Knepp 多相位屏模型。
+  models/hybrid_model.py       : 端到端传播 pipeline、P-D 谱、模式排序和主模识别。
+
+辅助目录:
+  viz/       : 绘图工具和 Ne 背景可视化；共享绘图函数放在 viz/plot_utils.py。
+  analysis/  : 实测-模型比较和模式分析 CLI。
+  tests/     : 阶段与物理特性验证脚本。
+
+
+================================================================================
+第1章 完整数据流
+================================================================================
+
+本模型分为两大阶段：电离层背景生成、传播参数计算。SS1~SS13 均来自第二阶段末端。
+
+阶段一：电离层电子密度场生成
+------------------------------------------------------------
+步骤1 IRI 背景电子密度
+  调用: iri2016.IRI(dt, (z_min, z_max, dz), lat, lon)['ne'].values
+  输出: Ne_IRI(z) [m^-3]，通常为 60~600 km 垂直廓线。
+  关键参数: config.IRI_DT, IRI_LAT, IRI_LON, BG_Z。
+  注意: 本 Windows 环境使用 iri2016，不使用 iricore。
+
+步骤2 叠加复杂电离层扰动
+  TID:
+    Ne_TID = Ne_IRI * (1 + A * sin(k_x*x + k_y*y - omega*t))
+    A = amplitude，lambda = wavelength_km，T = period_s，phi = direction_deg。
+    TID 归一化只在 Ne_bg > 0.01 * Ne_peak 区域计算相对扰动，避免 D 层近零密度压低 F 区扰动幅度。
+
+  Es:
+    在 h_Es 附近叠加薄层高斯型 Ne 增强。
+    关键参数: ES_FO_MHZ, ES_H_KM, ES_THICK_KM。
+
+  Plasma bubble / Spread-F:
+    在 F2 层内嵌入 Ne 亏损或不规则结构。
+    关键参数: BUBBLE, SCATTER, Spread-F 相关配置。
+
+步骤3 生成二维电子密度网格
+  输出: Ne_2d[i_x, i_z], shape = (len(BG_X), len(BG_Z))。
+  实现: IonosphereModel.build_Ne_field(BG_X, BG_Z)。
+  当前主网格为 x-z；3D 横向效应由 3D TID 分量和 RefractiveIndex3D 处理。
+
+阶段二：传播参数计算
+------------------------------------------------------------
+步骤4 折射率场
+  各向同性冷等离子体:
+    n^2(x,z) = 1 - f_p(x,z)^2 / f^2
+    f_p = 8.978 * sqrt(Ne) [Hz]
+  实现: RefractiveIndex3D(Ne_2d, BG_X, BG_Z, FREQ_MHZ)。
+  预计算: n^2 网格、dn^2/dx、dn^2/dz，并用快速双线性插值查询。
+
+步骤5 3D Haselgrove RK4 射线追踪
+  入口: shoot_rays_fan_3d(TX_POS, n3d, FREQ_MHZ, RT_3D)。
+  射线扇面: n_el * n_az 条射线，覆盖仰角和方位角扫描范围。
+  主要方程:
+    dx/ds = p_x / n
+    dy/ds = p_y / n
+    dz/ds = p_z / n
+    dp_x/ds = (1 / (2*n)) * dn^2/dx
+    dp_y/ds = (1 / (2*n)) * dn^2/dy
+    dp_z/ds = (1 / (2*n)) * (dn^2/dz + 2*n^2*(z_phys + R_E)/R_E^2)
+  输出保留:
+    geom_path_km  = sum(ds_i)
+    group_path_km = sum(ds_i / n_i)
+    tau_ms        = group_path_km / C_KMS * 1e3（若 C_KMS 用 km/s）或 group_path_km / 299.792（km/ms）。
+
+步骤6 3D 点对点收敛
+  入口: find_all_rays_3d(TX_POS, RX_POS, n3d, FREQ_MHZ, P2P_3D, rays_fan=rays3d)。
+  温启动: 从扇面射线中选择最接近 RX 的 n_init 条作为初值。
+  Newton shooting: 调整发射仰角 beta 和方位角 az，使落点收敛到 RX +- tol_km。
+  Jacobian:
+    P2P_3D['jacobian'] = 'forward'  默认，较快。
+    P2P_3D['jacobian'] = 'central'  更准确，较慢。
+  模式输出字段:
+    trajectory_3d, label, tau_ms, group_path_km, geom_path_km, h_reflect_km, n_hops。
+
+步骤7 后处理得到 SS1~SS13
+  _add_power_3d(modes_iso)                  -> SS4, SS5, SS9, SS12
+  _apply_OX_split_3d(modes_iso)             -> SS8
+  EsModel.compute()                         -> SS6
+  scatter_coupler.apply_scatter_regime_3d() -> SS10, SS11
+  3D 横向落点和方位角偏转                  -> SS13
+
+
+================================================================================
+第2章 SS1~SS13 参数说明
+================================================================================
+
+SS1 群延迟 tau_ms [ms]
+------------------------------------------------------------
+定义:
+  信号从 TX 经电离层折射/反射到 RX 的传播时间。
+公式:
+  P' = integral(ds / n)
+  tau_ms = P' / 299.792
+来源:
+  find_all_rays_3d 直接输出；O/X 后处理后按 P'_{O,X} 重新计算。
+典型值:
+  1169 km、10 MHz 单跳 F2: tau ~ 4.1-4.5 ms；双跳 F2: tau ~ 8-9 ms。
+
+SS2 群路径 group_path_km = P' [km]
+------------------------------------------------------------
+定义:
+  冷等离子体群折射率近似下的等效自由空间传播距离。
+公式:
+  P'_iso = sum_i(ds_i / n_iso_i)
+  n_iso_i = sqrt(max(n2_i, 1e-8))
+用途:
+  tau_ms、Friis 路径损耗、雷达方程、O/X 后处理的基础量。
+注意:
+  不要用 geom_path_km 替代 group_path_km。
+
+SS3 反射高度 h_reflect_km 与模式分类
+------------------------------------------------------------
+定义:
+  射线轨迹中物理高度 z_phys 的最大值。
+公式:
+  h_r = max_i(z_i - (x_i^2 + y_i^2) / (2*R_E))
+分类:
+  h_r < 140 km        -> E
+  140 <= h_r < 200 km -> F1
+  200 <= h_r < 300 km -> F2
+  h_r >= 300 km       -> MH 或多跳/高层模式
+输出:
+  h_reflect_km, label, n_hops。
+
+SS4 通信接收功率 Pr_comm [dBW]
+------------------------------------------------------------
+定义:
+  HF 点对点通信场景的接收功率。
+公式:
+  L_fs_dB = 20*log10(4*pi * P'_km*1e3 / lambda_m)
+  Pr_W = PT_W * GT * GR * 10^(-L_fs_dB/10)
+  Pr_dBW = 10*log10(Pr_W)
+可选修正:
+  D 层吸收: 通信单程扣除 abs_dB。
+  O/X 分裂: 按各自 group_path_km 重新计算功率。
+输出:
+  Pr_W, Pr_dBW, abs_dB, abs_total_dB。
+
+SS5 OTH 雷达回波功率 Pr_radar [dBW]
+------------------------------------------------------------
+定义:
+  OTH 雷达双程传播和目标 RCS 后的回波功率。
+公式:
+  Pr_radar = Pt * Gt * Gr * lambda^2 * sigma_rcs / ((4*pi)^3 * (P'*1e3)^4)
+  dBW 形式中包含 -40*log10(P'_km*1e3)。
+可选修正:
+  D 层吸收双程扣除 2*abs_dB。
+  tube/focus 场景可加入 F_focus_3d^4 量级修正。
+输出:
+  power_radar_dBW, range_km ~= P'/2。
+
+SS6 Es 层传播参数（Hao 2017 三段模型）
+------------------------------------------------------------
+定义:
+  按 alpha = f / foEs 区分 Es 反射、过渡和散射影响。
+分段:
+  alpha < 0.7       -> reflect
+  0.7 <= alpha < 1.2 -> mixed
+  alpha >= 1.2      -> scatter
+输出:
+  es_mode, es_alpha, es_refl_coef, es_scat_cs, delta_tau_ms。
+
+SS7 功率-时延谱 P-D Spectrum
+------------------------------------------------------------
+定义:
+  将各传播模式的功率按群延迟展开为连续谱。
+通信谱:
+  pd(tau) = sum_i Pr_i * exp(-(tau-tau_i)^2/(2*sigma_i^2)) / (sqrt(2*pi)*sigma_i)
+雷达谱:
+  可按模式功率、tube 截面积和 delta_tau 做功率密度估计。
+输出图:
+  output/pd_spectrum_comm_*.png
+  output/pd_spectrum_radar_*.png
+
+SS8 O/X 磁离子模式时延差 delta_tau_OX [ms]
+------------------------------------------------------------
+定义:
+  地磁场将 HF 波分裂为 O 模和 X 模，两者群路径不同，产生时延差。
+Appleton-Hartree 后处理:
+  Xp = f_p^2 / f^2
+  Y_T = (f_c/f) * sin(theta)
+  Y_L = (f_c/f) * cos(theta)
+  half = Y_T^2 / (2*(1-Xp))
+  disc = sqrt(Y_T^4/(4*(1-Xp)^2) + Y_L^2)
+  n^2_{O,X} = 1 - Xp / (1 - half +/- disc)
+分支约定:
+  O 模使用 +disc denominator branch。
+  X 模使用 -disc denominator branch。
+有效性:
+  近截止或 evanescent 的 AH 候选需要过滤。
+输出:
+  wave_mode, tau_ms, group_path_km；delta_tau 可由 tau_O - tau_X 得到。
+
+SS9 磁通管聚焦因子 F_focus_3d
+------------------------------------------------------------
+定义:
+  描述射线束截面积随传播的变化，反映聚焦/散焦对功率密度的影响。
+Coleman 近似:
+  F_el = R_E * |d_beta / d_x|
+  F_az = R_E * (2*d_az) / d_y
+  F_focus_3d = sqrt(F_el * F_az)
+输出:
+  focus_el, focus_az, focus_3d, A_tube_km2, focus_dB。
+
+SS10 Born 弱散射
+------------------------------------------------------------
+适用条件:
+  sigma_phi^2 < 0.1。
+诊断流程:
+  scatter_phase_variance() 先估计相位方差，再由 scatter_coupler 选择方法。
+输出:
+  scatter_method='Born', sigma_phi_sq, sigma_v_m1, Pr_scatter_W, Pr_scatter_dBW。
+
+SS11 Rytov 闪烁和时延抖动
+------------------------------------------------------------
+适用条件:
+  0.1 <= sigma_phi^2 < 10。
+输出:
+  S4, sigma_phi_rad, sigma_tau_ms, fresnel_r_km。
+物理含义:
+  S4 表征幅度闪烁；sigma_tau_ms 可换算定位距离误差。
+
+SS12 D 层吸收 A_D [dB]
+------------------------------------------------------------
+定义:
+  HF 波穿越 60~90 km D 层时因电子碰撞引起的吸收衰减。
+配置:
+  ABSORPTION = {'enable': False, 'A0': 500.0, 'chi_deg': 60.0, ...}
+功率链:
+  通信: abs_total_dB = abs_dB。
+  雷达: abs_total_dB = 2 * abs_dB。
+输出:
+  abs_dB, abs_total_dB。
+
+SS13 横向偏移 y_land 与方位角偏转
+------------------------------------------------------------
+定义:
+  TID 含横向波数 k_y 时，3D 折射导致射线在 y 方向偏移。
+公式:
+  dy/ds = p_y / n
+  dp_y/ds = (1/(2*n)) * dn^2/dy
+  delta_az = arctan(y_land / x_land)
+  delta_pos ~= R * |delta_az_rad|
+输出:
+  y_land_km, az_deflect_deg, ray['y_end']。
+典型值:
+  k_y=0 时 y_land 应接近数值误差量级；10% TID 且 k_y=0.01 rad/km 时，1169 km 链路可能产生数 km 到数十 km 横向偏移。
+
+
+================================================================================
+第3章 配置速查
+================================================================================
+
+基础:
+  FREQ_MHZ              : 载频 [MHz]，默认约 10。
+  TX_POS / RX_POS       : 发射和接收位置。
+  BG_X / BG_Z           : 背景网格。
+  RE_KM                 : 地球半径 [km]。
+
+3D 射线追踪:
+  RT_3D['ds']           : RK4 步长 [km]。
+  RT_3D['z_max']        : 最大追踪高度 [km]。
+  RT_3D['n_el']         : 仰角采样数。
+  RT_3D['n_az']         : 方位角采样数。
+  RT_3D['del_el_deg']   : 聚焦诊断仰角扰动。
+  RT_3D['del_az_deg']   : 聚焦诊断方位角扰动。
+
+P2P:
+  P2P_3D['tol_km']      : 落点收敛容限。
+  P2P_3D['n_init']      : 温启动候选数。
+  P2P_3D['jacobian']    : 'forward' 或 'central'。
+
+TID:
+  TID_PARAMS['amplitude']      : 相对扰动幅度。
+  TID_PARAMS['wavelength_km']  : 水平波长。
+  TID_PARAMS['period_s']       : 周期。
+  TID_PARAMS['direction_deg']  : 传播方向。
+  TID_PARAMS['k_y_per_km']     : 横向波数。
+  TID_3D                       : 多分量、多方向 3D TID 配置。
+
+功率与雷达:
+  PT_W / PT_DBW          : 发射功率。
+  GT / GR 或 GT_DBI/GR_DBI : 天线增益。
+  SIGMA_RCS_DBM2         : 目标 RCS。
+  PD_SIGMA_MS            : P-D 谱高斯展宽。
+
+地磁和 O/X:
+  GEOMAG['fH_MHz']       : 电子回旋频率。
+  GEOMAG['dip_deg']      : 磁倾角。
+  GEOMAG['decl_deg']     : 磁偏角。
+
+散射:
+  SCATTER['Cs_rel']      : 相对 RMS 起伏。
+  SCATTER['L_outer_km']  : 外尺度。
+  SCATTER['p']           : 谱指数。
+  SCATTER['DeltaL_km']   : 不规则层厚度。
+  SCATTER['z_eff_km']    : 等效散射高度。
+
+吸收:
+  ABSORPTION['enable']   : 是否启用 D 层吸收。
+  ABSORPTION['A0']       : 吸收强度系数。
+  ABSORPTION['chi_deg']  : 太阳天顶角。
+
+
+================================================================================
+第4章 标准运行与验证
+================================================================================
+
+从 code/ 目录运行。当前约定使用 pytorch_cpu 环境:
+  conda run -n pytorch_cpu python main.py
+  conda run -n pytorch_cpu python viz/plot_ne_background.py
+  conda run -n pytorch_cpu python tests/_verify_part0.py
+  conda run -n pytorch_cpu python tests/_verify_part1.py
+  conda run -n pytorch_cpu python tests/_verify_part3.py
+  conda run -n pytorch_cpu python tests/_verify_part6.py
+  conda run -n pytorch_cpu python tests/_verify_radar.py
+  conda run -n pytorch_cpu python tests/_verify_OX.py
+  conda run -n pytorch_cpu python tests/_verify_absorption.py
+  conda run -n pytorch_cpu python tests/_verify_absorption_3d.py
+  conda run -n pytorch_cpu python tests/_verify_group_path.py
+  conda run -n pytorch_cpu python tests/_verify_p2p_jacobian.py
+  conda run -n pytorch_cpu python tests/_verify_scatter_coupling.py
+  conda run -n pytorch_cpu python tests/_verify_spreadf.py
+  conda run -n pytorch_cpu python tests/_verify_tube.py
+  conda run -n pytorch_cpu python tests/_verify_phase5.py
+  conda run -n pytorch_cpu python tests/_verify_phase6.py
+  conda run -n pytorch_cpu python tests/_verify_phase7.py
+
+所有验证脚本应报告 0 fail(s)。
+
+Windows 控制台注意:
+  Python print 字符串尽量保持 ASCII，避免 GBK 控制台报编码问题。
+  建议输出 m^-3, ->, ~, x10^10，不输出 Unicode 数学符号。
+
+
+================================================================================
+第5章 输出文件命名
+================================================================================
+
+  output/ne_background_*.png       : Ne 背景场，IRI + 扰动叠加。
+  output/ray_fan_3d_*.png          : 3D 射线扇面，xz 剖面 + xy 俯视，显示 y_land。
+  output/ray_deflect_tid.png       : 横向 TID 引起的 y 偏转诊断图。
+  output/pd_spectrum_comm_*.png    : 通信功率-时延谱，Y 轴对应 SS4。
+  output/pd_spectrum_radar_*.png   : 雷达功率-时延谱，Y 轴对应 SS5。
+  output/es_propagation_*.png      : Es 三段模型特性图。
+  output/scintillation_*.png       : S4 闪烁指数分布。
+  output/focus_factor_*.png        : 聚焦因子等高线图。
+  output/*.csv                     : 场景数值结果。
+
+
+================================================================================
+附录A 实现状态摘要（2026-07-01）
+================================================================================
+
+已完成并同步到本手册:
+  - config.py 包含 TID_3D，多分量、多方向 TID 支持。
+  - 主要场景使用 RefractiveIndex3D、shoot_rays_fan_3d、find_all_rays_3d。
+  - Tube radar 使用 TubeRayTracer3D。
+  - group_path_km 明确定义为 integral(ds/n)，geom_path_km 单独保留。
+  - Appleton-Hartree O/X 分支已修正；O 使用 +disc，X 使用 -disc。
+  - 2D P2P AH 路径过滤近截止候选。
+  - 3D _add_power_3d 支持可选 D 层吸收诊断。
+  - scatter_coupler 为 3D 模式附加 Born/Rytov/MPS 诊断。
+  - P2P_3D['jacobian'] 支持 forward 和 central。
+
+后续可升级项:
+  - 完整 3D Appleton-Hartree O/X 独立射线追踪。
+  - 更严格的全局 3D 聚焦功率修正。
+  - 与实测 P-D 谱的系统反演和参数估计。
+
+================================================================================
+文档结束
+================================================================================

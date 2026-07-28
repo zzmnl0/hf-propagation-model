@@ -1,0 +1,30 @@
+PHaRLAP/AH3D基础文献联网核验记录
+核验日期：2026-07-24
+数据源：Crossref REST API
+
+1. 查询标题：The Hamiltonian ray path equations
+Crossref返回：
+Haselgrove, Jenifer
+Journal of Atmospheric and Terrestrial Physics
+1963, volume 25, issue 7, pages 397-399
+DOI: 10.1016/0021-9169(63)90173-9
+查询URL：
+https://api.crossref.org/works?query.title=The%20Hamiltonian%20ray%20path%20equations&rows=3&select=DOI,title,author,published,container-title,volume,issue,page
+
+2. 查询标题/作者：An efficient Runge-Kutta (4,5) pair / Bogacki
+Crossref返回：
+Bogacki, P.; Shampine, L. F.
+Computers & Mathematics with Applications
+1996, volume 32, issue 6, pages 15-28
+DOI: 10.1016/0898-1221(96)00141-1
+查询URL：
+https://api.crossref.org/works?query.title=An%20efficient%20Runge-Kutta%204%205%20pair&query.author=Bogacki&rows=3&select=DOI,title,author,published,container-title,volume,issue,page
+
+3. 本地原始依据
+D:\0文件\0文献\PHaRLAP\JGR Space Physics - 2013 - Cervera - Modeling ionospheric disturbance features in quasi‐vertically incident ionograms using.pdf
+D:\0文件\0文献\电离层短波传播\传播\Radio Science - 2025 - Hirvonen - AU‐Ray Program for Modeling Radio Wave Propagation in the Ionosphere.pdf
+D:\pharlap\pharlap_4.7.4\src\matlab\raytrace_3d_sp.m
+D:\pharlap\pharlap_4.7.4\RELEASE_NOTES.txt
+
+说明：
+Crossref用于核验书目信息；算法结论以本地论文正文、PHaRLAP公开帮助和当前AH3D源码为准。

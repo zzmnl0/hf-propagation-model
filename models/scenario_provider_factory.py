@@ -81,7 +81,7 @@ class ScenarioSpec:
     coordinate_system: str = "geocentric_spherical"
     ne_units: str = "m^-3"
     time_units: str = "s"
-    interpolation: str = "linear"
+    interpolation: str = "linear_horizontal_pchip_vertical"
     bounds_error: bool = False
     extrapolation: str = "fill_zero"
 
@@ -149,6 +149,8 @@ class ScenarioProviderFactory:
             link_bearing_deg=self.cfg.LINK_BEARING_DEG,
             earth_radius_km=self.cfg.EARTH_MODEL["radius_km"],
             fill_value_m3=0.0,
+            vacuum_floor_height_km=0.0,
+            vertical_interpolation="pchip",
             source_metadata={
                 "model": "IRI-2016",
                 "datetime": self.cfg.IRI_DT.isoformat(),
