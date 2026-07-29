@@ -1,0 +1,54 @@
+A4-C1WR 网格空间导数归因与修复计划
+日期：2026-07-28
+阶段位置：A4-C1W之后、A4-C2之前
+执行关系：A4-C1W -> A4-C1WR -> 人工决策门 -> A4-C2或继续归因
+执行状态：C1WR-0至C1WR-4已完成；identified_and_repaired_grid_derivative；A4-C2未准入
+
+一、目标与边界
+
+1. 定位WGS84、位置相关IGRF条件下高O射线在约330 km处多尺度空间导数平台失稳的公式或实现根因。
+2. 比较三线性Ne/B、三次张量样条Ne/B、解析Chapman及直接ppigrf场，不修改色散公式、不经验拟合PHaRLAP、不放宽既有阈值。
+3. 原C1与C1W失败证据保持冻结；本阶段通过后仍不自动进入A4-C2。
+
+二、冻结输入
+
+固定B=位置相关IGRF-14、collision=0、10 MHz、单程、WGS84、Chapman F2场和四个同角算例：
+low_O=22 deg、low_X=22 deg、high_O=39.5 deg、high_X=39.5 deg。
+冻结C1、C1R、C1W manifest、PHaRLAP CSV/MEX输入、Ne/B网格和AH3D源码SHA-256。
+
+三、诊断公式与量纲
+
+D=|k|^2-k0^2*n_AH^2，单位km^-2。
+D_r=gradient_ECEF(D)，求导时固定k和omega，单位km^-3。
+直接IGRF导数表示对ECEF扰动点直接调用ppigrf.igrf，再用五点中心差分求导；不宣称IGRF提供解析导数。
+
+四、实施顺序
+
+C1WR-0：冻结准入和哈希检查，不覆盖原产物。
+C1WR-1：记录四条射线每次D_r调用位置、波矢、尺度平台及Ne/B网格跨界情况；重点加密320--340 km和330 km节点两侧。
+C1WR-2：比较linear/analytic/cubic Ne与linear/direct/cubic B的七种固定组合。
+C1WR-3：要求两个高射线边界窗口的直接参考误差关闭率均不低于80%，显著梯度区D_r相对误差不超过1e-4，双高/双低拓扑正确且无空间导数拒绝。
+C1WR-4：仅在C1WR-3通过后，为被证明的共享Provider增加显式linear/cubic选项；默认兼容行为不静默改变。
+
+五、验收和回归
+
+1. 生产差分尺度保持0.125/0.25/0.5 km，stability_ratio门保持1。
+2. H6轨迹RMS/最大/落点门保持2/5/1 km，几何程和群程相对误差门保持0.1%。
+3. 修复后重跑H3、H6、C0R-1至C0R-8、Coleman P0C高低射线及原C1限制性影子回归。
+4. 输出边界穿越、D_r尺度平台、单因素矩阵、轨迹对比和回归门可视化，以及JSON/CSV/NPZ、日志和SHA-256 manifest。
+
+六、最终状态
+
+identified_and_repaired_grid_derivative
+identified_but_not_safely_repairable
+multiple_or_unresolved_grid_derivative_contributors
+
+若只有解析Chapman或直接ppigrf通过，而三次样条不能同时满足值、导数、拓扑和回归门，则停止共享修复并记录场表示或网格分辨率限制。
+
+七、实施结果（2026-07-28）
+
+1. 三线性Ne梯度被证明是330 km节点附近高O空间差分平台拒绝主因；三次Ne+三次B为唯一满足双高D_r门和双低控制的组合。
+2. 共享Provider已增加显式linear/cubic选项，默认linear不变；生产WGS84 IGRF明确使用cubic，插值方法进入哈希。
+3. H3、H6和C0R回归通过；C1WR只读验收0 fail(s)。
+4. Coleman旧冻结角在当前ECEF链落点门失败，原C1双高RMS门仍失败；二者均版本化记录且不覆盖旧证据。
+5. C1WR关闭网格导数拒绝，不关闭原B=0高射线跨软件偏差。A4-C2继续等待人工确认。

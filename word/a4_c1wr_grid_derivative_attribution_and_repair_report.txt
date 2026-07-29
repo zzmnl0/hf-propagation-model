@@ -1,0 +1,56 @@
+A4-C1WR 网格空间导数归因与修复实施报告
+日期：2026-07-28
+阶段状态：identified_and_repaired_grid_derivative
+A4-C2准入：false，等待人工决策
+
+一、范围与冻结条件
+
+1. 本阶段只处理WGS84、位置相关IGRF-14、无碰撞、10 MHz、单程Chapman场下的O/X网格空间导数问题。
+2. C1、C1R、C1W、PHaRLAP输出、四个冻结角、Ne/B网格和生产源码均按SHA-256记录；未重新求根、未修改PHaRLAP输入、未覆盖原C1失败证据。
+3. 色散函数保持D=|k|^2-k0^2*n_AH^2 [km^-2]，D_r=gradient_ECEF(D) [km^-3]；未修改色散公式、积分阈值或事件门。
+
+二、归因结果
+
+1. 基线高O最后接受点高度329.936 km，距Ne/B的330 km节点0.064 km；三线性场值连续，但跨单元梯度不连续使0.125/0.25/0.5 km生产尺度不能形成稳定平台。
+2. 七种固定场组合均与解析Chapman Ne和直接ppigrf五点差分参考比较。三次Ne+三线性B对high_O/high_X的直接参考误差关闭率分别为99.69%和99.33%，并恢复high_O穿透；仅替换B不能修复high_O。
+3. 三次Ne+三次B是唯一同时满足双高D_r相对误差不超过1e-4、双低无退化、四条射线无空间差分拒绝和期望拓扑的组合。
+4. 根因判定为网格三线性空间梯度在节点/单元边界不连续；不是Appleton-Hartree色散公式、DOP853、色散投影或直接IGRF场值误差。
+
+三、生产修复
+
+1. GeocentricGridNeProvider3D和ExternalGeocentricNeProvider3D新增显式interpolation="linear"|"cubic"；默认仍为linear。
+2. IGRFGridGeomagneticField3D及from_ppigrf新增同样的显式插值选项；生产WGS84 IGRF网格明确使用cubic。
+3. 插值方法、网格、单位和场数组均进入Provider哈希。三次Ne插值出现负值、非有限值或越界时显式拒绝，不裁剪或经验平滑。
+4. Prep-3只读加载器增加旧版linear网格哈希兼容校验；当前Provider哈希仍包含插值方法，不回退新追溯规则。
+
+四、数值验收
+
+1. C1WR只读验收：0 fail(s)，最终状态identified_and_repaired_grid_derivative。
+2. H3导数复核：D_r/D_k/D_omega相对误差分别为4.93e-8、8.74e-8和4.85e-12。
+3. H3积分与投影影子：refined/reference轨迹RMS为0.000303 km，投影开/关RMS为0.0000354 km。
+4. H6同角PHaRLAP对照：low_O、low_X、high_X轨迹RMS分别为0.0748、0.0633、0.2557 km；high_O共同有效路径RMS/最大误差为0.856/2.091 km；路径相对误差均小于0.1%。
+5. C0R-1至C0R-8全部通过，C0R-8保持passed_pharlap_coordinate_contract_closed。
+6. 四条修复后拓扑为low_O、low_X、high_X落地，high_O到达上边界，与冻结PHaRLAP穿透语义一致；无空间导数平台拒绝。
+
+五、限制性回归
+
+1. Coleman P0C旧冻结角在当前ECEF链上完成只读前向回归：双分支均ground、单转向且Hamiltonian残差通过，但低/高射线落点差为138.016/35.482 km，未通过5 km门。
+2. 上述P2P结果保留为旧坐标参考根与当前ECEF传播链不闭合的既有风险；未重求根、未更换模式、未放宽门槛。旧legacy P2P不重新接入正式链。
+3. 原C1版本化同角影子回归完成：两个低射线全部门通过；两个高射线RMS为2.410/2.528 km，仍超过2 km门，其他正式门通过。状态failed_c1_1_numeric_thresholds，原C1报告哈希未改变。
+4. 因此C1WR只关闭IGRF O/X网格导数拒绝，不关闭原B=0高射线跨软件累计水平偏差，也不证明P2P旧根可直接迁移。
+
+六、产物
+
+1. 执行器：tests/_run_a4_c1wr_grid_derivative_repair.py。
+2. 只读验收器：tests/_verify_a4_c1wr_grid_derivative_repair.py。
+3. P2P与C1影子工具：tests/_run_a4_c1wr_p2p_high_low_regression.py、tests/_run_a4_c1wr_c1_shadow.py。
+4. 输出目录：output2/a4_pharlap/c1/c1wr/，包含边界穿越、D_r尺度平台、单因素归因、轨迹对比、回归门、P2P路径和C1同角图，以及JSON/CSV/NPZ、日志和SHA-256 manifest。
+
+七、风险与下一步
+
+1. 三次样条可能在更复杂Ne场产生局部过冲；当前采用显式拒绝，尚未对TID、Es、Spread-F和bubble生产场开展全域插值适用性验收。
+2. 原C1高射线B=0偏差和旧P0C根的ECEF落点不闭合仍存在，不能以C1WR通过覆盖。
+3. PHaRLAP核心MEX不可进行公式级源码审计；行为一致仍不能替代方程、单位和边界条件证据。
+4. 保持A4-C2阻断。下一步由人工决定：先建立当前ECEF Chapman P2P新冻结根并与旧根作版本化语义迁移，或继续原C1高射线归因；未经确认不进入A4-C2。
+
+理论依据沿用reference-papers.txt中的Haselgrove（1955、1963）、Haselgrove与Haselgrove（1960）及Cervera与Harris（2014）；本阶段未新增未经完整核验的文献条目。

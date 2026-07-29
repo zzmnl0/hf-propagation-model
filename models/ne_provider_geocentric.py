@@ -219,14 +219,15 @@ class WGS84NeProviderAdapter:
 
 
 class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
-    """Linear interpolation of Ne(latitude, longitude, height) on a sphere."""
+    """Linear or cubic interpolation of Ne(latitude, longitude, height)."""
 
     name = "geocentric_grid_ne_provider_3d"
 
     def __init__(self, Ne_m3, latitude_deg, longitude_deg, height_km,
                  earth_radius_km: float, *, fill_value_m3: float = 0.0,
                  longitude_periodic_complete: bool = False,
-                 source_metadata: dict | None = None):
+                 source_metadata: dict | None = None,
+                 interpolation: str = "linear"):
         self.latitude_deg = np.asarray(latitude_deg, dtype=float)
         self.longitude_deg = np.asarray(longitude_deg, dtype=float)
         self.height_km = np.asarray(height_km, dtype=float)
@@ -237,6 +238,7 @@ class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
         self.longitude_periodic_complete = bool(longitude_periodic_complete)
         self.Ne_m3 = np.asarray(Ne_m3, dtype=float)
         self.source_metadata = dict(source_metadata or {})
+        self.interpolation = str(interpolation)
         self._validate()
         self._longitude_center_deg = 0.5 * (
             float(self.longitude_deg[0]) + float(self.longitude_deg[-1]))
@@ -247,6 +249,7 @@ class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
             "earth_radius_km": self.earth_radius_km,
             "fill_value_m3": self.fill_value_m3,
             "longitude_periodic_complete": self.longitude_periodic_complete,
+            "interpolation": self.interpolation,
         }, self.latitude_deg, self.longitude_deg, self.height_km, self.Ne_m3)
         interpolation_longitude = self.longitude_deg
         interpolation_Ne = self.Ne_m3
@@ -263,13 +266,16 @@ class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
         self._interp = RegularGridInterpolator(
             (self.latitude_deg, interpolation_longitude, self.height_km),
             interpolation_Ne,
-            method="linear", bounds_error=False, fill_value=self.fill_value_m3)
+            method=self.interpolation, bounds_error=False,
+            fill_value=self.fill_value_m3)
 
     def _validate(self) -> None:
         if not np.isfinite(self.earth_radius_km) or self.earth_radius_km <= 0.0:
             raise ValueError("earth_radius_km must be finite and positive")
         if not np.isfinite(self.fill_value_m3) or self.fill_value_m3 < 0.0:
             raise ValueError("fill_value_m3 must be finite and nonnegative")
+        if self.interpolation not in {"linear", "cubic"}:
+            raise ValueError("interpolation must be 'linear' or 'cubic'")
         axes = (
             ("latitude_deg", self.latitude_deg),
             ("longitude_deg", self.longitude_deg),
@@ -298,6 +304,8 @@ class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
                 f"{AXIS_ORDER} with shape {expected}")
         if not np.all(np.isfinite(self.Ne_m3)) or np.any(self.Ne_m3 < 0.0):
             raise ValueError("Ne_m3 must be finite and nonnegative")
+        if self.interpolation == "cubic" and any(axis.size < 4 for _, axis in axes):
+            raise ValueError("cubic interpolation requires at least four points per axis")
 
     def _periodic_longitude(self, lon_deg: float) -> float:
         lon = float(lon_deg)
@@ -311,7 +319,12 @@ class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
         geocentric_to_ecef(lat_deg, lon_deg, height_km, self.earth_radius_km)
         point = [[float(lat_deg), self._periodic_longitude(lon_deg),
                   float(height_km)]]
-        return max(float(self._interp(point)[0]), 0.0)
+        value = float(self._interp(point)[0])
+        if not np.isfinite(value):
+            raise ValueError("Ne interpolation returned a non-finite value")
+        if self.interpolation == "cubic" and value < 0.0:
+            raise ValueError("cubic Ne interpolation overshot below zero")
+        return max(value, 0.0)
 
     def domain_margin_geocentric(self, lat_deg: float, lon_deg: float,
                                   height_km: float) -> float:
@@ -344,7 +357,7 @@ class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
             "height_range_km": [float(self.height_km[0]),
                                 float(self.height_km[-1])],
             "grid_shape": list(self.Ne_m3.shape),
-            "interpolation": "linear",
+            "interpolation": self.interpolation,
             "bounds_error": False,
             "fill_value_m^-3": self.fill_value_m3,
             "longitude_semantics": (
@@ -498,7 +511,8 @@ class ExternalGeocentricNeProvider3D(GeocentricGridNeProvider3D):
         "longitude_periodic_complete",
     }
 
-    def __init__(self, path: str | Path, *, fill_value_m3: float = 0.0):
+    def __init__(self, path: str | Path, *, fill_value_m3: float = 0.0,
+                 interpolation: str = "linear"):
         source = Path(path)
         with np.load(source, allow_pickle=False) as data:
             missing = sorted(self.REQUIRED - set(data.files))
@@ -549,6 +563,7 @@ class ExternalGeocentricNeProvider3D(GeocentricGridNeProvider3D):
                 "source_units": units,
                 "unit_conversion": conversion,
             },
+            interpolation=interpolation,
         )
 
     def get_metadata(self) -> dict:

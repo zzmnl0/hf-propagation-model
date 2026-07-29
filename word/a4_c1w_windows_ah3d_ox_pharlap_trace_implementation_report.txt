@@ -57,3 +57,7 @@ A4-C2准入：false
 七、下一步建议
 
 优先新增网格节点/单元边界诊断，比较当前三线性Ne/B场、可微插值场和解析Chapman/直接IGRF导数的D_r尺度平台。只有能以公式、量纲和双高/双低回归证明根因时才修改公共Provider或导数实现；不得放宽阈值。修复后重跑H3、H6、C0R、P2P高低射线和原C1限制性回归，再由用户决定是否进入A4-C2。
+
+八、后续状态更新（2026-07-28）
+
+C1WR已证明三线性Ne网格梯度为高O拒绝主因，并以显式cubic Ne/B Provider关闭空间导数平台问题；H3、H6和C0R通过。原C1高射线RMS失败及Coleman旧冻结角在当前ECEF链的落点失败仍保留，故A4-C2继续等待人工决策。详见a4_c1wr_grid_derivative_attribution_and_repair_report.txt。

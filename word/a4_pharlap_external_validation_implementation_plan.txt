@@ -1,6 +1,6 @@
 A4 PHaRLAP外部验证详细实施方案
 生成日期：2026-07-20
-状态：A4-C0R及A4-C1-Prep已通过；A4-C1失败已冻结；A4-C1P/C1Q归因和C1T筛选已完成；A4-C1W已完成WGS84、位置相关IGRF、完整冷等离子体O/X生产链与PHaRLAP行为验收，但高O在正常传播根处触发多尺度空间导数平台拒绝，最终状态implementation_defect_identified；原C1失败保持，C2未准入，A4总体未完成
+状态：A4-C0R及A4-C1-Prep已通过；A4-C1失败已冻结；A4-C1P/C1Q/C1T/C1W已完成；A4-C1WR已定位并修复三线性Ne/B网格梯度在节点附近导致的高O空间导数平台拒绝，状态identified_and_repaired_grid_derivative。原C1双高RMS失败和Coleman旧冻结角在当前ECEF链的落点失败均保留；C2未准入，A4总体未完成
 上位计划：ah3d_full3d_wave_upgrade_plan.txt、a3rnew_accuracy_first_implementation_plan.txt
 
 A4-C0R修复门（2026-07-20）
@@ -33,6 +33,7 @@ A4-C0R修复门（2026-07-20）
 0.18 A4-C1Q已完成：以PHaRLAP严格配置为项目标准，对四个冻结角完成沿链路误差预算、状态/介质/常数审计、B=0规范方程闭合及六类单因素影子重放。高射线基线三维RMS为2.405011/2.533852 km；发射状态、精确B=0 RHS、群程参数化和关闭投影均未达到双高80%关闭门，最好关闭率仅2.1353%。PHaRLAP输出拼接有效Ne导致physics_domain_rejected且不具唯一介质语义。C1Q-5未进入生产修复，最终状态pharlap_effective_dynamics_not_recoverable；原C1失败保持，建议人工确认后引入第三套可审计Hamiltonian求解器。
 0.19 A4-C1T已完成候选硬门筛选和FARR后备配置冻结：AU-Ray公开Demo无完整核心源码；PyLap依赖PHaRLAP；公开IONORT、AutoNVIS及其他仓库分别受许可证、构建性、方程语义或适用域限制，无候选通过九项硬门。FARR确认为可审计GPLv3三维FDTD全波求解器而非Hamiltonian射线求解器；论文1 MHz三级复现配置、验收门、资源成本和哈希已冻结，但当前环境缺Linux/MPI/HPC资源，最终状态validation_blocked_by_build_or_compute_resources。生产AH3D和原C1/C1Q状态未修改，C2继续阻断。
 0.20 A4-C1W已完成：生产链升级为WGS84大地坐标/ECEF规范状态和位置相关IGRF-14 B(r)，O/X解析极限、D_r/D_k/D_omega、DOP853收敛、投影影子、局部B吸收和PHaRLAP可追溯性均通过。low_O、low_X、high_X同角轨迹RMS分别为0.0120、0.0811、0.2088 km，路径量均通过门槛；high_O在n2=0.5401且root_status=ok时因多尺度空间导数平台失稳被拒绝，PHaRLAP则正常穿透。最终状态implementation_defect_identified；禁止将其写成模型物理边界或完整O/X验收通过，C2继续阻断。
+0.21 A4-C1WR已完成：七种Ne/B表示隔离证明三线性Ne梯度是330 km节点附近高O拒绝主因；三次Ne+三次B为唯一满足双高D_r<=1e-4、双低控制和四射线拓扑的组合。Provider新增显式linear/cubic选项且默认linear不变，生产WGS84 IGRF明确使用cubic。H3、H6、C0R及只读验收通过；原C1双高RMS失败和Coleman旧冻结角ECEF落点失败保持。状态identified_and_repaired_grid_derivative，C2仍等待人工决策。
 1. A4-C0已完成，机器状态passed；数值与三类图像证据均已闭环。该状态仅表示PHaRLAP运行时、真空输入单位/轴、坐标方向/尺度和非地面退出状态映射通过，不表示A4外部物理验证通过。
 2. MATLAB R2024a Update 7成功加载PHaRLAP 4.7.4 raytrace_3d_sp.mexw64；真空射线ray_label=-2，无catastrophic_error。
 3. 前250 km无配准ECEF对照：轨迹RMS差1.777205 km，最大差3.943964 km；PHaRLAP解析直线最大误差7.42e-12 km。
@@ -187,7 +188,7 @@ A4-C1Q：以PHaRLAP为标准的AH3D沿链路偏差归因与修复门
 2. C1Q-0至C1Q-4已完成四角冻结、x/y/z输运、状态/介质/常数审计、B=0规范方程闭合和单因素影子重放。
 3. 四个可解释安全变体均未满足双高80%关闭门；不存在可唯一定位且可安全写入生产代码的公式或实现缺陷。
 4. C1Q-5未进入生产修复；C1Q-6最终状态为pharlap_effective_dynamics_not_recoverable。该状态表示归因流程闭合，不表示C1通过。
-5. 执行关系固定为A4-C1 -> C1R -> C1-4 -> C1P -> C1Q -> C1T -> 人工决策门 -> A4-C2或后续修复。未经用户确认不得执行剩余A4。
+5. 执行关系固定为A4-C1 -> C1R -> C1-4 -> C1P -> C1Q -> C1T -> C1W -> C1WR -> 人工决策门 -> A4-C2或后续归因。未经用户确认不得执行剩余A4。
 
 A4-C1T：第三套Hamiltonian求解器筛选与FARR局部全波后备门
 

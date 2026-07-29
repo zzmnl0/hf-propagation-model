@@ -150,7 +150,8 @@ def _igrf_grid_cached(tx_lat: float, tx_lon: float, rx_lat: float,
         -height_step_km, h_stop_km + 2.0 * height_step_km,
         height_step_km)
     return IGRFGridGeomagneticField3D.from_ppigrf(
-        latitude, longitude, height, epoch=datetime.fromisoformat(epoch_iso))
+        latitude, longitude, height, epoch=datetime.fromisoformat(epoch_iso),
+        interpolation="cubic")
 
 
 def _geomagnetic_provider(request: UnifiedPropagationRequest):

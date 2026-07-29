@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import config as cfg
-from models.ne_provider_geocentric import GeocentricGridNeProvider3D
+from models.ne_provider_geocentric import GeocentricGridNeProvider3D, _hash_arrays
 from models.ray_tracer_ah_3d_ecef import (
     RefractiveIndexAH3DECEF,
     trace_ray_ah3d_ecef,
@@ -112,7 +112,16 @@ def _load_context(input_path: str | Path) -> dict:
         source_ne, latitude, longitude, source_height, radius,
         source_metadata={"field_hash": _mat_text(data["field_hash"])},
     )
-    if source_provider.grid_hash != _mat_text(data["provider_hash"]):
+    legacy_linear_hash = _hash_arrays({
+        "coordinate_system": "geocentric_spherical",
+        "axis_order": "latitude,longitude,height",
+        "units": "m^-3",
+        "earth_radius_km": radius,
+        "fill_value_m3": 0.0,
+        "longitude_periodic_complete": False,
+    }, latitude, longitude, source_height, source_ne)
+    if _mat_text(data["provider_hash"]) not in {
+            source_provider.grid_hash, legacy_linear_hash}:
         raise RuntimeError("Prep-1 Provider hash cannot be reproduced")
 
     step = float(source_height[1] - source_height[0])

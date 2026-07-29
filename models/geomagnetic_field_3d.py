@@ -62,13 +62,15 @@ class IGRFGridGeomagneticField3D:
     """Trilinear WGS84 IGRF grid queried in physical ECEF coordinates."""
 
     def __init__(self, latitude_deg, longitude_deg, height_km, b_ecef_T,
-                 *, epoch: datetime, igrf_version: str = "IGRF-14"):
+                 *, epoch: datetime, igrf_version: str = "IGRF-14",
+                 interpolation: str = "linear"):
         self.latitude_deg = np.asarray(latitude_deg, dtype=float)
         self.longitude_deg = np.asarray(longitude_deg, dtype=float)
         self.height_km = np.asarray(height_km, dtype=float)
         self.b_ecef_T = np.asarray(b_ecef_T, dtype=float)
         self.epoch = epoch
         self.igrf_version = str(igrf_version)
+        self.interpolation = str(interpolation)
         for name, axis in (
             ("latitude_deg", self.latitude_deg),
             ("longitude_deg", self.longitude_deg),
@@ -78,6 +80,12 @@ class IGRFGridGeomagneticField3D:
                     or not np.all(np.isfinite(axis))
                     or not np.all(np.diff(axis) > 0.0)):
                 raise ValueError(f"{name} must be finite and strictly increasing")
+        if self.interpolation not in {"linear", "cubic"}:
+            raise ValueError("interpolation must be 'linear' or 'cubic'")
+        if self.interpolation == "cubic" and any(
+                axis.size < 4 for axis in (
+                    self.latitude_deg, self.longitude_deg, self.height_km)):
+            raise ValueError("cubic interpolation requires at least four points per axis")
         expected = (self.latitude_deg.size, self.longitude_deg.size,
                     self.height_km.size, 3)
         if self.b_ecef_T.shape != expected:
@@ -90,20 +98,20 @@ class IGRFGridGeomagneticField3D:
             "epoch": self.epoch.isoformat(),
             "coordinate_system": "wgs84_geodetic_grid_ecef_vectors",
             "units": "T",
-            "interpolation": "trilinear",
+            "interpolation": self.interpolation,
         }
         self.field_hash = _field_hash(
             metadata, self.latitude_deg, self.longitude_deg, self.height_km,
             self.b_ecef_T)
         self._interpolator = RegularGridInterpolator(
             (self.latitude_deg, self.longitude_deg, self.height_km),
-            self.b_ecef_T, method="linear",
+            self.b_ecef_T, method=self.interpolation,
             bounds_error=True,
         )
 
     @classmethod
     def from_ppigrf(cls, latitude_deg, longitude_deg, height_km,
-                    *, epoch: datetime):
+                    *, epoch: datetime, interpolation: str = "linear"):
         import ppigrf
 
         lat = np.asarray(latitude_deg, dtype=float)
@@ -126,7 +134,7 @@ class IGRFGridGeomagneticField3D:
             )
         return cls(lat, lon, height,
                    vectors.reshape(lat.size, lon.size, height.size, 3),
-                   epoch=epoch)
+                   epoch=epoch, interpolation=interpolation)
 
     def _geodetic(self, ecef_km) -> np.ndarray:
         point = np.asarray(ecef_km, dtype=float)
@@ -173,7 +181,7 @@ class IGRFGridGeomagneticField3D:
                                     float(self.longitude_deg[-1])],
             "height_range_km": [float(self.height_km[0]),
                                 float(self.height_km[-1])],
-            "interpolation": "trilinear",
+            "interpolation": self.interpolation,
             "field_hash": self.field_hash,
             "validation_only": False,
         }
