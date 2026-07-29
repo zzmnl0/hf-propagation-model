@@ -1,0 +1,116 @@
+A4-C1WR-P2PF 当前 ECEF Chapman P2P 新根冻结实施报告
+========================================================
+
+日期：2026-07-29
+阶段状态：passed_current_ecef_chapman_p2p_root_freeze
+A4-C2准入：false，等待人工决策
+算例语义：current_strict_spherical_ECEF_cubic_Chapman_P2P_reference
+
+一、实施范围
+------------
+
+1. 固定球半径6371 km、B=0、collision=0、10 MHz、单程、bearing=0和
+   水平一致Chapman F2场。
+2. 输入为C1-Prep refined 1 km冻结节点，SHA-256保持不变；当前Provider
+   显式使用interpolation="cubic"，并生成独立Provider哈希。
+3. 旧P0C根35.33980751304579 deg和39.918776604143765 deg仅作
+   legacy_coordinate_reference_only影子前向轨迹，未覆盖旧证据。
+4. 未修改生产P2P、Hamiltonian、Provider或事件公式，未扩大固定括区，
+   未重新进行完整角域扫描。
+
+二、等价场表示
+--------------
+
+1. 冻结输入的149×17个水平节点逐值完全相同；执行器先进行bitwise一致性
+   检查，不满足即阻断。
+2. 为避免对重复水平常量场构建约117万个节点的等价三维样条，Provider
+   使用同一冻结网格中覆盖原域的4×4水平节点和全部464个延拓高度节点。
+3. 水平常量函数在cubic插值下严格不变；该因子化只适用于本Chapman
+   冻结算例，不用于一般TID、Es、bubble、Spread-F或IRI三维场。
+4. 未因子化的首次运行约70分钟仍停留在全量cubic系数构建，工作集约
+   4.2 GB、私有内存约8.0 GB，已作为性能风险记录，不作为数值失败。
+
+三、冻结根与P2P闭合
+------------------
+
+1. reference Brent根：
+   low=21.943982528982165 deg；
+   high=39.58600244621275 deg。
+2. research Brent根：
+   low=21.94398252350794 deg；
+   high=39.58600243461512 deg。
+3. 正式二维TRF根：
+   low=21.943982303432147 deg，bearing=2.5672068e-6 deg；
+   high=39.58600244619724 deg，bearing=5.1700250e-6 deg。
+4. reference Brent的low/high RX ENU误差分别为5.31e-5 km和
+   1.06e-4 km；二维TRF分别为2.90e-10 km和2.47e-10 km。
+5. Brent与TRF仰角差分别为2.26e-7 deg和1.55e-11 deg，远小于
+   0.02 deg门槛；未发生分支交换。
+6. 两根均为ground、单转向；high的apex=302.679857964 km、
+   tau=5.465638999 ms，均大于low的203.163818105 km和
+   4.426487922 ms。
+7. 六个正式结果Hamiltonian残差约1e-10，空间导数拒绝为0，
+   stability_ratio最大0.01798；全部满足既有门槛。
+
+四、积分配置稳定性
+------------------
+
+1. research/reference low仰角差5.47e-9 deg、apex差2.01e-8 km、
+   群时延相对差6.39e-12。
+2. research/reference high仰角差1.16e-8 deg、apex差8.52e-9 km、
+   群时延相对差5.82e-11。
+3. 两分支均远优于0.02 deg、0.5 km和0.2%稳定性门，说明新根不依赖
+   research/reference积分配置选择。
+
+五、版本迁移分析
+----------------
+
+1. 相对C1-Prep5 linear根，cubic low/high仰角仅变化
+   -0.00164619/-0.00100894 deg，apex变化+0.00469159/-0.00587757 km，
+   几何程变化+0.0113342/-0.00432689 km，群程变化
+   +0.0154307/-0.00892010 km，群时延变化
+   +5.15e-5/-2.98e-5 ms。
+2. 上述差异很小，说明linear到cubic场表示不是旧P0C根失配的主要来源。
+3. 相对旧P0C根，当前low/high仰角分别变化-13.395825/-0.332774 deg；
+   旧根在当前cubic ECEF链的RX误差仍为138.022/35.471 km。
+4. 当前新根通过只能证明坐标/场表示迁移后存在稳定双根，不能把旧P0C
+   落点失败唯一归因于某一个因素。旧求解器已隔离，缺少逐因素复运行链；
+   因此结论限定为正式版本迁移，而非旧算法单一缺陷证明。
+
+六、运行时间
+------------
+
+1. 四个Brent根的前向积分累计2777.92 s（46.30 min）。
+2. 两个正式二维TRF累计11778.27 s（196.30 min），占保存数值运行
+   14556.19 s的80.91%。
+3. 正式二维P2P耗时主因是多尺度中心差分Jacobian需要多条reference
+   扰动轨迹，不是一维Brent或完整角域扫描。
+4. 两条legacy影子轨迹恢复耗时301.71 s。首次数值运行完成后仅因绘图
+   字段名geom_path_km/geometric_path_km不一致中断；CSV/NPZ已保存，
+   修复后未重算Brent/TRF，仅恢复影子轨迹并版本化记录。
+
+七、产物与验收
+--------------
+
+1. 执行器：tests/_run_a4_c1wr_p2p_ecef_root_freeze.py。
+2. 只读验收器：tests/_verify_a4_c1wr_p2p_ecef_root_freeze.py。
+3. 输出目录：output2/a4_pharlap/c1/c1wr_p2pf/。
+4. 已保存JSON、CSV、NPZ、日志、SHA-256 manifest及四张有效PNG：
+   新旧根轨迹、求解器闭合、版本迁移和验收门矩阵。
+5. P2PF只读验收为0 fail(s)，12项数值门全部通过。
+
+八、风险与下一步
+----------------
+
+1. P2PF只关闭当前严格球形ECEF cubic Chapman双根迁移，不验证WGS84、
+   IGRF、O/X分裂、复杂三维场或完整二维角域模式召回。
+2. 原C1双高同角轨迹RMS 2.410/2.528 km失败仍保留，不能由P2PF通过覆盖。
+3. 全量三维cubic Provider对水平重复场产生高内存初始化；本次精确因子化
+   不可推广到非均匀场。一般三维生产场仍需单独评估插值构建和查询成本。
+4. 正式二维TRF约占数值耗时81%，说明精度优先P2P可完成但工程成本高；
+   本阶段不修改Jacobian或放宽阈值。
+5. 下一步优先继续C1高射线方程/数值归因。A4-C2只有经用户明确确认后才
+   能以diagnostic_with_c1_failed运行，不得写成C1通过后的正式准入。
+
+理论依据沿用reference-papers.txt中的Haselgrove、Coleman（2011）及
+Nosikov等（2017、2020）；本阶段未新增重复文献条目。

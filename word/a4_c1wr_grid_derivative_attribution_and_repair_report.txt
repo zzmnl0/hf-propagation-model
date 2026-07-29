@@ -51,6 +51,13 @@ A4-C2准入：false，等待人工决策
 1. 三次样条可能在更复杂Ne场产生局部过冲；当前采用显式拒绝，尚未对TID、Es、Spread-F和bubble生产场开展全域插值适用性验收。
 2. 原C1高射线B=0偏差和旧P0C根的ECEF落点不闭合仍存在，不能以C1WR通过覆盖。
 3. PHaRLAP核心MEX不可进行公式级源码审计；行为一致仍不能替代方程、单位和边界条件证据。
-4. 保持A4-C2阻断。下一步由人工决定：先建立当前ECEF Chapman P2P新冻结根并与旧根作版本化语义迁移，或继续原C1高射线归因；未经确认不进入A4-C2。
+4. A4-C1WR-P2PF已按后续独立报告完成当前ECEF Chapman双根冻结；下一步优先继续原C1高射线归因。未经确认不进入A4-C2。
 
 理论依据沿用reference-papers.txt中的Haselgrove（1955、1963）、Haselgrove与Haselgrove（1960）及Cervera与Harris（2014）；本阶段未新增未经完整核验的文献条目。
+
+八、P2PF后续闭环（2026-07-29）
+
+1. current_strict_spherical_ECEF_cubic_Chapman_P2P_reference低/高根分别冻结为21.943982528982165 deg和39.58600244621275 deg。
+2. research/reference稳定性、Brent/正式二维TRF闭合、RX误差、Hamiltonian残差及空间导数平台共12项门全部通过；只读验收0 fail(s)。
+3. cubic相对Prep5 linear根仅变化约0.001至0.0016 deg；旧P0C根在当前链仍偏离RX 138.022/35.471 km。因此P2PF关闭当前根迁移，不把旧失败唯一归因于cubic插值。
+4. 原C1双高同角RMS失败保持，A4-C2仍等待人工决策。详细数值、恢复语义、风险和产物见a4_c1wr_p2p_ecef_root_freeze_report.txt。

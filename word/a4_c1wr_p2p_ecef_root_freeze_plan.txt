@@ -1,0 +1,93 @@
+A4-C1WR-P2PF 当前 ECEF Chapman P2P 新根冻结实施计划
+========================================================
+
+版本：v1
+语义：current_strict_spherical_ECEF_cubic_Chapman_P2P_reference
+执行位置：A4-C1WR 之后、A4-C2 之前
+执行关系：A4-C1WR -> A4-C1WR-P2PF -> 人工决策门
+实施状态（2026-07-29）：passed_current_ecef_chapman_p2p_root_freeze；
+只读验收0 fail(s)；A4-C2未自动准入。
+
+一、目的与边界
+--------------
+
+本阶段为当前严格球形 ECEF、cubic Chapman 场建立可复核的低/高射线 P2P
+新根。它只关闭坐标和场表示迁移后的根冻结问题，不验证 WGS84/IGRF 生产
+模型，不声明完整二维角域模式召回、O/X 分裂或复杂三维 P2P 完整性。
+
+旧 P0C 根 35.33980751304579 deg 和 39.918776604143765 deg 仅保留为
+legacy_coordinate_reference_only，不覆盖、不作为当前验收值。
+
+二、冻结输入
+------------
+
+1. 冻结 A4-C1WR manifest、当前 AH3D/P2P 源码、C1-Prep refined 1 km
+   Chapman 输入、Prep5 结果和旧 P0C 结果哈希。
+2. 固定球半径 6371 km、B=0、collision=0、10 MHz、单程、bearing=0。
+3. 从 refined 1 km 节点重建 interpolation="cubic" Provider，产生独立
+   当前哈希；不得沿用旧 linear Provider 哈希。
+4. low 括区固定 [21.9,22.0] deg，high 括区固定 [39.5,39.6] deg。
+5. 冻结 Chapman 场须先通过全部水平节点逐值完全一致检查。为避免对
+   149×17 个重复水平节点构建等价三维样条，仅从同一冻结网格选取覆盖
+   原域的 4×4 节点并保留全部 1 km 高度节点。常量函数在水平 cubic
+   插值下严格不变；若一致性检查失败则阻断，不对一般三维场降维。
+
+三、执行步骤
+------------
+
+P2PF-1：
+
+1. 在 research/reference 两套积分配置下，分别用 RX ENU 沿链路残差执行
+   有界 Brent 求根，角容差 1e-6 deg。
+2. 只允许 ground、单转向、有限 Hamiltonian 残差、无空间导数拒绝且
+   stability_ratio<=1 的函数值。
+3. 任一端点不再异号即记为 input_or_code_drift_blocked，不扩大角域。
+4. 以 reference Brent 根为种子调用正式二维 ECEF P2P；仰角边界保持原
+   括区，方位角半宽 0.1 deg，max_nfev=6，复用正式多尺度中心差分
+   Jacobian 和 TRF 阈值。
+
+P2PF-2：
+
+1. 验收双根唯一性、ground/单转向拓扑及高射线 apex/群时延顺序。
+2. RX ECEF/ENU 误差均不超过 1 km。
+3. Hamiltonian 残差不超过 1e-8，stability_ratio<=1，空间导数拒绝为 0。
+4. Brent/TRF 仰角差不超过 0.02 deg，不发生分支交换。
+5. research/reference 仰角差不超过 0.02 deg、apex 差不超过 0.5 km、
+   群时延相对差不超过 0.2%。
+6. 根必须保持在冻结括区；与 Prep5 linear 根和旧 P0C 根的差异只报告。
+
+四、产物
+--------
+
+独立执行器：
+tests/_run_a4_c1wr_p2p_ecef_root_freeze.py
+
+只读验收器：
+tests/_verify_a4_c1wr_p2p_ecef_root_freeze.py
+
+输出目录：
+output2/a4_pharlap/c1/c1wr_p2pf/
+
+保存 JSON、CSV、NPZ、日志、SHA-256 manifest 和四张图：
+
+1. 当前新根与旧根前向轨迹；
+2. research/reference 与 Brent/TRF 角度和 RX 残差；
+3. 新旧根、apex、路径和群时延迁移；
+4. 最终验收门矩阵。
+
+五、最终状态与决策
+------------------
+
+最终状态只允许：
+
+1. passed_current_ecef_chapman_p2p_root_freeze
+2. failed_current_ecef_chapman_p2p_acceptance
+3. input_or_code_drift_blocked
+
+通过仅关闭当前 ECEF Chapman 双根迁移。原 C1 高射线 RMS 失败继续保留；
+下一步优先继续 C1 高射线方程/数值归因。A4-C2 必须经人工确认，且初始
+只能以 diagnostic_with_c1_failed 语义运行。
+
+若 Brent 通过但二维 P2P 失败，隔离终端映射、二维 Jacobian 和 TRF；
+若括区或积分配置不稳定，检查 cubic Provider 哈希和事件拓扑，禁止扩大
+角域或现场调参。
