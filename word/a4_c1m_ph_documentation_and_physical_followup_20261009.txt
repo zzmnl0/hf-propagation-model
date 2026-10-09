@@ -1,0 +1,71 @@
+PHaRLAP 文档核查与 AH3D 物理优先后续方案
+日期：2026-10-09
+用户已确认：物理正确性优先；AH 使用保形非负背景及一致导数，以独立参考验收；PH 差异单列，修订 P4 准入条件。
+
+一、资料核查结论
+本地 D:/pharlap/pharlap_4.7.4 存在 MATLAB 接口说明、C 包装源、MEX 和编译库，未发现 .f/.f90/.f95/.f03/.f08 内核源码。
+00README.txt 说明非 MATLAB 调用通过所附编译库和 C 包装层构建。src/C/raytrace-3d-sp_matlab_wrapper.c 声明并调用 raytrace_3d_sp_，然后将计算结果数组复制为 MATLAB 结构；该文件不提供内核插值和零密度分支实现。
+src/matlab/raytrace_3d_sp.m 定义 dir_x/y/z 为沿波法线、模长等于折射率的向量，并允许直接传入完整初态。接口语义不能证明具体浮点输出在零点附近如何同步。
+RELEASE_NOTES.txt 第837–838行只提到高度插值改进，未给出负插值值、梯度或投影规则。
+
+网络一手来源：
+1. DST 官方 PHaRLAP 页面 https://www.dst.defence.gov.au/node/1870
+   确认网格输入、完整状态输出、Fortran2008 计算引擎与 MATLAB MEX。未说明入口截零或重置算法。
+2. Cervera and Harris (2014), DOI https://doi.org/10.1002/2013JA019247 ，第2节。
+   说明 Cartesian Haselgrove 方程、自适应 Bogacki–Shampine 4/5阶算法、状态保存和群程计算。论文年份早于4.7.4，不能据此确认当前版本每个内部细节。
+3. SciPy PchipInterpolator 官方说明 https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.PchipInterpolator.html
+   PCHIP 保形、区间内无过冲且一阶导连续，支持直接求多项式导数；二阶导在节点可能跳变。
+4. MathWorks pchip 官方说明 https://www.mathworks.com/help/matlab/ref/pchip.html
+   提供保形三次 Hermite 方法及无过冲说明。PCHIP 是有文档支持的成熟选择，不是声称所有射线软件采用的唯一标准。
+
+上述查询未找到足以唯一确认 PH4.7.4 负支撑区内部传播/梯度/重置规则的证据。不将检索未发现等同于证明资料永远不存在。
+P3.1“输出Ne符合截零中心斜率Hermite”的结论保持；内部传播规则仍未确认，不再把仿制该未确认机制作为 AH 物理正确性的前置条件。
+另外，PH 内核由编译 Fortran 执行，不能把当前差异简单归为 Python 对 MATLAB 的语言计算差异。
+
+二、本轮最小生产调整
+常规 ScenarioNeProviderFactory 已使用纵向PCHIP和横向线性组合，继续保留。
+仅在 GeocentricGridNeProvider3D 增加显式 interpolation='radial_pchip'，复用现有径向查询、边界及数据验证。
+该选项限定横向严格均匀、至少三个高度节点、非负有限数据和真空填充值；不外推多项式。非零密度边界以外仍拒绝查询。
+PCHIP 在有效高度区间内保形非负；零端点向真空延续仅保证密度连续，不自动保证端点导数连续。正式光滑入口必须显式检查零端点的单侧导数为零。
+保留原 linear/cubic 默认行为、原 radial_hermite 负值拒绝和 pharlap_radial_b0 限制。radial_pchip 使用正常物理模式，不冒称 PH 兼容。
+物理常数使用项目原默认值，不全局改 K_FP，不把旧 PH 兼容常数自动迁入物理模式。
+Hamiltonian 空间导数已有从同一 Provider 重新查询的数值差分，不另建独立梯度场；继续量化差分误差。
+不添加负密度裁剪、PH 特有重置或新的积分器。保留现有 DOP853 和色散约束投影，单列投影开/关对照。
+
+三、本轮验证边界
+新测试检查：整段非负、节点再现、真空接入值/斜率、非零顶部越界拒绝、旧Hermite继续拒绝负支撑、横向不均匀/负输入拒绝、PH兼容模式继续拒绝PCHIP。
+将 Hamiltonian 数值空间导数与同一 PCHIP 的解析径向导数比较。
+对原 smooth_s5 的10MHz、22/39.5度，分别开启/关闭现有投影，与独立径向积分比较原生节点、自然落点及总群程。
+这些为生产回归和传播诊断；未完成三档积分、FD/网格及连续重建预算前，不标为正式物理准入通过。
+默认四例逐值回归及既有P3兼容合同必须保持通过。
+
+四、修订后的正式验收与 P4 准入
+建立两条独立状态，不合并：
+  ah_physics_scope_passed：新物理表示在声明范围内通过独立物理参考和数值验证。
+  pharlap_equivalence_passed：与 PH 实际介质相同且达到原跨程序阈值；未确认介质的案例保持未解决。
+历史P3/P3.1的summary、失败与recommend_p4不修改。新recommend_p4_physics依据以下条件判定：
+1. 对冻结PCHIP介质，初始化、密度与导数、真空接入、终止类型和拓扑一致。
+2. 复用原24个物理条件作为新模式回归，并对未执行的11MHz 27/33度重新审计历史暴露、冻结参数和参考拓扑后执行2例留出。若暴露则按已登记备选规则处理，不能看结果换角。
+3. AH分别完成三档积分，FD和网格响应分开验证；非单调平台需独立参考认证，不简单豁免。
+4. AH对独立参考的RMS<=2m、最大差及自然落点/规定端点差<=10m、群程相对差<=2e-6；参考自身稳定且有数值误差来源。求积估计不称严格区间证明。
+5. 正式连续轨迹比较需独立重建界与采样检查，原生节点诊断不能替代。转向/落地/提前终止反例、投影开关影响须完整记录。
+6. 同一解析背景的网格离散误差另记；每个离散网格都要与自身实际PCHIP介质的参考比较。不能把不同插值表示视为同一连续介质。
+7. 默认行为、受影响工程测试、来源和只读复算通过，声明范围无阻断项。
+上述全部通过，才可进入一般三维物理背景P4验证；不再要求未公开的PH入口机制完全复现。此准入仅表示可以开展P4，绝不表示一般三维、磁化或P2P已通过。
+
+PH诊断继续执行原跨程序限值RMS10m、最大/落点50m、群程1e-5；前提仍是实际介质相同。使用同网格但不同插值的结果仅报告敏感性/实现差异，不能标成同介质等价。
+
+五、后续执行顺序
+先交付本轮小补丁、工程回归与两角独立参考诊断；随后冻结正式物理回归矩阵及误差预算，逐阶段执行。P4、O/X、WGS84/IGRF、碰撞吸收及P2P本轮不执行。
+若未来取得PH内核说明，可重新开启兼容归因，不能将新物理模式反向改名为已验证的PH内部实现。
+
+六、本轮实际结果
+生产补丁及回归完成，正式物理准入仍待完成。未运行P4或新的PH射线。
+六项生产测试均通过；其中IRI沙箱DLL失败记录保留，单项在沙箱外重跑通过。默认四例逐值及功率回归通过。
+入口/节点附近15高度三档FD共45项满足现有工程容差，4方向水平越界拒绝；不作为正式FD/网格/轨迹预算完成声明。
+e22_projection1: {"native_rms_m": 0.023413890987645767, "native_max_m": 0.041138674989625874, "landing_m": 0.1009896584996982, "group_rel": 7.337988239150163e-08}; diagnostic_passed=True
+e22_projection0: {"native_rms_m": 0.020203139986079057, "native_max_m": 0.035166491405918744, "landing_m": 0.08245182936852409, "group_rel": 7.088525221100618e-08}; diagnostic_passed=True
+e39.5_projection1: {"native_rms_m": 0.09401930767915123, "native_max_m": 0.17998207930314236, "landing_m": 0.2508913144483684, "group_rel": 2.1908976416573005e-07}; diagnostic_passed=True
+e39.5_projection0: {"native_rms_m": 0.08956472740586663, "native_max_m": 0.17110149330882118, "landing_m": 0.23619497313870036, "group_rel": 2.1423571514520618e-07}; diagnostic_passed=True
+ah_physics_scope_passed=false; pharlap_equivalence_passed=false; recommend_p4_physics=false。
+结果目录：code/output2/a4_pharlap/c1/c1m/physical_fallback_20261009_v1/

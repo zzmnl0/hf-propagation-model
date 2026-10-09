@@ -35,6 +35,10 @@ model = RefractiveIndexAH3DECEF(
 
 统一流水线通过 `UPDATE2['PHARLAP_RADIAL_B0']['enable']=True` 启用，并要求请求显式使用球面坐标、同一径向 Provider 和零磁场。启用开关不会把不支持的 IGRF 或 WGS84 请求自动改成球面无磁请求。完整入口一致性例子见 `tests/_verify_p3_compatibility.py`。省略兼容参数且保持开关关闭即使用默认物理模式。
 
+径向物理背景可显式选择 `GeocentricGridNeProvider3D(..., interpolation="radial_pchip")`，并使用普通 AH3D 模式（不设置 `compatibility_mode`）。此选项要求横向均匀、有限非负节点、至少三个高度节点及真空填充值，采用区间内保形 PCHIP；非零密度边界以外仍拒绝查询。零端点向真空延续不自动保证导数连续，光滑入口须另查端点斜率。常规场景工厂已有纵向 PCHIP，不受该新增选项影响。
+
+该物理选项不表示复现 PHaRLAP 未公开的入口规则。独立物理验收与 PH 等价验收分开记录，P4 准入修订见 [文档核查与后续方案](word/a4_c1m_ph_documentation_and_physical_followup_20261009.txt)。
+
 ## 目录
 
 1. [快速上手](#1-快速上手)

@@ -219,7 +219,7 @@ class WGS84NeProviderAdapter:
 
 
 class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
-    """Linear or cubic interpolation of Ne(latitude, longitude, height)."""
+    """Grid interpolation, with explicit horizontally uniform radial options."""
 
     name = "geocentric_grid_ne_provider_3d"
 
@@ -264,15 +264,19 @@ class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
                 axis=1,
             )
         self._radial_spline = None
-        if self.interpolation == "radial_hermite":
+        if self.interpolation in {"radial_hermite", "radial_pchip"}:
             profile = self.Ne_m3[0, 0, :]
             if not np.all(self.Ne_m3 == profile[None, None, :]):
-                raise ValueError("radial_hermite requires exactly horizontally uniform Ne")
+                raise ValueError("radial interpolation requires exactly horizontally uniform Ne")
             if self.fill_value_m3 != 0.0 or self.height_km.size < 3:
-                raise ValueError("radial_hermite requires vacuum fill and at least three heights")
-            self._radial_spline = CubicHermiteSpline(
-                self.height_km, profile,
-                np.gradient(profile, self.height_km, edge_order=2), extrapolate=False)
+                raise ValueError("radial interpolation requires vacuum fill and at least three heights")
+            if self.interpolation == "radial_pchip":
+                self._radial_spline = PchipInterpolator(
+                    self.height_km, profile, extrapolate=False)
+            else:
+                self._radial_spline = CubicHermiteSpline(
+                    self.height_km, profile,
+                    np.gradient(profile, self.height_km, edge_order=2), extrapolate=False)
             critical = self._radial_spline.derivative().roots(extrapolate=False)
             critical = critical[np.isfinite(critical)]
             if np.any(self._radial_spline(critical) < 0.0):
@@ -288,8 +292,8 @@ class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
             raise ValueError("earth_radius_km must be finite and positive")
         if not np.isfinite(self.fill_value_m3) or self.fill_value_m3 < 0.0:
             raise ValueError("fill_value_m3 must be finite and nonnegative")
-        if self.interpolation not in {"linear", "cubic", "radial_hermite"}:
-            raise ValueError("interpolation must be 'linear' or 'cubic'")
+        if self.interpolation not in {"linear", "cubic", "radial_hermite", "radial_pchip"}:
+            raise ValueError("interpolation must be linear, cubic, radial_hermite or radial_pchip")
         axes = (
             ("latitude_deg", self.latitude_deg),
             ("longitude_deg", self.longitude_deg),
@@ -387,10 +391,10 @@ class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
                                 float(self.height_km[-1])],
             "grid_shape": list(self.Ne_m3.shape),
             "interpolation": self.interpolation,
-            "bounds_error": self.interpolation == "radial_hermite",
+            "bounds_error": self._radial_spline is not None,
             "radial_boundary_semantics": (
                 "reject_horizontal_or_nonzero_density_crossing; zero_density_edge_to_vacuum"
-                if self.interpolation == "radial_hermite" else None),
+                if self._radial_spline is not None else None),
             "fill_value_m^-3": self.fill_value_m3,
             "longitude_semantics": (
                 "east_positive_periodic_full_interpolation"
