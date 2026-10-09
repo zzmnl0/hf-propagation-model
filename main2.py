@@ -80,13 +80,14 @@ def _temporary_update2(overrides):
 
 
 def _enable_reference_physics():
+    from models.unified_hybrid_pipeline import reject_archived_physics
+    reject_archived_physics()
     _merge_dict(cfg.UPDATE2, {
         "AH3D_ENABLE": True,
         "OX_MODE": "ah3d",
         "RAY_FAN_INCLUDE_X": bool(RUN_PRODUCTS.get("ray_fan_x", False)),
         "ABSORPTION_COMPLEX": {
             "enable": True,
-            "mode": "reference",
         },
         "PE_COUPLING": {
             "enable": False,
@@ -298,21 +299,10 @@ def _scenario_provider(kind):
 
 
 def _request_for(kind):
+    from models.unified_hybrid_pipeline import reject_archived_physics
+    reject_archived_physics()
     kind = _normalize_scenario_label(kind)
     apply_scatter_pd = bool(cfg.UPDATE2.get("SCATTER_PD", {}).get("apply_to_pd", False))
-    apply_pe = bool(cfg.UPDATE2.get("PE_COUPLING", {}).get("enable", False))
-    pe_params = None
-    if kind == "spreadf":
-        pe_params = {
-            **cfg.BUBBLE_3D,
-            "enable": True,
-            "x0_km": cfg.RX_RANGE / 2.0,
-            "z0_km": cfg.SPREAD_F["h_screen_km"],
-            "sigma_perp_km": cfg.SPREAD_F.get("L0_km", 50.0),
-            "sigma_para_km": 300.0,
-        }
-    elif kind == "bubble":
-        pe_params = {**cfg.BUBBLE_3D, "enable": True}
     p2p_config = dict(cfg.P2P_3D)
     if RUN_PRODUCTS.get("p2p_seeds") is not None:
         p2p_config["candidate_nearest"] = int(RUN_PRODUCTS["p2p_seeds"])
@@ -335,8 +325,6 @@ def _request_for(kind):
         observable_type="communication_oneway",
         pd_delay_key="tau_ms",
         apply_scatter_to_pd=apply_scatter_pd,
-        apply_ray_pe_reference=apply_pe,
-        pe_irregularity_params=pe_params,
         environment=kind,
         metadata={"main2_output_dir": _OUT},
         make_ray_fan=bool(RUN_PRODUCTS.get("ray_fan", True)),

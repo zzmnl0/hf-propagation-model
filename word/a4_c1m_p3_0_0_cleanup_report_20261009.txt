@@ -1,0 +1,68 @@
+P3-0-0生产清理与Git跟踪交付报告
+日期：2026-10-09
+结论：P3-0-0检查完成，建议进入P3-0冻结及后续已归因的生产兼容修复。本轮没有实施P3常数、插值、FD或Hamiltonian修改。
+
+一、实际清理
+1. config.py：删除无消费者的UPDATE2.ABSORPTION_COMPLEX.mode；ABSORPTION字典保留为历史输入识别/拒绝边界，其enable=True在当前生产明确拒绝，旧D-layer计算不再执行。
+2. main.py：移除旧D-layer功率计算分支及导入；删去PE no-op的Ne/扰动形参、两个孤立bub3d_p字典及Spread-F无用载荷；保留默认off元数据和有效当前复吸收路径。
+3. main2.py：删除PE场景载荷构造及传参；在配置覆盖之前检查旧请求，防止旧启用配置被静默覆盖为关闭。
+4. unified_hybrid_pipeline.py：删除无人消费的pe_irregularity_params字段；新增共享reject_archived_physics，统一拒绝旧ABSORPTION、PE.enable和PE.apply_to_power；原请求级apply_ray_pe_reference拒绝继续保留。
+5. README：快速上手改为当前生产入口及精确正式测试集合，明确旧章节只用于查阅，不再推荐批量运行历史验证脚本。
+没有删除legacy，没有批量清空tests，没有建立备份或隔离归档。无法证明无用的有效函数保持原样；共享配置上下文虽相似，仍有有效调用，不为整洁强行合并。
+
+二、生产与测试的legacy隔离
+新增tests/_run_production_checks.py和tests/_verify_production_boundary.py，复用既有测试，不复制已有物理求解器。
+正式六例：
+  _verify_production_boundary.py
+  _verify_a4_c0r1_geometry.py
+  _verify_a4_c0r3_ecef_hamiltonian.py
+  _verify_absorption_consistency.py
+  _verify_a4_c0r6_entry_migration.py
+  _verify_legacy_source_separation.py
+静态扫描当前生产入口、models/analysis/viz及适用正式测试；包含负例字符串的boundary和读取历史布局的separation脚本明确列为静态例外，仍执行检查并记录源哈希。
+每个正式测试在独立Python进程中安装运行防护，拒绝项目legacy的导入、路径读取/编译/执行及搜索路径污染；默认拒绝嵌套子进程。
+C0R6确需IRI2016原生程序，仅允许已安装驱动的精确路径和SHA、固定cwd/data目录及11个有限数值参数；真实调用留审计。该机制用于防止项目误调用历史模块，不是恶意代码安全沙箱。
+历史脚本保持原路径和SHA，不进入正式自动发现集合。未选中脚本包括昂贵诊断、在研及历史复现，不能把所有未选中脚本一概称为无用或legacy。
+原C0R2包含legacy对照而未进入正式集合；当前Provider轴序/域外/shape/非法输入断言补入boundary，当前生产功能不靠旧模块验证。
+
+三、验证结果
+最终正式结果：code/output2/p3_0_0_tests_20261009_v4/summary.json。
+6/6退出0，full_suite_passed=true；静态违规0；boundary 55项通过；原legacy分离7项通过。41个执行/检查源码SHA在最终交付前再次核对一致。
+C0R6实际运行IRI2016一次，没有mock；原生驱动SHA为e3829d251d20601d5169d3a0156becf450e4ad2da6fa5f6e8a862b800be560ec。
+子集运行的passed不能代表全套；最终完成器同时要求full_suite_passed及精确六例齐全。
+
+数值等价：tests/_run_p3_0_0_audit.py在清理前后使用同环境、同输入运行真空、Chapman B=0、Chapman O、Chapman X四条10 km路径。
+24个物理数组/标量项目逐值完全相等，字段集合和终止/步数记录一致，共26项检查通过。覆盖ECEF位置、波矢、几何程节点、总群程、总几何程和时延。
+另外从Git基线加载原功率辅助函数，仅比较共同当前有效输入；复吸收开/关×通信/雷达4组结果完全一致。未导入历史求解器。
+main/main2嵌套临时配置及异常恢复检查通过。旧D-layer、PE.enable、PE.apply_to_power在共享验证、main/main2启用器、功率、pipeline、request入口被拒绝，且输入配置未被覆盖。
+B1和C1M当前工具在运行守卫下导入成功，没有legacy加载。有效在研模块保留。
+色散、ECEF射线求解器和Provider源码未改；legacy及P1/P2冻结交付在最终完成器中再次逐项核对。原P2科学global_passed=false保持，不因代码清理变成true。
+
+四、失败记录与修正
+测试v1：NumPy首次查询platform信息调用cmd /c ver，被子进程防护拦截；改为安装守卫前预缓存标准库系统信息，不提前加载生产模块。
+测试v2：C0R6实际IRI驱动被通用子进程防护拒绝；依据真实依赖加入精确原生驱动许可和调用审计。
+测试v3：精确许可通过，但沙箱内CreateProcess遇到Windows DLL623；原失败保留。工具权限审核批准后，v4在沙箱外执行同一正式集合，全部通过。
+等价审计初次使用了错误的终止状态名称，后按真实fixed_geometric_path_completed修正；功率基线提取初次缺少两个标签辅助函数，补齐后四组通过。前两次after数据及错误日志保留，未改模型以迁就检查。
+
+五、真实工作区与Git
+实际仓库根：D:/code11/IRI01/IRI03/TID/code。
+基线提交54fb763纳入32个当前有效文件：C1M/C1G/P2工具、MATLAB出口、B1模块与测试、TXT计划/报告及审计脚本。源码凭实际调用和证据身份保留，不按未跟踪状态删除。
+本阶段清理、正式runner、防护和本报告使用独立本地提交；最终commit见运行目录completion.json及workspace_final.json，避免报告自引用提交哈希。
+本任务有效变更全部跟踪提交；不自动push、不改写历史。执行前已经存在的3份计划修改以及5份DOCX未跟踪文件属于其他工作，保留并在最终状态中列出，不夹带提交。
+原output/output2/cache/work忽略规则继续使用；实际原始结果保留在原目录，通过本报告和完成索引引用。有效源码没有追加忽略规则。
+当前生产范围、完整依赖import清单、tracked/untracked分类和前后SHA分别保存在inventory_before.json、workspace_final.json。
+本轮开始时P3总计划工作区版本已移除了上次提交的部分P3-0-0关联文字；本任务没有覆盖这一既有修改。P3-0-0执行依据为已提交的详细清理计划和本报告，后续计划版本应按实际工作区状态核对。
+
+六、完成状态与P3建议
+最终完成器核验正式六例/源SHA、26项射线等价、4项功率等价、核心/历史身份、本任务Git提交完整性，才写入p3_0_0_passed=true和ready_for_p3_0=true。
+数据目录：code/output2/a4_pharlap/c1/c1m/p3_0_0_20261009_v1/。
+主要产物：inventory_before.json；before/physics.npz；after/equivalence.json；after/power_equivalence.json；workspace_final.json；completion.json；delivery_sha256.json。
+独立正式suite目录：code/output2/p3_0_0_tests_20261009_v4/；保留v1—v3失败。
+建议进入P3-0，冻结清理后生产版本及默认基线，再按P3-1比较契约、P3-2连续径向兼容实现和P3-3全程/留出顺序推进。
+P3-0-0只完成执行边界和工程整理，不能据此进入P4，也不能声称AH—PH差异已整体消除。P3的原四角光滑全程、8/15 MHz及12 MHz×25/35度仍须独立验收。
+
+七、复核命令（从code运行，新目录不得已存在）
+  C:/Users/12238/.conda/envs/pytorch_cpu/python.exe -B -X utf8 tests/_run_production_checks.py --list
+  C:/Users/12238/.conda/envs/pytorch_cpu/python.exe -B -X utf8 tests/_run_production_checks.py --output output2/<new_production_check_run>
+部分环境需允许IRI原生驱动加载；出现DLL错误须报告环境失败，不模拟通过。
+本次没有重跑全部长程场景、旧legacy数值测试或P3物理实验。工程准入建议基于上述明确覆盖和核心源码未变证据。

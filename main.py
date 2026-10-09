@@ -98,13 +98,14 @@ def _temporary_update2(overrides):
 
 def _enable_main_reference_physics():
     """Enable physically richer runtime switches for main.py only."""
+    from models.unified_hybrid_pipeline import reject_archived_physics
+    reject_archived_physics()
     _merge_dict(cfg.UPDATE2, {
         'AH3D_ENABLE': True,
         'OX_MODE': 'ah3d',
         'RAY_FAN_INCLUDE_X': bool(RUN_PRODUCTS.get('ray_fan_x', False)),
         'ABSORPTION_COMPLEX': {
             'enable': True,
-            'mode': 'reference',
         },
         'PE_COUPLING': {
             'enable': False,
@@ -288,8 +289,9 @@ def _plot_pd(tau_ax, pd, modes, title, filename, delay_key='tau_ms'):
 
 def _add_power_3d(modes, n3d=None, radar_mode=False, sigma_rcs=1.0):
     """Fill Pr_W, Pr_dBW, delta_tau_ms in 3-D P2P mode dicts."""
-    from utils import (free_space_loss_dB, to_dBW, radar_equation_W,
-                       d_layer_absorption_dB)
+    from utils import free_space_loss_dB, to_dBW, radar_equation_W
+    from models.unified_hybrid_pipeline import reject_archived_physics
+    reject_archived_physics()
     for m in modes:
         if 'absorption_applied_once' in m:
             continue
@@ -316,22 +318,6 @@ def _add_power_3d(modes, n3d=None, radar_mode=False, sigma_rcs=1.0):
             abs_total_dB = float(abs_diag.get('abs_total_dB', abs_oneway_dB))
             abs_model = 'appleton_hartree_collision_path'
             m['Pr_W'] *= 10.0**(-abs_total_dB / 10.0)
-        elif cfg.ABSORPTION.get('enable', False):
-            beta_deg = float(m.get('beta_deg_tx',
-                             m.get('elevation_tx_deg',
-                             m.get('beta_deg', 30.0))))
-            fH_L = (float(cfg.GEOMAG.get('fH_MHz', 1.197)) *
-                    float(np.cos(np.radians(cfg.GEOMAG.get('dip_deg', 48.7)))))
-            ab_kw = {k: v for k, v in cfg.ABSORPTION.items() if k != 'enable'}
-            ab_kw['fH_L_MHz'] = fH_L
-            abs_oneway_dB = d_layer_absorption_dB(
-                cfg.FREQ_MHZ, beta_deg, **ab_kw)
-            n_cross = 2 if radar_mode else 1
-            abs_total_dB = abs_oneway_dB * n_cross
-            abs_model = 'legacy_d_layer'
-            abs_diag = {'abs_status': 'ok'}
-            m['Pr_W'] *= 10.0**(-abs_total_dB / 10.0)
-
         m['abs_dB']        = float(abs_oneway_dB)
         m['abs_total_dB']  = float(abs_total_dB)
         m['abs_model']     = abs_model
@@ -346,11 +332,10 @@ def _add_power_3d(modes, n3d=None, radar_mode=False, sigma_rcs=1.0):
     else:
         _tag_communication_modes(modes)
 
-def _add_ray_pe_reference_3d(modes, Ne_2d, irregularity_params):
+def _add_ray_pe_reference_3d(modes):
     """Record the disabled legacy PE boundary without importing legacy code."""
-    if cfg.UPDATE2.get('PE_COUPLING', {}).get('enable', False):
-        raise RuntimeError(
-            'formal ECEF entry rejects archived local_2p5d PE; migrate it before use')
+    from models.unified_hybrid_pipeline import reject_archived_physics
+    reject_archived_physics()
     for mode in modes:
         mode['pe_solver_dimensionality'] = 'off'
         mode['pe_validity'] = 'archived_local_2p5d_not_in_production_chain'
@@ -804,7 +789,6 @@ def run_with_bubble():
 
     provider = _scenario_provider('bubble')
     Ne_2d = _provider_slice(provider)
-    bub3d_p = {**cfg.BUBBLE_3D, 'enable': True}
     n3d     = _make_n3d(provider)
     rays3d  = _shoot_rays_fan_reference_3d(n3d)
     print("  Ray fan : {} rays".format(len(rays3d)))
@@ -818,7 +802,7 @@ def run_with_bubble():
 
     modes = _find_all_rays_reference_3d(n3d, environment='bubble')
     _add_power_3d(modes, n3d=n3d)
-    _add_ray_pe_reference_3d(modes, Ne_2d, bub3d_p)
+    _add_ray_pe_reference_3d(modes)
     _add_scatter_3d(modes, n3d)
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
@@ -846,7 +830,6 @@ def run_full():
     print("  Scenario 4: Full 3-D ({}-dir TID + Es + Bubble)".format(n_comp))
     print("=" * 55)
 
-    bub3d_p = {**cfg.BUBBLE_3D,'enable': True}
 
     provider = _scenario_provider(
         'baseline', components=('tid', 'es', 'bubble'))
@@ -881,7 +864,7 @@ def run_full():
         m['delta_tau_ms'] = float(es_res['delta_tau_ms'])
         m['label']        = 'Es_' + es_res['mode']
 
-    _add_ray_pe_reference_3d(modes, Ne_2d, bub3d_p)
+    _add_ray_pe_reference_3d(modes)
     _add_scatter_3d(modes, n3d)
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)
@@ -1025,7 +1008,7 @@ def run_with_spreadf():
     _save(fig_fan, 'tx_fan_spreadf.png')
     modes  = _find_all_rays_reference_3d(n3d, environment='spreadf')
     _add_power_3d(modes, n3d=n3d)
-    _add_ray_pe_reference_3d(modes, Ne_2d, {**cfg.BUBBLE_3D, 'enable': True, 'x0_km': cfg.RX_RANGE / 2.0, 'z0_km': cfg.SPREAD_F['h_screen_km'], 'sigma_perp_km': cfg.SPREAD_F.get('L0_km', 50.0), 'sigma_para_km': 300.0})
+    _add_ray_pe_reference_3d(modes)
     _add_scatter_3d(modes, n3d)
     print("  P2P modes: {}".format(len(modes)))
     print_mode_table(modes)

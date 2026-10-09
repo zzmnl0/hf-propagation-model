@@ -54,7 +54,6 @@ class UnifiedPropagationRequest:
     pd_delay_key: str = "tau_ms"
     apply_scatter_to_pd: bool = False
     apply_ray_pe_reference: bool = False
-    pe_irregularity_params: dict | None = None
     environment: str | None = None
     metadata: dict = field(default_factory=dict)
     make_ray_fan: bool = True
@@ -462,7 +461,17 @@ def _build_pd_for_delay(modes: list, request: UnifiedPropagationRequest):
     return build_pd_spectrum(shifted, method=request.pd_method)
 
 
+def reject_archived_physics() -> None:
+    """Reject archived configuration before any production work or overrides."""
+    if cfg.ABSORPTION.get("enable", False):
+        raise RuntimeError("production rejects archived D-layer ABSORPTION; use ABSORPTION_COMPLEX")
+    pe = cfg.UPDATE2.get("PE_COUPLING", {})
+    if pe.get("enable", False) or pe.get("apply_to_power", False):
+        raise RuntimeError("production rejects archived local_2p5d PE_COUPLING")
+
+
 def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagationResult:
+    reject_archived_physics()
     if request.solver != "ah3d_ecef":
         raise ValueError("C0R production pipeline accepts only solver='ah3d_ecef'")
     if not isinstance(request.provider, GeocentricNeProvider3D):

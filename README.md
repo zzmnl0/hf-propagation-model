@@ -26,38 +26,29 @@
 
 ---
 
-## 1. 快速上手
+## 1. 当前生产入口与正式测试
 
-```bash
-# 环境（仅支持 iri2016，不能用 iricore）
-conda activate pytorch_cpu
+当前支持入口是 `main.py`、`main2.py` 和 `models/unified_hybrid_pipeline.py` 的 ECEF AH3D 接口。正式生产与测试禁止调用项目 `legacy/`；后续历史章节中的旧 API、测试和图形命令仅供查阅。
 
-# 完整运行所有场景 -> output/
+```powershell
+# 从 code/ 运行；完整场景计算可能耗时较长
 conda run -n pytorch_cpu python main.py
+conda run -n pytorch_cpu python main2.py
 
-# 单独场景
-conda run -n pytorch_cpu python -c "from main import run_baseline; run_baseline()"
-conda run -n pytorch_cpu python -c "from main import run_tube_radar; run_tube_radar()"
-
-# 背景电子密度图
-conda run -n pytorch_cpu python viz/plot_ne_background.py
-
-# 验证各阶段（全部应输出 0 fail(s)）
-conda run -n pytorch_cpu python tests/_verify_part1.py
-conda run -n pytorch_cpu python tests/_verify_part6.py
-conda run -n pytorch_cpu python tests/_verify_group_path.py
-conda run -n pytorch_cpu python tests/_verify_absorption_3d.py
-conda run -n pytorch_cpu python tests/_verify_scatter_coupling.py
-conda run -n pytorch_cpu python tests/_verify_p2p_jacobian.py
-conda run -n pytorch_cpu python tests/_verify_tube.py
-conda run -n pytorch_cpu python tests/_verify_phase5.py
-conda run -n pytorch_cpu python tests/_verify_phase6.py
-conda run -n pytorch_cpu python tests/_verify_phase7.py
+# 正式轻量检查：精确测试集合、运行时 legacy 防护、结果写入新目录
+conda run -n pytorch_cpu python tests/_run_production_checks.py --help
 ```
 
-**依赖**：`numpy scipy matplotlib iri2016 ppigrf`
+正式集合及历史排除清单以该 runner 为准，不应遍历 `tests/_verify_*.py` 全部执行。特别是名称包含 AH3D、physics 或 group_path 的旧测试，可能测试的是历史模块。
 
-> **Windows 编码**：`print()` 中只用 ASCII；中文注释不影响运行。
+- 原 `ABSORPTION` D-layer 配置只保留废弃输入的拒绝契约；当前吸收使用 `UPDATE2.ABSORPTION_COMPLEX` 的 ECEF 路径积分。
+- 旧 `PE_COUPLING` 的启用或功率应用请求明确拒绝。B1 的 `models/vector_pe_3d.py` 是单独在研接口，不通过旧局部 PE 入口启用。
+- `legacy/` 和冻结实验工具保持原路径；正式测试不执行它们。P2 版本化脚本按各自 manifest 引用，不能只保留最新文件名。
+- 有效源码、测试和 TXT 计划跟踪到 Git；`output/`、`output2/`、缓存和临时工作目录继续遵循 `.gitignore`。其他任务未提交文件不由清理任务夹带提交。
+
+P3-0-0 实施与验收见 [清理报告](word/a4_c1m_p3_0_0_cleanup_report_20261009.txt)。此阶段不改变色散、空间差分或物理求解参数。
+
+**依赖**：`numpy scipy matplotlib iri2016 ppigrf`。Windows 控制台诊断使用 ASCII；文档采用 UTF-8。
 
 ---
 

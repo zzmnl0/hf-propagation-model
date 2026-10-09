@@ -351,7 +351,7 @@ GEOMAG_3D = {
     'enable': False,   # False -> use fixed GEOMAG dict (backward compat)
 }
 
-# ── D-layer absorption (Phase 3) ─────────────────────────────────────────────
+# ── Archived D-layer configuration (production rejects enable=True) ─────────────────────────────────────────────
 ABSORPTION = {
     'enable':   False,
     'A0':       500.0,   # [dB*MHz^2]  Pederick & Cervera 2014
@@ -409,7 +409,6 @@ UPDATE2 = {
     },
     'ABSORPTION_COMPLEX': {
         'enable': False,
-        'mode': 'legacy',
         'collision_model': 'd_region_exponential',
         'nu_ref_s': 5.0e6,
         'h_ref_km': 80.0,
