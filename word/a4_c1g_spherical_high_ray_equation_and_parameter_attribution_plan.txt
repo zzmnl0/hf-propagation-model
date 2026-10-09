@@ -1,0 +1,179 @@
+A4-C1G 球对称高射线方程、参数与几何语义归因计划
+
+生成日期：2026-07-29
+状态：completed_identified_spherical_equation_or_invariant_defect
+前置状态：A4-C1WR-P2PF通过；原A4-C1双高同角RMS失败保持
+执行位置：A4-C1WR-P2PF -> A4-C1G -> 人工决策门 -> A4-C2或继续归因
+
+一、目标与语义边界
+
+1. 以PHaRLAP 4.7.4为项目外部标准，继续定位B=0、10 MHz、无碰撞、单程、球形6371 km、水平一致Chapman F2高射线的沿链路累计偏差。
+2. 原C1双高同角三维RMS 2.410/2.528 km继续作为冻结失败签名；双低为稳定控制，不重新求根、不修改Chapman参数、不放宽2 km门。
+3. 原C1严格使用B=0，因此位置相关IGRF不可能直接造成原偏差。WGS84、IGRF和O/X只作为独立差分诊断，禁止用后续O/X通过覆盖B=0失败。
+4. 本阶段不经验拟合PHaRLAP，不修改生产AH3D。只有公式、量纲、守恒量、双高和双低证据同时闭合后，才另行进入最小修复。
+
+二、已有证据与待检假设
+
+1. 已排除为原C1主因：PHaRLAP积分容差/步长、AH3D DOP853、色散投影、地面事件、冻结场线性/解析表示、AH3D多尺度/解析D_r、公开状态可恢复的局部B=0 RHS及单一常数/单位错误。
+2. PHaRLAP与AH3D独立高射线根只差约0.0445 deg，独立根轨迹RMS约0.141 km；同角偏差说明问题集中于高分支range-elevation前向映射及其条件敏感性。
+3. C1WR后的WGS84、位置相关IGRF O/X对照中，low_O、low_X、high_X及high_O共同有效路径均达到较小误差。这提示原C1差异可能与球形no-field专用路径、发射角约定或隐藏离散语义有关，但该提示不是归因结论。
+4. PHaRLAP raytrace_3d_sp帮助同时声明球形地心纬经高和“相对WGS84地面”的发射仰角；需要用输出初始状态而非文字解释判定实际语义。
+5. 对水平一致B=0 Chapman球体，可由Bouguer/Snell守恒量和一维积分构造独立、源码可审计的高精度参考，无需新增第三套通用Hamiltonian求解器。
+
+三、C1G-0 冻结准入
+
+1. 冻结C1、C1P、C1Q、C1W、C1WR、P2PF的manifest、原始PHaRLAP MAT、1 km Chapman输入、PHaRLAP MEX/帮助文件和当前生产源码哈希。
+2. 固定四个原C1同角：
+   21.94290326504532、21.94562872092976、
+   39.54254824570964、39.58701138438118 deg。
+3. PHaRLAP球形参考使用raytrace_3d_sp、OX_mode=0及已收敛配置[1e-12,0.001,1 km]；AH3D使用reference配置。
+4. 不覆盖旧产物，不依赖PHaRLAP跨调用缓存；每个case显式传入网格并记录线程数、版本、输入和输出哈希。
+
+四、C1G-1 球对称守恒量与一维积分基准
+
+1. 对B=0冷等离子体定义：
+   n^2(r)=1-f_p^2(r)/f^2，
+   p=k/k0，
+   b=|r x p|=n(r0) r0 cos(beta)。
+2. 由同一冻结Chapman节点分别构造linear、cubic和解析Chapman三种明确介质；不得反演调整节点或Chapman参数。
+3. 转向半径rt由n(rt)rt=b求解。用高精度自适应求积计算单程球心角、几何程、群程和相位程：
+   theta/2 = integral[b/(r sqrt(n^2 r^2-b^2))]dr，
+   S/2 = integral[n r/sqrt(n^2 r^2-b^2)]dr，
+   P'/2 = integral[r/sqrt(n^2 r^2-b^2)]dr，
+   Phi/2 = integral[n^2 r/sqrt(n^2 r^2-b^2)]dr。
+4. 转向端采用变量代换消除平方根奇异性；至少以两种容差和两种独立求积变换形成稳定平台。
+5. 对PHaRLAP和AH3D逐点检查D、b、传播平面法向和升/降支对称性；分别报告漂移随路径和高度的分布。
+6. 使用名义发射角和各软件实际首个有效状态分别计算b，区分发射角解释差异与传播方程差异。
+
+验收/归因门：
+
+1. 一维积分的range、apex、几何程和群程数值不确定度分别不超过0.01 km、0.01 km、0.01 km和0.01%。
+2. 若一方双高相对积分基准的落点差均不超过0.2 km、轨迹RMS均不超过0.15 km，另一方稳定超限，则记为spherical_forward_equation_candidate。
+3. 若双方守恒量均稳定但与积分基准采用的名义b不闭合，转入发射状态/角度语义归因，不得修改RHS。
+4. 若linear、cubic和解析三种基准不能形成稳定结论，记为medium_representation_unresolved并停止生产修复。
+
+五、C1G-2 发射状态、ENU与球形/WGS84几何审计
+
+1. 从PHaRLAP ray_state_vec首个有效状态重建ECEF位置、p、实际仰角、bearing、局部径向/切向基和b；与AH3D初始状态逐分量比较。
+2. 对raytrace_3d_sp执行两种等价启动：
+   a. 默认origin/elevation/bearing；
+   b. 使用由同一物理状态显式构造的ray_state_vec_in。
+   显式状态只用于诊断，禁止写入生产适配器。
+3. 在纬度0、30和60 deg的真空及弱折射短程控制算例中，比较球形径向ENU、WGS84椭球法向ENU与PHaRLAP实际初始p；纬度扫描只识别坐标约定，不用于拟合原C1。
+4. 检查bearing=0的传播平面、经度符号、地心/大地纬度、海拔/椭球高、地球半径单位和origin_height语义。
+
+归因门：
+
+1. 默认启动与显式状态启动在双高中的差异须稳定复现原x方向误差至少80%，且双低不退化，才可认定launch_or_local_frame_primary。
+2. 若实际初始p差异只能解释小于0.2 km累计偏差，则发射/ENU语义排除为主因。
+3. 真空C0R闭合仍须保持；任何只在电离层算例出现的差异不得误写成纯坐标转换错误。
+
+六、C1G-3 raytrace_3d_sp与WGS84 raytrace_3d差分
+
+1. 使用同一解析Chapman参数分别构造：
+   a. 球形地心纬经高输入，运行raytrace_3d_sp；
+   b. WGS84大地纬经椭球高输入，运行raytrace_3d。
+2. AH3D分别使用严格球形ECEF和WGS84/ECEF模式；四个固定角均运行B=0，不重新求根。
+3. 比较软件内的sphere-vs-WGS84变化，以及同一地球模型下PHaRLAP-vs-AH3D变化；不得直接把不同地球模型轨迹作为正式同输入误差。
+4. 额外使用PHaRLAP帮助函数给出的当地WGS84等效球半径作预先定义的诊断值；禁止搜索“最佳半径”。
+
+判定：
+
+1. 若原偏差仅在raytrace_3d_sp球形路径出现，而WGS84双方双高均闭合，则记为pharlap_spherical_path_or_geometry_candidate。
+2. 若球形和WGS84均出现相同比例高分支偏差，则地球模型不是主因，进入C1G-4。
+3. 位置相关IGRF不参与本步骤；B严格为0。
+
+七、C1G-4 no-field分支与B趋零连续性
+
+1. 在同一球形网格和四个固定角下比较PHaRLAP OX_mode=0与O/X分支的B趋零序列；AH3D使用相同常量B向量和相同角度。
+2. B幅值只取预先冻结的无量纲序列Y=fH/f={1e-2,1e-3,1e-4,1e-5}，方向固定且远离平行/垂直退化；不使用位置相关IGRF，避免同时改变场幅值、方向和空间梯度。
+3. 分别检查O、X轨迹向B=0解的连续性、拓扑、apex、range、路径量和x/y/z RMS；高O穿透时只比较共同有效路径。
+4. 既有WGS84位置相关IGRF结果仅作为外部旁证单列，不参与本步骤主因门。
+
+判定：
+
+1. 若PHaRLAP O/X的B趋零极限收敛到AH3D B=0/一维积分，而不收敛到PHaRLAP OX_mode=0，记为pharlap_no_field_branch_discontinuity_candidate。
+2. 若两端均连续收敛到各自B=0结果且原差异保持，则B分支和IGRF排除为原C1主因。
+3. near-cutoff、模式转换或终止拓扑变化时只记录模型边界，不外推连续性结论。
+
+八、C1G-5 高分支range-elevation映射闭合
+
+1. 不进行全域扫描，只在两个高射线锚点各取预先冻结的5点局部角度：
+   beta0+{-0.02,-0.01,0,0.01,0.02} deg。
+2. 使用一维积分基准、PHaRLAP严格配置和AH3D reference配置比较range(beta)、apex(beta)、dRange/dBeta及条件数。
+3. 将前向偏差分解为名义初始b差、守恒量漂移、转向点差和下降段累计差；预算须闭合至0.01 km或1%以内。
+4. 不用局部曲线反演校正角度，不把双方独立根重新命中RX作为同角通过。
+
+主因要求：
+
+1. 候选必须在两个高锚点均解释至少80%的x方向误差。
+2. 两个低射线控制的轨迹RMS不得超过0.15 km，终止状态和单转向拓扑不得变化。
+3. 候选效应须大于数值不确定度10倍，并同时具备公式、量纲和守恒量证据。
+
+九、C1G-6 决策、可能修复与回归
+
+最终归因只能取：
+
+1. identified_spherical_equation_or_invariant_defect
+2. identified_launch_or_geometry_semantics_defect
+3. pharlap_no_field_branch_difference
+4. multiple_or_unresolved_contributors
+
+只有前两类且达到双高80%/双低控制门时，才另拟最小生产修复：
+
+1. 坐标/发射语义问题只修改共享ECEF/WGS84发射或适配边界。
+2. 方程问题只修改被守恒量和一维积分证明的公共Hamiltonian项。
+3. PHaRLAP no-field专用分支差异不通过经验项复刻；保留C1失败并评估是否以可审计一维积分基准补充正式判据。
+
+修复后必须版本化重跑：
+
+1. C1双高/双低同角及独立根；
+2. C1P/C1Q必要的只读限制性回归；
+3. H3、H6、C0R-1至C0R-8；
+4. 当前P2PF ECEF Chapman双根；
+5. WGS84位置相关IGRF O/X四射线。
+
+不得自动进入A4-C2。报告必须结合C1R/C1P/C1Q/C1W/C1WR/P2PF说明本次新增证据、未关闭风险和下一步建议。
+
+十、实现、产物与时间控制
+
+1. 新增独立Python执行器、独立MATLAB导出脚本和只读验收器；复用现有冻结加载器、坐标转换、轨迹指标和manifest工具，不接入main.py/main2.py。
+2. 输出目录：output2/a4_pharlap/c1/c1g/。
+3. 每阶段保存MAT/NPZ、CSV/JSON、日志、运行时间、SHA-256 manifest和有效PNG。
+4. 必须输出：
+   a. 一维积分与两软件轨迹/路径量对比图；
+   b. Bouguer不变量、色散和传播平面漂移图；
+   c. 默认/显式状态及球形/WGS84发射基对比图；
+   d. raytrace_3d_sp/raytrace_3d差分矩阵；
+   e. B趋零连续性图；
+   f. range-elevation斜率和累计误差闭合图；
+   g. 最终归因与验收门矩阵。
+5. 只运行固定四角、少量纬度控制和双高局部5点，不进行全域角度扫描、二维P2P、Jacobian或长时模式搜索。
+6. 若C1G-1已由一维积分和守恒量唯一定位主因，可停止后续无关分支，但仍须运行双低控制和只读验收。
+
+十一、风险与实施后分析要求
+
+1. PHaRLAP MEX核心不可审计；本阶段可判定行为与守恒量/积分基准的一致性，不能证明其内部源码公式。
+2. raytrace_3d_sp帮助中的WGS84发射角描述可能是共享文档措辞；只有输出初始状态和控制实验可作为证据。
+3. WGS84和球形Chapman不是同一物理空间，必须进行模型内差分，不能直接混合为同输入误差。
+4. B趋零时O/X根会退化，数值分支标签可能不稳定；必须检查连续性和拓扑，不按外观重标分支。
+5. 高射线对仰角高度敏感；所有主归因均使用完全相同角度，禁止重新求根吸收偏差。
+6. 一维积分只适用于B=0、球对称、水平一致介质；不得外推到位置相关IGRF、TID、Es、bubble、Spread-F、散射或全波。
+7. 实施报告须回答：
+   a. 哪一方更符合球对称积分基准；
+   b. PHaRLAP默认发射状态是否与名义角/ENU一致；
+   c. 球形/WGS84及no-field/B趋零是否改变高射线偏差；
+   d. 原x方向累计偏差能否闭合到唯一公式或实现；
+   e. 是否应修复AH3D、保留限制性失败、引入其他验证链，或仅以diagnostic_with_c1_failed进入A4-C2。
+
+文献依据沿用reference-papers.txt中Haselgrove（1955、1963）、Haselgrove与Haselgrove（1960）、Budden（1985）、Coleman（2011）及Cervera与Harris（2014）。PHaRLAP接口语义以本地4.7.4帮助文件为准；无新增完整核验文献时不重复写入reference-papers.txt。
+
+十二、实施结果（2026-07-29）
+
+1. C1G-0冻结准入通过。
+2. C1G-1球对称积分基准确认AH3D是唯一同时闭合双高和双低共同输入的求解器。AH3D双高轨迹RMS为0.016018/0.020255 km；PHaRLAP为2.389093/2.552176 km。
+3. C1G-2确认PHaRLAP名义角与状态角一致到7.11e-15 deg，发射几何排除。由PHaRLAP输出p反推的有效n2可将其双高轨迹RMS关闭到7.79e-5/7.26e-5 km。
+4. 根因限定为PHaRLAP raytrace_3d_sp、OX_mode=0隐藏有效介质/色散或内部插值语义与共同冻结linear Ne输入不一致；MEX闭源使源级子原因无法继续唯一分离。
+5. 按第十节早停规则，C1G-3至C1G-5不运行。位置相关IGRF不是原B=0偏差原因。
+6. 未修改AH3D生产代码、PHaRLAP输入、Chapman参数或验收阈值。原C1失败保持，A4-C2继续等待人工决策。
+7. 详细数值、图像、风险和下一步见a4_c1g_spherical_high_ray_equation_and_parameter_attribution_report.txt。

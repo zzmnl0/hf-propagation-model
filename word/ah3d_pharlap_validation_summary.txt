@@ -1,0 +1,146 @@
+AH3D 与 PHaRLAP 三维磁离子射线追踪冻结验证摘要
+版本：frozen-summary-v1
+整理日期：2026-09-09
+数据状态：只读汇总现有冻结 JSON/CSV/MAT 结果；本次未重跑射线、未修改模型代码、未修改原始报告或结果。
+
+一、结论先行
+
+1. AH3D 和 PHaRLAP 属于同一理论类别：三维 Haselgrove Hamiltonian 磁离子几何光学射线追踪，并使用 Appleton-Hartree O/X 色散。两者不是同一个数值实现，也都不是全波求解器。
+2. 正式 A4-C1 仍为失败：C1-1 固定发射角前向比较中，低射线通过，高射线轨迹 RMS 为 2.410089444518 km 和 2.527628708898 km，均超过 2 km 门槛。不能据此判定哪一个求解器更接近物理真值。
+3. C1-2 各自使用冻结的独立接收根后，低/高射线 RMS 分别为 0.093310805716 km 和 0.140578036280 km，适用门均通过；但发射角被调整，不能覆盖 C1-1 的固定同角失败。
+4. C1W 的 WGS84/IGRF O/X 固定角结果中，low_O、low_X、high_X 的 ground-ground 轨迹门通过；high_O 中 PHaRLAP 正常穿透而 AH3D 在约 329.94 km 因空间导数稳定平台拒绝，不能按接收机命中解释。
+5. C1G 将高射线差异归因到 PHaRLAP 隐藏 MEX 的有效无磁介质/色散语义与共享球形 Chapman n2 积分不一致；AH3D 与共享球形积分一致。PHaRLAP 核心源码不可得，因此不能继续分离其内部插值与色散实现。
+6. C1WR 找到并修复了 AH3D 的网格空间导数平台问题：cubic Ne + cubic B（cubic_ne_cubic_b）关闭了高 O/X 的导数平台拒绝。该修复分支保留原 C1 失败，未把诊断修复改写成新的外部验证通过。
+7. P2PF 当前球形 ECEF cubic-Chapman 根已冻结并闭合接收机；旧 Coleman/P0C 坐标根在当前 ECEF 链上仍产生 138.016476684 km 和 35.482094457 km 的落点误差。P2PF 不覆盖 C1 失败。
+
+二、范围与指标口径
+
+1. C1/C1-1/C1-2/C1G/P2PF：球形地球、水平分层 Chapman F2、B=0、无碰撞、10 MHz、单程；用于跨求解器和方程归因，不能外推到 O/X。
+2. C1W/C1WR：WGS84 大地坐标/ECEF、位置相关 IGRF-14 B(r)、Appleton-Hartree O/X；C1W 是固定角路径行为比较，不是接收机约束 P2P。
+3. landing_absolute_error_km 是两个求解器终点的地表距离；receiver residual 是终点相对目标接收机的 ENU 残差，表中按 along-track/cross-track 或 ENU 范数记录。固定角比较不把接收机重新求根作为通过条件。
+4. apex 是最大物理高度；geom_path 是几何弧长；group_path 是群程，不等于几何弧长；tau_ms 按群程对应的群时延记录。轨迹 RMS/max 是按累计几何路径归一化后的 201 个样本计算。
+5. C1-1 主要门槛：落点绝对误差 5 km、落点相对误差 0.01、峰值高度差 2 km、几何程/群程/群时延相对差 0.01、轨迹 RMS 2 km、轨迹最大误差 5 km。C1WR H6 诊断另使用轨迹 RMS 2 km、最大误差 5 km、落点差 1 km、路径相对差 0.001。
+
+三、实际链路与参数
+
+3.1 球形 Chapman C1 链路
+
+TX = (30.0 N, 120.0 E, 0.0 km)
+RX = (40.66458961805238 N, 120.0 E, 0.0 km)
+目标地表大圆距离 = 1185.848260273658 km；bearing = 0 deg。
+地球半径 = 6371.0 km；频率 = 10.0 MHz；单程；nhops = 1；B = 0；collision = 0。
+Chapman F2：foF2 = 7.0 MHz，hmF2 = 350.0 km，ymF2 = 100.0 km，峰值 Ne = 6.076358748220494 x 10^11 m^-3。
+冻结 refined_1km 输入网格：纬度 28..65 deg、步长 0.25 deg、149 点；经度 118..122 deg、步长 0.25 deg、17 点；高度 60..460 km、步长 1 km、401 点；轴序 latitude,longitude,height；Ne 原始插值为 linear。
+
+AH3D C1-1/Prep5：物理 ECEF 位置和波矢，Provider 使用地心球坐标；DOP853 research profile；h_stop = 500 km；max path = 10000 km；spatial_fd_base = 0.5 km；多尺度空间差分步长为 0.015625、0.03125、0.0625、0.125、0.25、0.5、1、2 km；每步色散面投影并记录 Hamiltonian 残差。
+PHaRLAP C1-1：PHaRLAP 4.7.4，MATLAB R2024a Update 7，raytrace_3d_sp.mexw64；固定角前向运行，不求根；输入 tol 为 [1e-8, 0.01, 10]。C1P 另外完成了 10 组 tolerance/min-step/max-step 扫描，参考组为 [1e-12, 0.001, 1]，用于收敛归因而不改变 C1 根。
+C1-1 四个冻结角：low PHaRLAP anchor 21.94290326504532 deg；low AH3D anchor 21.94562872092976 deg；high PHaRLAP anchor 39.54254824570964 deg；high AH3D anchor 39.58701138438118 deg。
+
+3.2 WGS84/IGRF O/X C1W 链路
+
+脚本中的 TX = (30.0 N, 120.0 E, 0.0 km)，并声明 RX = (32.5 N, 120.0 E, 0.0 km)；但该 RX 未传入 PHaRLAP，也没有用于 C1W 终点求根。C1W 的实际验收语义是 low/high 固定角的路径行为比较，不应与 C1 的 1185.848260273658 km 接收机目标混用。
+Ne 网格：纬度 20..50 deg、步长 1 deg；经度 105..135 deg、步长 1 deg；高度 -5..605 km、步长 5 km；共 31 x 31 x 123 点。B 网格：纬度/经度步长 2 deg、高度步长 10 km，共 16 x 16 x 62 点。Ne 仍为 Chapman F2，B 为 ppigrf 的位置相关 IGRF-14，epoch = 2020-06-01 12:00。
+AH3D：WGS84 ECEF，Appleton-Hartree O/X，DOP853 wgs84_reference profile，spatial_fd_base = 0.25 km，spatial_fd_scales = (0.5, 1.0, 2.0) km，启用色散投影。固定角为 22.0 deg（low_O/low_X）和 39.5 deg（high_O/high_X）。PHaRLAP mode 为 +1/O 和 -1/X，tol = [1e-8, 0.01, 10]。
+
+四、C1-1 固定同角前向结果
+
+字段顺序：case；角度 deg；终止/转向点；落点差 km（相对）；峰值高度差 km；几何程相对差；群程/群时延相对差；轨迹 RMS/max km；门。
+
+low_pharlap_anchor；21.9429032650453；ground/1；0.055802900311（4.705736997e-5）；0.146814604166；6.583556102e-5；2.859674288e-6 / 2.859674288e-6；0.105514330860 / 0.163678512164；PASS
+low_ah3d_anchor；21.9456287209298；ground/1；0.058973238583（4.973084716e-5）；0.160169629738；6.336455156e-5；5.558064269e-6 / 5.558064269e-6；0.106067688219 / 0.163978355422；PASS
+high_pharlap_anchor；39.5425482457096；ground/1；3.924786968635（0.003309687335）；0.435171210711；0.003089882476；0.003464287573 / 0.003464287573；2.410089444518 / 3.924786907363；FAIL，RMS > 2 km
+high_ah3d_anchor；39.5870113843812；ground/1；4.120326163079（0.003474581277）；0.438313395509；0.003222738716；0.003616535614 / 0.003616535614；2.527628708898 / 4.120326090826；FAIL，RMS > 2 km
+
+四个 case 的两次重复运行、ground 终止和单转向点语义均通过。失败只来自两个 high case 的 trajectory_rms_3d_km，不能用落点、最大误差或重复性通过来掩盖。
+
+五、C1-2 独立冻结根诊断
+
+该阶段不重新扫描、不重新求根，只比较 PHaRLAP 和 AH3D 各自已经冻结的同一 branch 根；因此角度差是诊断变量。
+
+low_ray；PH/AH 角 = 21.9429032650453 / 21.9456287209298 deg；角差 = 0.002725455884 deg；PH receiver ENU along/cross = (4.143666e-6, -5.002221e-12) km；AH = (-0.006880168, -5.145597e-5) km；落点差 = 0.006845881693 km（5.772982870e-6）；峰值高度差 = 0.135912406121 km；几何程/群程/群时延相对差 = 1.051014167e-4 / 2.829568740e-5 / 2.829568740e-5；RMS/max = 0.093310805716 / 0.151489178919 km；ground/1；适用门 PASS。
+high_ray；PH/AH 角 = 39.5425482457096 / 39.5870113843812 deg；角差 = 0.044463138672 deg；PH receiver ENU along/cross = (-1.367373e-5, -2.728485e-12) km；AH = (0.000538672, 9.015735e-6) km；落点差 = 0.000585220480 km（4.935036798e-7）；峰值高度差 = 0.132413507074 km；几何程/群程/群时延相对差 = 1.679419733e-4 / 6.756976971e-4 / 6.756976971e-4；RMS/max = 0.140578036280 / 0.188642701630 km；ground/1；适用门 PASS。
+
+解释边界：独立根把 high branch 的端点-发射角映射差异吸收进角度，不能说明固定同角轨迹已经一致；C1-2 不能覆盖 C1-1 的高射线 RMS 失败。
+
+六、C1W WGS84/IGRF O/X 固定角结果
+
+群时延列由已冻结群程按 tau_ms = 1000 x group_path_km / 299792.458 换算；C1W 原始 metrics CSV 没有单独 tau 字段。AH/PH 路径均为 geom_path_km / group_path_km。
+
+low_O；O，22 deg；AH ground/1，PH ray_label=1/ground；RMS/max = 0.012019222370 / 0.050917564988 km；落点差 = 0.009678998626 km；AH/PH geom = 1315.128295864 / 1315.138720684 km，rel = 7.926783703e-6；AH/PH group = 1358.956501996 / 1358.945797116 km，rel = 7.877341603e-6；tau = 4.532990960 / 4.532955252 ms；有效 ground-ground，PASS。
+low_X；X，22 deg；AH ground/1，PH ray_label=1/ground；RMS/max = 0.081065990378 / 0.135431094568 km；落点差 = 0.135431094568 km；AH/PH geom = 1242.723592238 / 1242.882020494 km，rel = 1.274684585e-4；AH/PH group = 1287.971087688 / 1288.132301532 km，rel = 1.251531731e-4；tau = 4.296209105 / 4.296746857 ms；有效 ground-ground，PASS。
+high_O；O，39.5 deg；AH physics_domain_rejected/0，PH ray_label=-2/penetrated；PH 正常穿透，AH 在约 329.94 km 因多尺度 ECEF 空间差分平台拒绝，拒绝原因不是已经证明的截止或倏逝。原始归一化路径 RMS/max = 499.765427076 / 860.499012948 km；AH/PH geom = 722.586108383 / 1591.817695778 km，rel = 0.546062272；AH/PH group = 841.522247154 / 1971.178736295 km，rel = 0.573086787；换算 tau = 2.807016070 / 6.575144516 ms。该 case 只保留共同有效路径诊断；落点差不是 receiver hit，不能作为接收机误差或 O/X 通过依据。
+high_X；X，39.5 deg；AH ground/1，PH ray_label=1/ground；RMS/max = 0.208797470242 / 0.341808462244 km；落点差 = 0.341808462244 km；AH/PH geom = 1190.608422436 / 1190.267384114 km，rel = 2.865224455e-4；AH/PH group = 1369.461318175 / 1368.988171218 km，rel = 3.456180027e-4；tau = 4.568031255 / 4.566453007 ms；有效 ground-ground，PASS。
+
+C1W 内部自检：WGS84 坐标闭合最大纬度误差 7.11e-15 deg，高度误差 9.09e-13 km，ENU 正交误差 1.11e-16；真空/B=0/平行 B/垂直 B 解析极限最大误差 1.11e-16；D_r、D_k、D_omega 相对审计误差分别为 5.155590e-7、9.819304e-8、3.444706e-12；参考轨迹收敛 RMS 2.881600e-4 km，投影开关影子 RMS 2.288736e-4 km。
+
+七、C1G 球形方程/不变量归因
+
+共享球形 Chapman n2 积分下，AH3D 与其一致，而 PHaRLAP 轨迹在 high anchor 上仍保留原始 C1 差异：
+
+1. high_ah3d_anchor：共享输入积分 RMS = 2.552176161049 km；PHaRLAP 有效介质重建后 RMS = 7.264392282e-5 km；轨迹闭合率 = 99.997153648%；共享输入 range error = 4.045139637 km，有效介质 range error = -2.016511e-5 km。
+2. high_pharlap_anchor：共享输入积分 RMS = 2.389093310910 km；PHaRLAP 有效介质重建后 RMS = 7.789078783e-5 km；轨迹闭合率 = 99.996739734%；共享输入 range error = 3.777609672 km，有效介质 range error = -4.861525e-5 km。
+
+结论限于 B=0、水平分层 Chapman：AH3D 遵循共享球形积分；PHaRLAP 保持球形不变量，但其输出状态重建出的有效无磁 n2 不同。PHaRLAP 核心源码不可得，不能把该结果进一步拆成内部插值误差或色散公式误差，也没有证据支持修改 AH3D 去拟合该隐藏有效介质。C1G-3/4/5 按冻结归因结果提前停止。
+
+八、C1WR 网格导数修复及后续诊断
+
+归因量为 D = |k|^2 - k0^2 n_AH^2，D_r 是固定 k、omega 下的 ECEF 梯度。生产诊断尺度为 0.125、0.25、0.5 km。
+
+1. baseline 的线性 Ne/线性 B 在 high_O 处空间导数稳定平台被拒绝；只换 Ne 或只换 B 均不能关闭双高情况。
+2. selected_variant = cubic_ne_cubic_b，即 Ne 和 B 均使用 cubic Provider。双高 closure：high_O = 0.999930020（99.993002%），high_X = 0.999928785（99.992879%）；不再发生空间导数拒绝。
+3. H3 独立导数审计：D_r 相对误差 4.928968e-8，D_k 8.744117e-8，D_omega 4.853172e-12；参考积分/投影 shadow 轨迹 RMS 分别为 3.031192e-4 km 和 3.540268e-5 km。
+
+C1WR 选定分支的 H6 共同结果：
+low_O；AH/PH ground-ground；RMS/max = 0.074818561602 / 0.125932989133 km；落点差 = 0.125932989133 km；AH/PH geom = 1315.002510663 / 1315.138720684 km，rel = 1.035708e-4；AH/PH group = 1358.804572480 / 1358.945797116 km，rel = 1.039222e-4；tau = 4.532484178 / 4.532955252 ms。
+low_X；AH/PH ground-ground；RMS/max = 0.063283770897 / 0.105997470848 km；落点差 = 0.105997470848 km；AH/PH geom = 1242.766369938 / 1242.882020494 km，rel = 9.305031e-5；AH/PH group = 1288.011348796 / 1288.132301532 km，rel = 9.389776e-5；tau = 4.296343402 / 4.296746857 ms。
+high_X；AH/PH ground-ground；RMS/max = 0.255734426242 / 0.418746314981 km；落点差 = 0.418746314981 km；AH/PH geom = 1189.800478547 / 1190.267384114 km，rel = 3.922695e-4；AH/PH group = 1368.380392703 / 1368.988171218 km，rel = 4.439619e-4；tau = 4.564425676 / 4.566453007 ms。
+high_O；AH upper_boundary，PH penetrated；共同绝对几何路径 = 1586.486555402 km；共同路径 RMS/max = 0.856472016 / 2.090749805 km；landing 不适用。该值是穿透/上边界共同路径诊断，不是 receiver hit。
+
+C1WR 的通过含义是“网格导数平台问题已被验证性修复并完成下游回归”，不是“原始 PHaRLAP 外部标准已被推翻”，也不是“C1-1 失败自动改为通过”。原 C1 restricted shadow 仍为 low 两例通过、high 两例失败，A4-C2 仍未准入。
+
+九、P2PF 当前 cubic ECEF 根冻结
+
+配置：R = 6371.0 km，10 MHz，B=0，collision=0，单程，bearing=0；当前 Provider 为 cubic；low bracket = [21.9, 22.0] deg，high bracket = [39.5, 39.6] deg；Brent xtol = 1e-6 deg；TRF 只作二维闭合复核。
+
+low_ray：Brent reference root = 21.943982528982165 deg；TRF root = 21.943982303432147 deg，bearing = 2.567207e-6 deg；Brent receiver ENU residual = 5.310011e-5 km，TRF = 2.898662e-10 km；ground/1；apex = 203.163818105 km；geom_path = 1283.275896589 km；group_path = 1327.027698027 km；tau = 4.426487934 ms。
+high_ray：Brent reference root = 39.58600244621275 deg；TRF root = 39.58600244619724 deg，bearing = 5.170025e-6 deg；Brent receiver ENU residual = 1.063871e-4 km，TRF = 2.472780e-10 km；ground/1；apex = 302.679857964 km；geom_path = 1407.030500977 km；group_path = 1638.557350106 km；tau = 5.465638999 ms。
+
+旧 P0C 坐标参考根：low = 35.33980751304579 deg，high = 39.918776604143765 deg。把它们仅作为 forward reference 放入当前 ECEF 链时，a4_c1wr_p2p_high_low_regression 记录的 landing error 分别为 138.016476684 km 和 35.482094457 km，超过 5 km；旧根不是当前球形 ECEF P2P 根，不能混入当前根表。
+
+十、算法与可追溯性
+
+PHaRLAP：公开接口/帮助和本地包装层显示三维 Cartesian Haselgrove 状态，ray_state_vec 的 dir 向量模为相折射率；公开资料显示采用 Bogacki-Shampine RK(4,5) 自适应积分，并支持 O/X、Ne/B/碰撞网格和多种路径量。当前安装的 Fortran 核心源码不可用，但 MEX、C wrapper、MATLAB help、libpropagation.lib 可观察；静态符号确认 hasel_rhs_3d_、elec_mag_pderivs_3d_、ode_bosh54_。最终分类为 behavior_traceable_core_source_unavailable。
+AH3D：生产状态为物理 ECEF 位置、ECEF 波矢和群时延；D(r,k,omega) = |k|^2 - (omega/c)^2 n_AH^2；以几何弧长积分，DOP853 自适应步进，D_r 用多尺度 ECEF 中心差分，D_k/D_omega 用对称复步长差分，每个接受步投影回 D=0，并记录 Hamiltonian 残差、事件和 Provider 哈希。C1W 使用 WGS84 和位置相关 IGRF-14；碰撞吸收是另行路径积分，不改变这里的无碰撞实射线比较。
+
+主要冻结标识：
+1. refined_1km 输入 MAT SHA-256 = 0a978478b52f5363c93cbc77b0ee1868a4f50e488c82c829eb7794f0cf1235a7。
+2. C1-1 schema = a4-c1-1-validation-v1，报告 SHA-256 = dc1ff8c4f93c3b044516eac59a0992150b00c4efb3933e4b8a03dd73283ddeab，status = failed_c1_1_numeric_thresholds。
+3. C1 formal final source_set_short_hash = 8b963327d56a，status = failed_c1_chapman_high_low_external_comparison。
+4. C1-2 schema = a4-c1-2-validation-v1，status = completed_c1_2_diagnostic_after_same_angle_failure。
+5. C1W validation SHA-256 = 3d6cc2f42a0b534c2fe22247a5e400067b17990849c3648d3ca4527b803f4ece；manifest SHA-256 = bf405cbce2b2f98027198e792816d68b5035466d71da352d670781c6f30ab193；status = implementation_defect_identified。
+6. C1WR attribution SHA-256 = 38ec59153b8831285892b5b34f8874ab90091cab5fcd0209c9b188b57a4d60e1；manifest SHA-256 = 5f3cfd24f7f4859496a99b0c79551f65e412b118f05a094a6d720f8415afe2b；status = identified_and_repaired_grid_derivative。
+7. C1G6 attribution SHA-256 = 3c00292ecc658d5dad022cd506d277666905058d35aeb96e63f2e24bcdab1fb7；status = identified_spherical_equation_or_invariant_defect。
+8. P2PF result SHA-256 = b3f8335ad352a7862fdeb80383ddbb86870a841b968673b27bb51bd50a23a28b；manifest SHA-256 = c49a0ffba53ab0fd64f23a871e5d66cbcc29caa88dce11094d28fe1c8852d2ee；status = passed_current_ecef_chapman_p2p_root_freeze。
+9. PHaRLAP C1 MEX = D:\pharlap\pharlap_4.7.4\mex\raytrace_3d_sp.mexw64；MEX SHA-256 = 5d052459354ed105b967274ee9859e4ef0b6aae2da14e7b5353049105fc3af2c；MATLAB = D:\Matlab2024a\bin\matlab.exe，R2024a Update 7。
+
+十一、证据文件与限制
+
+核心结果：
+code/output2/a4_pharlap/c1/final/a4_c1_validation.json
+code/output2/a4_pharlap/c1/same_angle/c1_1_validation.json
+code/output2/a4_pharlap/c1/same_angle/c1_same_angle_metrics.csv
+code/output2/a4_pharlap/c1/independent_roots/c1_2_validation.json
+code/output2/a4_pharlap/c1/independent_roots/c1_independent_root_metrics.csv
+code/output2/a4_pharlap/c1/c1w/a4_c1w_validation.json
+code/output2/a4_pharlap/c1/c1w/a4_c1w_ox_metrics.csv
+code/output2/a4_pharlap/c1/c1w/raw/pharlap_wgs84_ox_summary.json
+code/output2/a4_pharlap/c1/c1g/c1g_1/c1g_1_spherical_benchmark.json
+code/output2/a4_pharlap/c1/c1g/c1g_6/c1g_6_final_attribution.json
+code/output2/a4_pharlap/c1/c1wr/a4_c1wr_attribution.json
+code/output2/a4_pharlap/c1/c1wr/a4_c1wr_anchor_metrics.csv
+code/output2/a4_pharlap/c1/c1wr_p2pf/a4_c1wr_p2pf_result.json
+code/output2/a4_pharlap/c1/c1wr_p2pf/a4_c1wr_p2pf_roots.csv
+
+限制：PHaRLAP 核心插值、内部 ODE/事件定位、磁化时独立变量和部分色散语义仍不可观察；C1G 结论仅适用于 B=0 水平分层 Chapman。上述结果不构成复杂三维扰动、全 O/X 终点求根、散射、PE/SSF、全波、功率或绝对接收功率校准的通过证明。A4-C2 维持未准入。
+
+理论和实现依据：Haselgrove (1963)；Bogacki and Shampine (1996)；Cervera and Harris (2014)；Coleman (2011)；本地 PHaRLAP 4.7.4 help/wrapper/MEX 文件及上述冻结运行器。

@@ -1,0 +1,52 @@
+B1 完整3D矢量宽角PE核心实施计划
+
+日期：2026-07-29
+阶段关系：AH3D物理基线冻结 -> B1独立研发与验收 -> 人工决策门 -> B2/B3或继续修复
+
+一、目标与语义边界
+
+B1建立独立CPU参考求解器，以主射线或解析中心曲线为传播轴，在曲线坐标(s,u,v)中保留两个横向自由度和横向Maxwell状态[Eu,Ev,Hu,Hv]。求解器内部采用SI单位、exp(-i*omega*t)时间约定和complex_envelope*exp(i*k0*s)载波分离。输出语义固定为full_3d_two_transverse_vector_pe、one_way_forward、research_reference_only和reference_uncalibrated。
+
+B1不接入main.py、main2.py或unified_hybrid_pipeline.py，不修改Pr、时延或P-D生产结果。legacy local_2p5d继续只作历史参考。单向PE不得用于显著后向散射、强模式转换、截止反射或完整Maxwell全波声明。A4-C1的failed_c1_chapman_high_low_external_comparison和external_pharlap_comparison_paused_due_effective_medium_inconsistency状态保持不变。
+
+二、B1-0冻结准入
+
+冻结AH3D ECEF求解器、Ne/B Provider、Appleton-Hartree色散、C1G报告、legacy local_2p5d及B1新增源码哈希。B1只读取正式ECEF Provider和AH3D轨迹，不导入legacy。首版有效角谱限定为局部传播方向正负30 deg；超出该范围的功率超过1%或负向Poynting功率超过1%时显式拒绝。只运行波长归一化短域算例，不运行10 MHz千公里全域PE。
+
+三、B1-1介电张量与曲线坐标
+
+冷磁化碰撞等离子体介电张量以R/L/S/D/P构造，先在磁场对齐基中形成完整3x3复张量，再旋转至ECEF和局部(s,u,v)基。无碰撞时必须为Hermitian；exp(-i*omega*t)约定下碰撞损耗张量必须正半定。B趋零、平行B、垂直B和O/X根必须与现有无碰撞Appleton-Hartree实现闭合。
+
+中心曲线由AH3D trajectory_ecef_km、trajectory_geom_path_km及trajectory_group_tangent_ecef构造三次Hermite插值，并通过Bishop平行输运形成旋转最小基。坐标映射为r=r0+u*eu+v*ev，显式计算曲率分量和Jacobian；全域J必须不小于0.8。直线、圆弧、平移、90 deg和37 deg旋转均进行独立几何复验。
+
+四、B1-2四分量传播器
+
+传播器推进[Eu,Ev,Hu,Hv]复包络，并由Maxwell纵向约束恢复Es和Hs。横向导数采用二阶中心差分，介电张量非对角项、混合导数、Bishop基旋转和一阶曲率Jacobian进入传播算子。传播采用载波分离后的Padé(1,1)/Crank-Nicolson步进；每个中点更新介质和几何，使用SciPy稀疏矩阵及SuperLU求解。线性相对残差门为1e-10，前后向模态间隙门为1e-3*k0。
+
+u/v边界采用三阶复坐标拉伸PML，默认16格且物理厚度不少于2 lambda，外边界为零场。求解器不在步后归一化场幅，不用经验增益补偿通量损失。若局部负向能流、超角谱、非有限场、Jacobian折叠或线性残差超限，则返回明确失败状态。
+
+五、B1-3接口与输出
+
+models/vector_pe_3d.py提供VectorPE3DConfig、RayCenteredFrame3D、VectorPE3D.solve、冷等离子体介电张量、均匀Berreman矩阵和Gaussian边界场辅助函数。solve输入中心曲线、Ne/B Provider、可选碰撞采样器和[4,Nu,Nv]复边界场，输出完整横向场、恢复的Es/Hs、角谱、Poynting面通量、碰撞吸收、PML或数值损失、收敛状态及哈希。
+
+tests/_run_b1_vector_pe_3d.py仅运行独立参考算例并生成JSON、CSV、NPZ、PNG和SHA-256 manifest。tests/_verify_b1_vector_pe_3d.py只读产物，不重新计算传播。
+
+六、验收门
+
+介电张量真空、B趋零、Hermitian、碰撞无增益及平行/垂直B的O/X根误差门分别为1e-12或1e-10。0/10/20/30 deg均匀介质纵向波数相对误差不超过1e-3，无耦合均匀磁化模态交叉极化功率不超过1e-4。
+
+Gaussian基准固定10 MHz；正式基线w0=6 lambda、传播25 lambda、横向lambda/4、纵向lambda，并在相同w0、传播距离、核心域和PML语义下执行横向lambda/8正式细化。另以较小可控域执行lambda/4至lambda/8、纵向步长减半、横向域总宽扩大50%和PML加厚复验，用于在正式细化前隔离收敛趋势。复场/束宽门为2%，lambda/8束宽门为1%，质心门为0.1 lambda，通量门为0.5%；轻量结果不得替代正式全域lambda/8门。
+
+WKB门使用n2不小于0.2、介质尺度大于200 lambda的平滑O/X场，执行三频相位导数，并与解析WKB及AH3D固定路径群时延比较。质心门为0.5 lambda，相位积分相对误差门为0.5%，方向门为0.1 deg，群时延相对误差门为1%。
+
+PML使用有效角谱内倾斜Gaussian束实测负横向角谱，反射功率不高于-40 dB。碰撞算例比较输入输出通量差与体吸收积分，能量预算误差不超过1%。禁止通过场归一化关闭误差。
+
+七、FARR与停止条件
+
+FARR只在Linux/MPI资源满足且论文基线、网格和时间步收敛复现后，作为前向弱梯度局部算例的可选旁证。未运行固定记录为farr_optional_evidence_resource_deferred，不阻断B1。截止反射、显著后向散射和FARR接管留到B4。
+
+最终状态只能为passed_b1_vector_wide_angle_pe_reference、failed_b1_vector_pe_acceptance或blocked_by_cpu_memory_or_solver_stability。B1通过仅允许进入人工决策门并整理B2待确认事项；不得自动接入生产链或宣称A4、全波、后向散射和绝对功率已经验证。
+
+八、文献
+
+理论依据复用reference-papers.txt中的Feit-Fleck宽角传播、Carrano等HF wave-optics及FARR条目。PML或矢量PE新增文献只有在作者、题名、期刊、卷页和DOI完整核验后才追加；本阶段不重复既有引用。

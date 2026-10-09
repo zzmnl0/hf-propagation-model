@@ -1,0 +1,81 @@
+A4-C1G 球对称高射线方程、参数与几何语义归因实施报告
+
+日期：2026-07-29
+最终状态：identified_spherical_equation_or_invariant_defect
+A4-C1正式状态：failed_c1_chapman_high_low_external_comparison（保持）
+A4-C2准入：false，等待人工决策
+
+一、范围
+
+1. 本阶段只处理B=0、10 MHz、无碰撞、单程、球形6371 km、水平一致Chapman F2四个冻结同角算例。
+2. PHaRLAP 4.7.4继续作为项目外部标准；独立球对称积分用于判断两套轨迹是否遵守共同冻结输入，不替换原外部验收约定。
+3. 未重新求根、未修改Chapman参数、未放宽2 km门、未修改AH3D或PHaRLAP生产实现。
+
+二、实施方法
+
+1. 由B=0球对称冷等离子体的Bouguer/Snell不变量
+   b=|r x p|=n(r0)r0 cos(beta)
+   将三维Hamiltonian轨迹降为一维高精度积分。
+2. 分别使用冻结1 km节点的linear、cubic和解析Chapman介质计算转向高度、地面距离、几何程、群程、相位程和完整轨迹。
+3. 自适应求积与1024点Gauss-Legendre独立复核；最大数值不确定度0.000734 km，小于0.01 km门。
+4. 对PHaRLAP和AH3D检查色散残差、Bouguer不变量、传播平面和实际初始状态。
+5. 从PHaRLAP输出p的模反推其有效n2(h)，再以同一球对称积分独立重建轨迹，检查是否能关闭原高射线差异。
+
+三、C1G-1共同输入积分结果
+
+1. AH3D相对冻结linear介质球对称积分：
+   high_pharlap_anchor轨迹RMS 0.016018 km、地面距离误差-0.135239 km；
+   high_ah3d_anchor轨迹RMS 0.020255 km、地面距离误差-0.081555 km。
+2. 两条AH3D低射线轨迹RMS为0.065027/0.066947 km，地面距离误差0.038376/0.041779 km；双低控制通过。
+3. PHaRLAP相对同一linear介质积分：
+   high_pharlap_anchor轨迹RMS 2.389093 km、地面距离误差3.777610 km；
+   high_ah3d_anchor轨迹RMS 2.552176 km、地面距离误差4.045140 km。
+4. cubic和解析Chapman积分没有关闭PHaRLAP双高偏差；AH3D仍保持约0.007至0.061 km量级轨迹RMS。
+5. 因此在共同冻结Ne及明确B=0色散下，AH3D是唯一同时通过双高和双低球对称积分门的求解器。原C1偏差不能归因为AH3D球形Hamiltonian公式。
+
+四、C1G-2发射状态与PHaRLAP有效介质
+
+1. PHaRLAP名义发射角与输出状态反算角最大差7.11e-15 deg；使用状态b替代名义角仍不能关闭其相对共同输入积分的双高偏差，发射角、ECEF/ENU初始方向不是主因。
+2. PHaRLAP的Bouguer不变量最大相对漂移约1.19e-7，传播平面稳定；说明其球形积分几何内部自洽。
+3. PHaRLAP输出p反推的有效n2在升/降支之间RMS差仅约2.4e-8至7.6e-8，构成稳定、可复核的有效介质。
+4. 以该有效n2重新积分后：
+   两条高射线轨迹RMS降至7.79e-5/7.26e-5 km，地面距离误差降至-4.86e-5/-2.02e-5 km；
+   两条低射线轨迹RMS为0.045310/0.0000788 km，地面距离误差均小于0.00023 km。
+5. 双高轨迹误差关闭率超过99.996%，地面距离误差关闭率超过99.998%。PHaRLAP轨迹因此可由其输出状态对应的有效n2完整解释。
+6. 高射线显著等离子体区的中位X_eff/X_input约0.99867。该约0.13%的有效等离子体项差异被高分支条件敏感性放大为约3.8至4.0 km地面距离差。
+
+五、归因与早停
+
+1. 归因限定为：PHaRLAP raytrace_3d_sp、OX_mode=0的隐藏有效介质/色散或内部插值语义与共同冻结linear Ne输入不一致。
+2. PHaRLAP核心MEX无源码，不能继续唯一分离为内部插值、等离子体常数、状态缩放或no-field专用公式；不得把包装器帮助文件当作核心源码。
+3. 已满足计划C1G-1唯一归因早停条件，因此C1G-3 WGS84差分、C1G-4 B趋零扫描和C1G-5局部角度扫描不运行。位置相关IGRF不可能造成原B=0偏差。
+4. 早停避免重新运行无关PHaRLAP和AH3D长算例；不表示WGS84、IGRF或O/X一般验证已由本阶段完成。
+
+六、生产处置
+
+1. 不修改AH3D。将AH3D调成PHaRLAP当前有效n2会破坏其与共同输入、解析Chapman和球对称守恒积分的闭合，属于无公式依据的经验复刻。
+2. PHaRLAP仍是项目约定外部标准，故原C1双高2 km RMS失败和A4-C2阻断状态继续保留；C1G证据不能静默改写历史验收。
+3. C1G最终机器状态为identified_spherical_equation_or_invariant_defect；affected_side明确为PHaRLAP球形no-field隐藏有效介质/色散语义，不宣称获得其源级缺陷位置。
+
+七、产物与验证
+
+1. 执行器：tests/_run_a4_c1g_attribution.py。
+2. 只读验收器：tests/_verify_a4_c1g_attribution.py。
+3. 输出目录：output2/a4_pharlap/c1/c1g/。
+4. 产物包括共同输入轨迹图、守恒量图、积分误差矩阵、有效n2图、有效介质积分闭合图、发射排除图、最终归因矩阵及JSON/CSV/NPZ/SHA-256 manifest。
+
+八、风险
+
+1. 结论仅适用于B=0、球形、水平一致Chapman；不能外推到WGS84、位置相关IGRF、O/X、TID、Es、bubble、Spread-F、散射或全波。
+2. PHaRLAP核心源码不可审计，只能确认其可观察有效动力学，不能证明内部源代码公式。
+3. PHaRLAP仍为项目验收标准，因此“AH3D符合独立积分”不能自动将C1改为通过。
+4. PHaRLAP有效n2由输出状态反推，只用于归因；不得写入生产Provider或作为经验校正。
+5. 高射线放大小介质差异，后续跨软件验收必须同时保留低射线控制、同角比较和独立根比较。
+
+九、下一步建议
+
+1. 首选：保留C1正式失败，将本报告作为限制证据；若继续A4-C2，只能经用户确认后以diagnostic_with_c1_failed语义运行。
+2. 若必须恢复“PHaRLAP真值”与共同输入的严格一致，应向PHaRLAP维护方核实raytrace_3d_sp OX_mode=0内部Ne插值、等离子体常数和状态向量缩放；无源级说明前不修改AH3D。
+3. 不建议为原C1继续运行WGS84/IGRF或全域角度扫描；这些实验不能改变已闭合的B=0球对称归因。
+
+文献依据沿用reference-papers.txt中的Haselgrove、Budden、Coleman及Cervera与Harris条目；本阶段未新增文献。

@@ -1,0 +1,72 @@
+B1 完整3D矢量宽角PE核心实施报告
+
+日期：2026-07-29
+最终状态：blocked_by_cpu_memory_or_solver_stability
+B2/B3准入：false，等待B1完整细化门闭合及人工决策
+FARR状态：farr_optional_evidence_resource_deferred
+
+一、实施范围与语义
+
+本阶段新增独立CPU参考求解器models/vector_pe_3d.py，未接入main.py、main2.py或unified_hybrid_pipeline.py，也未修改功率、时延和P-D生产结果。legacy local_2p5d继续隔离。求解器状态为full_3d_two_transverse_vector_pe、one_way_forward、research_reference_only和reference_uncalibrated，不能写成完整Maxwell全波、后向散射或绝对功率已验证。
+
+原A4-C1状态failed_c1_chapman_high_low_external_comparison和external_pharlap_comparison_paused_due_effective_medium_inconsistency均保留。B1实施不覆盖A4历史结果，也不以B1内部通过项宣称PHaRLAP外部验证完成。
+
+二、实现内容
+
+1. 实现冷磁化碰撞等离子体完整3x3复介电张量。张量由R/L/S/D/P构造，支持ECEF磁场方向、局部(s,u,v)旋转和位置相关Ne/B查询。时间约定固定为exp(-i*omega*t)，碰撞损耗采用正半定反Hermitian张量；该约定修复了早期试算中碰撞场错误增益的问题。AH3D继续保持无碰撞实射线和独立吸收积分语义，不受本修改影响。
+
+2. 实现AH3D轨迹到Bishop曲线坐标的独立转换。中心曲线使用几何程参数化的三次Hermite插值，基底使用旋转最小平行输运，计算两个曲率分量和J=1-kappa_u*u-kappa_v*v。J小于0.8时显式拒绝。
+
+3. 实现横向四分量Maxwell状态[Eu,Ev,Hu,Hv]的Berreman型空间传播算子，并通过纵向Maxwell约束恢复Es/Hs。横向一阶及混合导数由二阶中心差分形成，介电张量非对角项不被标量n替代；曲率Jacobian和Bishop基旋转进入步进。
+
+4. 传播采用complex_envelope*exp(i*k0*s)载波分离和Padé(1,1)/Crank-Nicolson步进。最初直接对含k0的四分量算子步进时出现约pi量级相位误差；该问题已按PE公式从根因修复为M-k0*I包络算子，没有放宽阈值。稀疏系统使用SuperLU，线性相对残差门保持1e-10。
+
+5. u/v边界实现三阶复坐标拉伸PML和外侧零场。输出包含复E/H、Es/Hs、角谱、Poynting通量、碰撞体吸收、PML或数值损失、Jacobian、有效角谱、后向功率和完整哈希。传播后没有场幅归一化或经验增益。
+
+6. 新增独立执行器tests/_run_b1_vector_pe_3d.py和只读验收器tests/_verify_b1_vector_pe_3d.py。产物位于output2/b1_vector_pe_3d，包含JSON、CSV、NPZ、七张PNG和SHA-256 manifest。只读验收不重新计算波场。
+
+三、验收结果
+
+介电张量真空、B趋零和无碰撞Hermitian误差均为0；碰撞损耗无负特征值。平行B和垂直B相对现有Appleton-Hartree根的最大相对误差分别为2.3895e-16和1.2099e-16，均通过1e-10门。
+
+均匀介质0/10/20/30 deg四个角度的纵向波数最大相对误差为7.9594e-13，低于1e-3门。两个均匀磁化正向模态的交叉极化功率分别为5.89e-31和6.71e-31；Padé包络相位误差为0.00917和0.00389 rad。
+
+Bishop直线、平移、37 deg旋转和圆弧基底的最大正交误差为2.2204e-16。圆弧算例最小Jacobian为0.9994004，计算曲率9.99999985e-6 m^-1，相对设定1e-5 m^-1闭合。
+
+轻量Gaussian收敛中，lambda/4和lambda/8束宽相对解析误差分别为0.0058897和0.0007661；lambda/4相对lambda/8的复场L2差为0.0093664，通量差为5.15e-9。传播步从lambda减半到lambda/2后束宽变化0.0004572；横向域总宽扩大50%后复场变化2.8464e-5；PML加厚后核心复场变化2.0676e-6、通量变化1.5627e-7，全部通过。
+
+正式w0=6 lambda、传播25 lambda、lambda/4、PML 16格基线使用185x185横向网格和25个传播步。束宽相对解析误差为9.7395e-5，质心误差为5.28e-15 lambda，通量变化为2.5585e-12，最大线性残差7.9129e-16，运行时间248.44 s，基线门通过。
+
+平滑磁化介质O/X三频WKB测试中，两模相位积分相对误差为1.694e-4和1.142e-4；相对解析WKB群时延误差为3.357e-4和1.220e-4；相对AH3D固定路径群时延误差为0.2963%和0.3138%，低于1%门。两模质心变化均远小于0.5 lambda，未出现额外横向偏置。
+
+有效角谱内15 deg倾斜Gaussian束的PML实测反射为-40.5643 dB，通过-40 dB门；超正负30 deg角谱功率为0.000694，低于1%门。均匀碰撞介质输入输出通量差为9.35345 W，体吸收积分为9.34712 W，归一化能量预算误差1.1209e-6，低于1%门，且碰撞后输出通量正确降低。
+
+除正式w0=6 lambda算例的lambda/8全域细化外，其余机器门均通过。只读验收结果为0 fail(s)，表示产物、哈希、状态逻辑和图像完整，并不表示B1最终物理验收通过。
+
+四、资源阻断
+
+正式lambda/8细化需要369x369横向网格，即544644个复四分量未知量。冻结运行结束时可用物理内存约4.35 GB；依据lambda/4 SuperLU分解的规模增长和稀疏填充，细化分解保守估计需约12 GB可用内存。为避免系统换页导致不可控长时运行或内存失败，本阶段没有启动该算例，也没有以轻量lambda/8结果替代正式全域细化。
+
+因此最终状态不是passed，而是blocked_by_cpu_memory_or_solver_stability。该状态表示公式、轻量收敛和正式lambda/4基线已形成可复核证据，但完整细化门仍缺少直接结果。
+
+五、风险与限制
+
+1. 当前求解器是沿s的单向初值推进。均匀模态由正向Poynting本征态初始化，运行中记录负向能流和超角谱；它不能恢复由下游边界产生的物理反射。显著后向能流、截止反射和强模式转换仍必须转FDTD/FARR。
+
+2. 目前采用二阶横向差分和SuperLU参考实现，目的为可审计正确性而非性能。全分辨率lambda/8的内存填充已成为主要限制；不得通过粗化网格或减少横向域来伪造该门通过。
+
+3. 曲率实现已包含Bishop旋转和一阶Jacobian，但当前验收以弱曲率短域为主。强曲率、焦散和J接近0.8的条件尚未形成独立解析波场基准，不能外推。
+
+4. PML反射仅在一个15 deg前向Gaussian算例中达到-40.56 dB，余量较小。后续应增加角度、极化和磁化介质PML扫描；不得将单个算例写成所有场景均达到同等反射。
+
+5. FARR未运行，状态为farr_optional_evidence_resource_deferred。B1当前证据来自解析、WKB、AH3D高频极限和内部收敛，不包含外部全波交叉验证。
+
+6. 绝对功率仍未校准；当前1 W输入只用于数值通量预算，不能解释为真实发射机或接收机功率。
+
+六、下一步建议
+
+优先制定B1R资源闭环：在可用内存不少于16 GB的受控环境运行正式369x369、lambda/8细化；保持w0、25 lambda、PML、域尺寸、方程和阈值不变。若继续使用Windows CPU，可将SuperLU替换为经过同一lambda/4结果校验的矩阵自由Krylov/ADI参考实现，但算法替换必须先证明复场、相位和通量与当前SuperLU闭合，不能只报告速度或内存下降。
+
+lambda/8正式门通过后，再增加强曲率真空基准和多角度磁化PML扫描，并重新执行只读验收。只有最终状态达到passed_b1_vector_wide_angle_pe_reference并经用户确认，才建议整理B2的AH3D到PE复边界场、波前曲率、极化及通量匹配事项。当前不建议进入B2/B3生产耦合。
+
+文献依据沿用reference-papers.txt中的Feit-Fleck、Carrano等和FARR条目；本阶段未增加未核验或重复引用。
