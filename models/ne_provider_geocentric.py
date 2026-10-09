@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 import numpy as np
-from scipy.interpolate import PchipInterpolator, RegularGridInterpolator
+from scipy.interpolate import CubicHermiteSpline, PchipInterpolator, RegularGridInterpolator
 
 from utils import (ecef_to_geocentric, ecef_to_geodetic, enu_basis,
                    geocentric_to_ecef, spherical_destination)
@@ -263,10 +263,24 @@ class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
                 self.Ne_m3[:, -1:, :], self.Ne_m3, self.Ne_m3[:, :1, :]),
                 axis=1,
             )
+        self._radial_spline = None
+        if self.interpolation == "radial_hermite":
+            profile = self.Ne_m3[0, 0, :]
+            if not np.all(self.Ne_m3 == profile[None, None, :]):
+                raise ValueError("radial_hermite requires exactly horizontally uniform Ne")
+            if self.fill_value_m3 != 0.0 or self.height_km.size < 3:
+                raise ValueError("radial_hermite requires vacuum fill and at least three heights")
+            self._radial_spline = CubicHermiteSpline(
+                self.height_km, profile,
+                np.gradient(profile, self.height_km, edge_order=2), extrapolate=False)
+            critical = self._radial_spline.derivative().roots(extrapolate=False)
+            critical = critical[np.isfinite(critical)]
+            if np.any(self._radial_spline(critical) < 0.0):
+                raise ValueError("radial Hermite interpolation overshot below zero")
         self._interp = RegularGridInterpolator(
             (self.latitude_deg, interpolation_longitude, self.height_km),
             interpolation_Ne,
-            method=self.interpolation, bounds_error=False,
+            method="linear" if self._radial_spline is not None else self.interpolation, bounds_error=False,
             fill_value=self.fill_value_m3)
 
     def _validate(self) -> None:
@@ -274,7 +288,7 @@ class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
             raise ValueError("earth_radius_km must be finite and positive")
         if not np.isfinite(self.fill_value_m3) or self.fill_value_m3 < 0.0:
             raise ValueError("fill_value_m3 must be finite and nonnegative")
-        if self.interpolation not in {"linear", "cubic"}:
+        if self.interpolation not in {"linear", "cubic", "radial_hermite"}:
             raise ValueError("interpolation must be 'linear' or 'cubic'")
         axes = (
             ("latitude_deg", self.latitude_deg),
@@ -319,6 +333,21 @@ class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
         geocentric_to_ecef(lat_deg, lon_deg, height_km, self.earth_radius_km)
         point = [[float(lat_deg), self._periodic_longitude(lon_deg),
                   float(height_km)]]
+        if self._radial_spline is not None:
+            if (not self.latitude_deg[0] <= lat_deg <= self.latitude_deg[-1]
+                    or (not self.longitude_periodic_complete
+                        and not self.longitude_deg[0] <= point[0][1] <= self.longitude_deg[-1])):
+                raise ValueError("radial Hermite query crosses the horizontal grid boundary")
+            h = float(height_km)
+            if h < self.height_km[0] or h > self.height_km[-1]:
+                edge = 0 if h < self.height_km[0] else -1
+                if self.Ne_m3[0, 0, edge] != 0.0:
+                    raise ValueError("radial Hermite query crosses a nonzero density boundary")
+                return 0.0
+            value = float(self._radial_spline(h))
+            if not np.isfinite(value) or value < 0.0:
+                raise ValueError("radial Hermite returned invalid density")
+            return value
         value = float(self._interp(point)[0])
         if not np.isfinite(value):
             raise ValueError("Ne interpolation returned a non-finite value")
@@ -358,7 +387,10 @@ class GeocentricGridNeProvider3D(GeocentricNeProvider3D):
                                 float(self.height_km[-1])],
             "grid_shape": list(self.Ne_m3.shape),
             "interpolation": self.interpolation,
-            "bounds_error": False,
+            "bounds_error": self.interpolation == "radial_hermite",
+            "radial_boundary_semantics": (
+                "reject_horizontal_or_nonzero_density_crossing; zero_density_edge_to_vacuum"
+                if self.interpolation == "radial_hermite" else None),
             "fill_value_m^-3": self.fill_value_m3,
             "longitude_semantics": (
                 "east_positive_periodic_full_interpolation"

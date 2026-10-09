@@ -184,8 +184,11 @@ def _ah_model(request: UnifiedPropagationRequest, wave_mode: str,
         if component.get("enabled", False)
         and float(component.get("minimum_structure_scale_km", 0.0)) > 0.0
     ]
+    compatibility = cfg.UPDATE2["PHARLAP_RADIAL_B0"]
+    compatibility_mode = "pharlap_radial_b0" if compatibility["enable"] else None
     spatial_fd_base_km = min(
-        0.5, min(component_scales, default=30.0) / 60.0)
+        float(compatibility["spatial_fd_base_km"]) if compatibility_mode else 0.5,
+        min(component_scales, default=30.0) / 60.0)
     physical_provider = _physical_ne_provider(request)
     geomagnetic_provider = _geomagnetic_provider(request)
     return RefractiveIndexAH3DECEF(
@@ -196,7 +199,7 @@ def _ah_model(request: UnifiedPropagationRequest, wave_mode: str,
         geomagnetic_provider=geomagnetic_provider,
         coordinate_model=request.coordinate_model,
         spatial_fd_base_km=spatial_fd_base_km,
-        integration_profile=profile)
+        integration_profile=profile, compatibility_mode=compatibility_mode)
 
 
 def _trace_fan(request: UnifiedPropagationRequest, wave_mode: str,

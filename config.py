@@ -361,6 +361,11 @@ ABSORPTION = {
 # ── update2.1 feature gates (default off for backward compatibility) ──────────
 UPDATE2 = {
     'AH3D_ENABLE': False,
+    'PHARLAP_RADIAL_B0': {
+        'enable': False,
+        'plasma_coefficient': 80.61638494312905,
+        'spatial_fd_base_km': 0.125,
+    },
     'AH3D_SOLVER': 'ecef_dop853',
     'AH3D_COORDINATE_MODEL': 'wgs84_geodetic_ecef',
     'AH3D_GEOMAG_MODEL': 'igrf14_grid',

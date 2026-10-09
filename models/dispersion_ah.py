@@ -34,11 +34,15 @@ def _unit_analytic(v) -> np.ndarray:
 
 
 def appleton_hartree_roots(
-    omega, Ne_m3: float, k_vec, b_hat, gyro_MHz: float, collision_s: float = 0.0
+    omega, Ne_m3: float, k_vec, b_hat, gyro_MHz: float, collision_s: float = 0.0,
+    *, plasma_coefficient: float | None = None,
 ) -> dict[str, complex]:
     """Return the two cold-plasma magnetoionic phase-index-squared roots."""
     f_hz = omega / (2.0 * np.pi)
-    X = K_FP**2 * max(float(Ne_m3), 0.0) / (f_hz * f_hz)
+    coefficient = K_FP**2 if plasma_coefficient is None else float(plasma_coefficient)
+    if not np.isfinite(coefficient) or coefficient <= 0.0:
+        raise ValueError("plasma_coefficient must be finite and positive")
+    X = coefficient * max(float(Ne_m3), 0.0) / (f_hz * f_hz)
     Y = float(gyro_MHz) * 1e6 / f_hz
     Z = float(collision_s) / omega
     U = 1.0 - 1j * Z

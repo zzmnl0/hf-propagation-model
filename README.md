@@ -10,6 +10,31 @@
 
 ---
 
+## P3 径向无磁兼容模式（2026-10-09）
+
+`UPDATE2['PHARLAP_RADIAL_B0']` 是显式、默认关闭的实验兼容配置：统一等离子体系数为 `80.61638494312905`，空间差分基准为 `0.125 km`。直接 ECEF 模型通过 `compatibility_mode="pharlap_radial_b0"` 使用同一配置；Provider 必须显式采用 `interpolation='radial_hermite'`。原物理模式保留原系数及默认差分设置。
+
+支持范围限定为半径 6371 km 球面、横向均匀径向网格、零磁场、无碰撞；内部局部传播不得穿越非零密度边界。中心节点斜率 Hermite 的整个区间必须非负，输入不满足时明确拒绝。当前原光滑入口输入在 18–20 km 单元产生负密度，不能通过裁剪继续执行，也不能据此声明全程兼容通过。实施与科学验收分别记录于 P3 报告。
+
+`trajectory_group_path_km` 来自原始积分时间状态。既有 `trajectory_group_tangent_ecef` 仍是位置弦估计；它不代表完整 Hamiltonian 群速度导数。无磁轨迹比较使用明确的物理方向导数。
+
+直接构造示例（`Ne_m3` 的轴序为纬度、经度、高度；输入须满足上述适用域）：
+
+```python
+from models.ne_provider_geocentric import GeocentricGridNeProvider3D
+from models.ray_tracer_ah_3d_ecef import RefractiveIndexAH3DECEF
+
+provider = GeocentricGridNeProvider3D(
+    Ne_m3, latitude_deg, longitude_deg, height_km,
+    earth_radius_km=6371.0, interpolation="radial_hermite")
+model = RefractiveIndexAH3DECEF(
+    provider, earth_radius_km=6371.0, freq_MHz=10.0,
+    gyro_MHz=0.0, collision_s=0.0,
+    compatibility_mode="pharlap_radial_b0")
+```
+
+统一流水线通过 `UPDATE2['PHARLAP_RADIAL_B0']['enable']=True` 启用，并要求请求显式使用球面坐标、同一径向 Provider 和零磁场。启用开关不会把不支持的 IGRF 或 WGS84 请求自动改成球面无磁请求。完整入口一致性例子见 `tests/_verify_p3_compatibility.py`。省略兼容参数且保持开关关闭即使用默认物理模式。
+
 ## 目录
 
 1. [快速上手](#1-快速上手)

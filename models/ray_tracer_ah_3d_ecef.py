@@ -12,7 +12,7 @@ import json
 import numpy as np
 from scipy.integrate import DOP853
 
-from config import UPDATE2
+from config import K_FP, UPDATE2
 from utils import (
     ecef_to_geocentric,
     ecef_to_geodetic,
@@ -71,11 +71,13 @@ class RefractiveIndexAH3DECEF:
         coordinate_model: str = COORDINATE_MODEL,
         collision_s: float = 0.0,
         near_cutoff_n2: float = 2.0e-2,
-        spatial_fd_base_km: float = 0.5,
+        spatial_fd_base_km: float | None = None,
         spatial_fd_scales=(0.5, 1.0, 2.0),
         spatial_fd_stability_rtol: float = 2.0e-2,
         spatial_fd_stability_atol_n2_per_km: float = 2.0e-5,
         integration_profile: str = "reference",
+        plasma_coefficient: float | None = None,
+        compatibility_mode: str | None = None,
     ):
         if not (hasattr(provider, "get_Ne_ecef")
                 and hasattr(provider, "domain_margin_ecef")
@@ -92,7 +94,18 @@ class RefractiveIndexAH3DECEF:
         self.gyro_MHz = float(gyro_MHz)
         self.collision_s = float(collision_s)
         self.near_cutoff_n2 = float(near_cutoff_n2)
-        self.spatial_fd_base_km = float(spatial_fd_base_km)
+        if compatibility_mode not in {None, "pharlap_radial_b0"}:
+            raise ValueError("unsupported compatibility_mode")
+        self.compatibility_mode = compatibility_mode
+        compat = UPDATE2["PHARLAP_RADIAL_B0"] if compatibility_mode else {}
+        self.plasma_coefficient = float(
+            compat.get("plasma_coefficient", K_FP**2)
+            if plasma_coefficient is None else plasma_coefficient)
+        if not np.isfinite(self.plasma_coefficient) or self.plasma_coefficient <= 0.0:
+            raise ValueError("plasma_coefficient must be finite and positive")
+        self.spatial_fd_base_km = float(
+            compat.get("spatial_fd_base_km", 0.5)
+            if spatial_fd_base_km is None else spatial_fd_base_km)
         self.spatial_fd_scales = tuple(float(value) for value in spatial_fd_scales)
         self.spatial_fd_stability_rtol = float(spatial_fd_stability_rtol)
         self.spatial_fd_stability_atol_n2_per_km = float(
@@ -140,6 +153,14 @@ class RefractiveIndexAH3DECEF:
             raise TypeError(
                 "geomagnetic_provider must implement get_B_ecef_T and get_metadata")
         self.geomagnetic_provider = geomagnetic_provider
+        if compatibility_mode:
+            if (self.coordinate_model != COORDINATE_MODEL or self.earth_radius_km != 6371.0
+                    or metadata.get("interpolation") != "radial_hermite"):
+                raise ValueError("radial compatibility requires a radial Hermite Provider on the 6371 km sphere")
+            if (self.gyro_MHz != 0.0 or self.collision_s != 0.0
+                    or not isinstance(geomagnetic_provider, ConstantGeomagneticField3D)
+                    or np.any(geomagnetic_provider.b_ecef_T != 0.0)):
+                raise ValueError("radial compatibility requires zero constant magnetic field and collisions")
         self.geomagnetic_metadata = geomagnetic_provider.get_metadata()
         self.geomagnetic_provider_hash = str(
             self.geomagnetic_metadata.get(
@@ -225,6 +246,7 @@ class RefractiveIndexAH3DECEF:
         return appleton_hartree_roots(
             frequency, self._Ne(ecef_km, t=t), k_ecef,
             b_ecef_hat, gyro_MHz, self.collision_s,
+            plasma_coefficient=self.plasma_coefficient,
         )
 
     def root(self, ecef_km, k_ecef, *, omega=None, t: float = 0.0) -> AHRoot:
@@ -241,6 +263,9 @@ class RefractiveIndexAH3DECEF:
 
     def metadata(self) -> dict:
         return {
+            "plasma_coefficient": self.plasma_coefficient,
+            "compatibility_mode": self.compatibility_mode,
+            "compatibility_scope": "continuous_radial_B0_collisionless" if self.compatibility_mode else None,
             "coordinate_model": self.coordinate_model,
             "state_semantics": STATE_SEMANTICS,
             "earth_model": (
@@ -468,7 +493,13 @@ def launch_state_ah3d_ecef(
     root = model.root(position, direction, t=medium_time_s)
     if root.status not in {"ok", "near_cutoff"} or root.n2.real <= 0.0:
         raise ValueError(f"invalid launch dispersion: {root.status}")
-    return np.r_[position, model.k0 * np.sqrt(root.n2.real) * direction, 0.0]
+    state = np.r_[position, model.k0 * np.sqrt(root.n2.real) * direction, 0.0]
+    if model.compatibility_mode:
+        residual = abs(np.dot(state[3:6], state[3:6]) / model.k0**2
+                       - model.n2_raw(position, state[3:6], t=medium_time_s))
+        if not np.isfinite(residual) or residual > 1.0e-10:
+            raise ValueError("initial normalized dispersion residual exceeds 1e-10")
+    return state
 
 
 def _physical_height_km(state, model: RefractiveIndexAH3DECEF) -> float:
@@ -753,7 +784,14 @@ def integrate_fixed_path_ah3d_ecef(
         else "geocentric")
     return {
         "trajectory_ecef_km": trajectory[:, :3],
+        "plasma_coefficient": model.plasma_coefficient,
+        "compatibility_mode": model.compatibility_mode,
+        "compatibility_scope": metadata["compatibility_scope"],
         "trajectory_group_tangent_ecef": tangents,
+        "trajectory_group_tangent_ecef_semantics": "normalized_position_chord_estimate",
+        "trajectory_group_path_km": C_KM_S * trajectory[:, 6],
+        "trajectory_group_time_s": trajectory[:, 6].copy(),
+        "trajectory_group_path_semantics": "c_times_integrated_group_time_state",
         "wavevector_ecef_km^-1": trajectory[:, 3:6],
         "trajectory_B_ecef_T": magnetic_fields,
         "trajectory_gyrofrequency_MHz": (
