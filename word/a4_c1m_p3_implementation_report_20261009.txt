@@ -1,0 +1,107 @@
+AH3D—PHaRLAP：P3生产兼容修复、回归与阶段评估
+日期：2026-10-09
+执行计划：a4_c1m_p3_and_followup_implementation_plan_20261009.txt（实际工作区版本已冻结）
+运行目录：code/output2/a4_pharlap/c1/c1m/p3_20261009_v1/
+
+一、结论与完成边界
+本轮已完成共同生产调用链的径向无磁兼容补丁、默认行为回归、全部计划内原始调用及有上限的追加加密。24个正式物理案例最终2个严格通过、22个未通过。独立验收800条身份检查和24例结果复算均一致，error_count=0；这代表记录和判定可复核，不代表物理范围全部通过。
+
+生产补丁已经完成；完整P3仍有两类未闭合事项：原光滑入口的中心斜率Hermite产生负密度，导致全程输入拒绝；全程独立重建误差验证尚未建立。全程共同弧长指标、自然端点/群程和提前终止检测已实现并通过解析测试，不能将这部分实现当作全程误差界已经完成。
+
+因此严格保留implementation_complete=false，并另外记录production_implementation_complete=true。local_scope_passed、fullpath_scope_passed、holdout_passed、p3_scope_passed和recommend_p4均为false。本轮停在P3修复评审，不进入P4/P5/P6。
+
+二、实际生产修改
+1. models/dispersion_ah.py
+   appleton_hartree_roots增加可选关键字plasma_coefficient；通过唯一生产调用点model.roots贯通初始化、投影、空间/频率导数与群时延。默认仍为K_FP**2，未替换全局K_FP，复数频率/波矢导数通路保留。
+2. models/ne_provider_geocentric.py
+   增加显式radial_hermite，采用已辨识的中心节点斜率（np.gradient，edge_order=2）。严格检查轴、有限/非负输入、横向重复列、各插值区间极值、水平域及非零密度边界跨越；不裁剪负密度，不横向平均。
+3. models/ray_tracer_ah_3d_ecef.py
+   增加compatibility_mode="pharlap_radial_b0"，限定6371 km球面、零磁场、无碰撞及径向Hermite Provider；共同初态残差阈值1e-10。逐点群程直接导出C_KM_S*原积分时间状态。
+   trajectory_group_tangent_ecef继续表示归一化位置弦，新增语义标记；无磁比较使用p/|p|，不改变既有功率与射线局部框架消费者的字段含义。
+4. config.py及models/unified_hybrid_pipeline.py
+   单一配置UPDATE2.PHARLAP_RADIAL_B0，默认关闭；兼容系数80.61638494312905，FD基准0.125 km，继续遵守更小结构尺度限制。默认物理系数和0.5 km差分基准保留。直接构造和流水线构造结果逐点一致。
+5. README.md与tests/_verify_p3_compatibility.py
+   给出默认/兼容示例、支持范围和拒绝条件。当前专项测试的原smooth回归依赖工作区保留的历史MAT；仅克隆源码时需要同步相应实验输入。
+
+生产源码提交：abcbeb2。实验工具及本报告另行本地提交；最终HEAD及未纳入本轮的工作区变更以运行目录workspace_final.json为准。未推送远程。
+
+三、冻结、输入和工程验证
+修改前保存159个源码文件、实际计划、Git状态与四个确定性默认轨迹。P3-0-0及P2历史共219条身份复核通过，历史失败和A2原来源缺口保持原记录。
+18组输入网格逐字段回读一致；168条PH调用的job/grid/exporter/MEX身份通过。PH每次清MEX并完整传入背景，不复用旧raw。12 MHz 25/35度暴露审计未发现历史结果，先冻结角色和输入，再执行留出。
+默认四例的轨迹、波矢、几何程、群程、终止及步数共26项逐值一致，功率辅助函数4项一致。六项当前生产测试全部通过；专项生产契约测试通过，包含生产legacy隔离、复步导数/群速度、直接与流水线短路径一致、适用域拒绝。
+首次工程回归中真实IRI驱动在沙箱内触发Windows DLL 623，保留r0_tests/v1；获工具批准后同一真实驱动重跑，r0_tests/v2六项全通过，未mock IRI。
+
+比较器验证：解析直线/曲线、历史P2 PCHIP 0.5 km/201点基线复现、三档初态检查均完成。四类实际故障注入全部正确拒绝：位置数值乘1000、仅粗档初态不等、100 km前提前终止、非单调积分。正式负例记录为comparator_negative_controls/v3。
+全程入口tests/_a4_c1m_p3_full_path.py通过实际解析控制：共同路径一致不能掩盖各自端点相差999 m、自然群程相对差0.01；提前终止被拒绝。fullpath_reconstruction_validated=false独立保留。
+
+四、实验规模与正式结果
+PH共168次，AH主矩阵180次（158完成、22输入拒绝）；另14个AH自身未收敛案例各增加第4/5档，共28次，均完成。合计208次AH调用。PH仍为既定三档，未尝试非法更小最大步长；采样最多增加0.125/0.0625 km两档。未改变兼容系数、正式FD或阈值。
+
+集合          预期案例  判定完成  严格通过  未通过  说明
+R1内部100km       2         2         2        0    全部门槛通过
+R2原四角全程     4         4         0        4    原输入Hermite负密度拒绝
+R3 8/15MHz      16        16         0       16    非单调/参考或预算未闭合
+R4 12MHz两角     2         2         0        2    原输入Hermite负密度拒绝
+合计            24        24         2       22    无删例，无截短冒充全程
+
+R2精确角：21.94290326504532、21.94562872092976、39.54254824570964、39.58701138438118度。
+R3为8/15 MHz×22/39.5度×正负1e8/2e8 m^-3/km四种仿射梯度；保留全部16条件。
+
+R1角度      RMS(m)            最大/100km端点差(m)   群程相对差
+22          0.000618602232    0.001337323854        1.944836617e-10
+39.5        0.000371034562    0.000775990916        2.412017711e-9
+这两例的新生产结果复现P2已验证处理，且分别满足双方自收敛、重建/采样控制、共同初态及不确定度预算。
+
+R3最终RMS范围4.60438e-9至3.34514e-8 m，最大差9.59291e-9至7.40512e-8 m，群程相对差5.23458e-14至5.99203e-13。绝对阈值全部满足，但严格门槛不能因此豁免：最终16例中积分门槛15例、采样门槛12例、参考/重建门槛1例、预算门槛1例失败（原因可重叠）。追加加密未使任何一个R3案例满足全部条件；原始三档失败与追加判定分别保留。
+这些变化已处于纳米位置差及浮点舍入量级，不能据此认定介质物理偏差仍有同样量级的系统误差；也不能在已冻结的规则下宣称严格收敛。
+
+R5独立20组：内部两角FD控制2组通过，八种梯度/角度下AH/PH各自高度网格控制16组通过，最高/最长全程FD代表2组因同一输入拒绝。各自网格2/1/0.5/0.25 km变化与末次20%限值逐项检查，未以小cross误差代替自收敛。
+严格仿射参考仅在高次系数为0、斜率和截距严格一致时去除冗余分段，保留同一函数。原401节点参考与简化参考401查询点独立对照，最大位置变化约2.77e-9 m；它不改变原输入或传播轨迹，也未将方法差异加入预算。
+
+五、原因矩阵
+A. 已确认并迁入生产：常数、径向插值及空间差分贡献。
+   证据：A2/P2冻结归因；本轮R1原同角新生产回归及独立重算通过，默认模式逐值不变。作用域仅为声明的径向无磁介质，不能推广至三维横向场或磁化。
+B. 已确认并修复比较/导出语义：PCHIP尾端支持和重建导致原非单调表象，旧方向字段为位置弦；群程应取原生时间状态。
+   证据：历史基线精确复现、物理导数Hermite、原生c*t输出和故障注入。没有把方法spread或原生传播误差塞入重采样预算。
+C. 新确认：中心斜率Hermite不保正，旧隔离Provider隐含max(0,spline)。
+   原smooth_s5.mat在h=19.3333333333 km处Ne=-228.301420575 m^-3，另h=20.9241121413 km处Ne=-159.625117062 m^-3；负值不是浮点零附近舍入。最小值/峰值=-3.75721e-10。
+   生产按计划明确拒绝，22次AH调用的失败均由该适用域检查给出。未改背景、斜率或增加裁剪。
+   六条PH最高档在18–24 km的输出Ne与max(0,原中心Hermite)一致，最大差1.45519e-11 m^-3，所有落在负支撑区的原生节点都导出Ne=0。独立读MAT逐点复算通过。
+   这确认输出Ne的处理特征，不证明内部空间梯度、状态投影或重置也采用同一规则。该区状态色散残差最高2.61252e-8；负密度对应10MHz n²改变量仅约1.84e-10。因此不能把负密度本身宣称为历史完整轨迹误差的唯一或主要解释。
+D. 未解决：R3极小差异下的严格积分/采样/参考收敛和逐项预算。
+   已完成允许的加密；无舍入豁免，停止追加扫描。当前证据不支持把Python与MATLAB语言本身作为主要原因，实际需区分离散算法、输出重建和浮点平台。
+E. 未完成：合法全程独立重建误差证明。
+   通用自然终点比较已完成，但不能用P2上行局部参考替代带转向全程参考。这是工程/验证缺口，与输入负密度拒绝分开记录。
+F. 本轮未验证：P1硬入口内部梯度/状态重置的唯一机制、一般三维横向背景、O/X、WGS84/IGRF、碰撞吸收和P2P。对应通过状态均未提升。
+
+六、下一步修复评审内容
+不建议进入P4。建议下一单元仍为P3，先完成以下有界工作：
+1. 负密度约定：冻结最小原入口剖面，分别用短路径比较“输出裁剪、传播梯度也裁剪”和“仅输出裁剪、传播保留原导数”等候选；核对输入/输出Ne、p²、n²、局部dp/ds和进入/离开负支撑区状态，固定规则后在8/15 MHz复现。仅有输出Ne匹配不足以引入生产裁剪。
+2. 如PH实际采用可预测裁剪约定，作为明确命名的兼容选项单独评审，保留物理保正方式；如无法唯一归因，继续保留最小MATLAB复现。禁止全局经验密度缩放或按角度选择规则。
+3. 全程参考：在合法介质规则明确后，使用独立球对称积分覆盖上行、转向、下行与自然落点，证明物理Hermite的点间重建误差及自然群程比较；完成原四角和两例留出全程。新版本新run，当前失败保留。
+4. 舍入平台：在不继续扫描现有积分档位的前提下，以独立更高精度或可审计浮点误差分析判别平台来源。当前判定仍为false；若需改变舍入平台的验收解释，应作为单独规则评审，不能事后修改本轮阈值或把失败改为通过。
+5. 12MHz两例已实际执行，后续修复后作为指定回归保留；再次宣称未见留出之前，必须预先登记新的等价独立频率/角度，不能把本轮已暴露输入重新命名为首次留出。
+
+七、复现与产物索引
+在code目录使用指定pytorch_cpu Python；以下RUN为output2/a4_pharlap/c1/c1m/p3_20261009_v1，旧目录只读。
+原始执行：tests/_a4_c1m_p3_experiments.py prepare|ph|ah --run NEW_RUN；AH可--workers 2 --roles R1 R3 R5_grid R5_fd；PH留出使用--holdout。新运行须先冻结生产和输入身份。
+初始比较：tests/_a4_c1m_p3_compare.py --run RUN；现有分析目录禁止覆盖。追加执行及判定分别见_a4_c1m_p3_refinements.py、_a4_c1m_p3_refinement_acceptance.py。
+只读最终验收：tests/_verify_a4_c1m_p3.py --run RUN --analysis RUN/analysis/p3_refined_v1，生成新验收版本，不修改raw。
+全程指标入口：tests/_a4_c1m_p3_full_path.py。专项工程：tests/_verify_p3_compatibility.py。入口诊断：tests/_diagnose_p3_smooth_density.py。
+
+正式选定记录：
+  analysis/p3_refined_v1/summary.json
+  analysis/p3_refined_v1/verification_v1/verification.json
+  analysis/p3_artifacts_v2/（逐点/逐例CSV、差异及FD/grid图）
+  analysis/p3_contract_v3/report.json（18网格回读、168PH、历史基线）
+  analysis/p3_r5_v1/independent_gates.json
+  analysis/p3_full_path_contract_v2/report.json
+  analysis/p3_affine_reference_equivalence_v2/report.json
+  experiments/refinements_v1/independent_control_check.json
+  comparator_negative_controls/v3/summary.json
+  production_contract_checks/summary.json
+  production_diagnostics/ph_native_smooth_entry/summary.json及independent_check.json
+  r0_validation.json、r0_tests/v1、r0_tests/v2
+  completion.json、verification_index.json、delivery_sha256.json、workspace_final.json
+
+保留全部历史失败和本轮中间版本，不修改原A2/P1/P2状态。本报告不构成完整PHaRLAP三维磁离子等价声明。
