@@ -1,0 +1,291 @@
+{
+  "task_id": "AH3D-PH474-L2-DEFAULT-20261103",
+  "purpose": "Authorized L2 production/research migration and bounded regressions",
+  "status": "PENDING_ACTUAL_INDEPENDENT_REVIEW",
+  "frozen_at": "2026-11-03T11:24:14.8575595+00:00",
+  "head": "4be052c0c69f31a631beb8ed823c13d539036274",
+  "current_code_identity": "HEAD plus exact source hashes; dirty worktree is intentional and before bytes retained",
+  "real_short_traces": {
+    "L2": 8,
+    "L2_max_path_km": 0.25,
+    "physalign": 2,
+    "physalign_max_path_km": 0.05
+  },
+  "test_order_note": "Full L2 short trace pass preceded feature_gates label-only change; targeted settings_checks pass covers that delta. Final documentation corrections did not rerun traces.",
+  "historical_hash_policy": "Original bytes resolve expected source-version changes; historical manifests not claimed zero drift on upgraded activity paths",
+  "deferred_closeout": [
+    "tasks/AH3D-PH474-L2-DEFAULT-20261103-review.md",
+    "tasks/AH3D-PH474-ROADMAP-20261015-plan.md",
+    "tasks/AH3D-PH474-ROADMAP-20261015/S5-plan.md",
+    "tasks/AH3D-PH474-ROADMAP-20261015/S6-plan.md",
+    "closeout.json",
+    "closeout-verification.json"
+  ],
+  "files": [
+    {
+      "path": "AH3D-SCRIPTS.md",
+      "bytes": 3432,
+      "sha256": "E0B5A099E9A2B669C8CEFED5DCF1777C502F30B2810C720B9035E4BC2903F488"
+    },
+    {
+      "path": "config.py",
+      "bytes": 23534,
+      "sha256": "15B5CD8CE765CC50F650940E2EDD0E2647C1CC36C83521BEA1F269591BCB3EB9"
+    },
+    {
+      "path": "main2.py",
+      "bytes": 16906,
+      "sha256": "685CC312098155908ED1EBD9A3626CF696AA73E647711BE1F45532EFA4E28137"
+    },
+    {
+      "path": "models/point_to_point_ah_3d_ecef.py",
+      "bytes": 10397,
+      "sha256": "E4FA5B85E4CC1CF7F17DAB40771FA7D3AE3DBCD107B3DC12A4407BBC1B507891"
+    },
+    {
+      "path": "models/ray_tracer_ah_3d_ecef.py",
+      "bytes": 45795,
+      "sha256": "A096BB1BFB16FCE9BD9E9BFB210E645DAED6EF36D9F61454CA681A8756D1E9FA"
+    },
+    {
+      "path": "models/unified_hybrid_pipeline.py",
+      "bytes": 33823,
+      "sha256": "A48146E985DBF419A5A86E6B2935E7F4E64D0DAB66FDDE9FA37C8FB468E8579C"
+    },
+    {
+      "path": "README.md",
+      "bytes": 59660,
+      "sha256": "22A64D8E2602F3A5D2EE34A2B8B296292D461F96639F08E314A1D6BA56D35C73"
+    },
+    {
+      "path": "tasks/AH3D-PH474-AH-CLEANUP-20261103/cleanup-manifest.json",
+      "bytes": 2807,
+      "sha256": "E699095F4F149A9D88FD01133827C90BB71C62098ED6DFCD07E089436D29D215"
+    },
+    {
+      "path": "tasks/AH3D-PH474-AH-CLEANUP-20261103/closeout.json",
+      "bytes": 2414,
+      "sha256": "ED81DB24E4353D1EA54208EE97CDC37C0328037BC0230E02C03A396CF4190EF5"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103-authorization.md",
+      "bytes": 1653,
+      "sha256": "C2BE1B102DEA2464022B60CC5B4C31260224831C5B8F94261A72C0CFA08AA159"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103-plan.md",
+      "bytes": 6094,
+      "sha256": "AD96DDC5BCD306469BC8BEF8327E754D43DBD4F082A40796F50129FB0A8841B1"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103-report.md",
+      "bytes": 4572,
+      "sha256": "D478752735741D70FC9D622581658A977EB07702D9DCAADCE269ECA5EA6AFDE5"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/after-worker-manifest.json",
+      "bytes": 4694,
+      "sha256": "EF517404CDAA3F95EF9BE2FC4B5AAE2E69BCD6FB5D2F0D9FF34404F0610CAD98"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/baseline/roadmap-v100-before-L2-default.md",
+      "bytes": 178969,
+      "sha256": "DDDE55177E6F10AC547335A9DEA8577BF3FE6A7AF98D0F47FE672C8224D425F6"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/baseline/S5-v100-before-L2-default.md",
+      "bytes": 26081,
+      "sha256": "16B4C59260B9102E2ADBED2A9A7DFD24582116100E90ABB1B2419CDDB08A2B04"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/baseline/S6-v100-before-L2-default.md",
+      "bytes": 23404,
+      "sha256": "8F2D33C27B077EB4AF57CA5CDE2C4F344E54DEE49095867BE10106478FA7FB46"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/AH3D-SCRIPTS.md",
+      "bytes": 2755,
+      "sha256": "7FCE49CC0687A59D8B1A3D9BF415232BCC9BDF97E3E21A6FC497AFB95833C6F3"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/config.py",
+      "bytes": 23141,
+      "sha256": "855BFAD25260890BD08DBDD74CFC35BA41CE4F09ADB134B8A501125B10FD575E"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/main2.py",
+      "bytes": 16867,
+      "sha256": "7264E89C9B057732A22E3202E091DD831E5DE1DA17062983A2388831EEC3983E"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/manifest.json",
+      "bytes": 3545,
+      "sha256": "CFCEEFEB3FE850932B497CAFD1E165A9A637726CB7BFEE16AB0547105F8FFAA0"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/models/point_to_point_ah_3d_ecef.py",
+      "bytes": 10320,
+      "sha256": "81BC61F82B16D96B3294923D1B9AD1F355AC936BB0777EB319C62DF31762D7F5"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/models/ray_tracer_ah_3d_ecef.py",
+      "bytes": 44093,
+      "sha256": "44495B0C918DBB82F2B9D437B9B737ACCD4AD25D65EAABABA94EE1A59614A1FD"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/models/unified_hybrid_pipeline.py",
+      "bytes": 32370,
+      "sha256": "3F1009B97AA881BCD29C410EA14641528690E166C98AF39AC24226E9D8838F16"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/README.md",
+      "bytes": 58454,
+      "sha256": "4E8BF71565F3B7A2CA35CD1A946CAF31B579A5A29D7FA5E4DE4B89AE2B0FF428"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/tests/_run_production_checks.py",
+      "bytes": 5024,
+      "sha256": "10F80E3CDCF9B64D29A76A3AE3289DCA7E6521325EE540EBBBB25C93324C1428"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/tests/_verify_ah3d_physalign.py",
+      "bytes": 9865,
+      "sha256": "67AE164CF2539B8F924954B833AF59E22E5FEA4307E66EB8C73475950FDA5370"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/tests/README.md",
+      "bytes": 1815,
+      "sha256": "D1CED5E9ECDCDEC6083A1AE5AA8F70FF4DDBAE8FD49E0AAEE7E008D79423FD3A"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/bounded_checks.py",
+      "bytes": 3761,
+      "sha256": "8319BDEB11C0EC78CB930C1D15434610F718910FAFB5090F81B9DB77CFCC8B72"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/cli-evidence.json",
+      "bytes": 2791,
+      "sha256": "CC1F89F0EF88351DC8F3C5E7A63D45A059DA5DB9B587B7D40AE50B91DDC8CD5B"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/historical-version-resolution.json",
+      "bytes": 4701,
+      "sha256": "0ECFF18328D53D50D3AF7EDBF62641120138B8E7468A1B89AEDC97548BA9B6E4"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/l2-receipt.json",
+      "bytes": 777,
+      "sha256": "DAFC3A14F24DC0307E3B4C618C4379C00E97B09F3BE6EBC4FF061B77AC6EDBC5"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/l2.log",
+      "bytes": 30,
+      "sha256": "2ABDA5E73B29717775FC641E2446338B254C48738D04BE16E205840CC5980472"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/metadata-settings.log",
+      "bytes": 56,
+      "sha256": "AA72F03E050E6E69E8E3D0A9F10DDADBF017F9FF33D62F4C1AAD197D487ADBAD"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/physalign-receipt.json",
+      "bytes": 737,
+      "sha256": "BA7BE0BB876F28C42329B505FD06C96F19C747260CEDBAC8C6665D58AAAE6B6E"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/physalign.log",
+      "bytes": 77,
+      "sha256": "B143191CDD7D7C4A13DDFDEA07E3ED9758DE87AA677F6910053A70D1DCE975E7"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/physalign/engineering_result.json",
+      "bytes": 4074,
+      "sha256": "3C5959996BF6D04AD05B13B9571D06E92FF8A60DDDD9AAF588E19717361AAE11"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/runner-l2/_verify_l2_defaults/l2-defaults-result.json",
+      "bytes": 2938,
+      "sha256": "FF3EABF86BE4F299CA5738997ADC6AAED8B549FAC9A23F19FC81B20AB9421599"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/runner-l2/_verify_l2_defaults/p2p_unified_l2_test.json",
+      "bytes": 616,
+      "sha256": "D179D37DEFF99E05AE18D94FF4F86C9300F0184357AF988D8DCD1070B5C12357"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/runner-l2/_verify_l2_defaults/run.log",
+      "bytes": 102,
+      "sha256": "DDDB82D50EBC168245465C4129B8D5242C692E1FBD9194C232D3AA1303A198CF"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/runner-l2/_verify_l2_defaults/subprocess_audit.json",
+      "bytes": 4,
+      "sha256": "A5338D955B09046EC0B16F3A9625B7955C763AAE07DC722E474E6078745F932F"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/runner-l2/summary.json",
+      "bytes": 8213,
+      "sha256": "5966E88B66F8984539B21DB184E0BFD76F7703BDEC58857530F5365A29D3DC6E"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/worker-diff.patch",
+      "bytes": 40582,
+      "sha256": "61329FA565A888C6D9A555190298DA90C207C5AA850536654E5BEC3BEC9B43E5"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103/worker-report.md",
+      "bytes": 4530,
+      "sha256": "BE892E30994E504A7EC2C0D8BBB0B1FD53DED6259D73A4F022234A6C78571EBA"
+    },
+    {
+      "path": "tasks/AH3D-PH474-S5-REFLECTWGS-20261103-review.md",
+      "bytes": 6646,
+      "sha256": "8128788FB82AD95ECB69EF1F4072E4DE60B0FAE6523B474BDC86784F6D261012"
+    },
+    {
+      "path": "tasks/AH3D-PH474-S5-REFLECTWGS-20261103/AH/O_L2/request.json",
+      "bytes": 1096,
+      "sha256": "795B742F6169A992CE596D1C5FD4F6CF97880E3EC90AB225184F2098E4D7E483"
+    },
+    {
+      "path": "tasks/AH3D-PH474-S5-REFLECTWGS-20261103/closeout.json",
+      "bytes": 4383,
+      "sha256": "9489BD834F3B2839C27E81B5C53B8F58932C830CBCB4E450E7E00BF23DC72920"
+    },
+    {
+      "path": "tasks/AH3D-PH474-S5-REFLECTWGS-20261103/science-manifest.json",
+      "bytes": 110604,
+      "sha256": "463DDB039720077D6F7B6713E4C1C30767B227B3DB4C302DC640186ACA89B37F"
+    },
+    {
+      "path": "tasks/AH3D-PH474-S5-REFLECTWGS-20261103/wgs_ah.py",
+      "bytes": 6492,
+      "sha256": "60C28A3DCCA46560A567003A8E38A2B3019A12704842309D6B72706768C351A0"
+    },
+    {
+      "path": "tests/_run_production_checks.py",
+      "bytes": 5054,
+      "sha256": "5A140F18B8454EA5ACDFC7203B862098B382F19FFFA5367D7FCD8566BC167059"
+    },
+    {
+      "path": "tests/_verify_ah3d_physalign.py",
+      "bytes": 9911,
+      "sha256": "3E8D956D88655B8743985E18AE65B9106AF9A94546B3D2BE0567EAC460BA2ABF"
+    },
+    {
+      "path": "tests/_verify_l2_defaults.py",
+      "bytes": 13224,
+      "sha256": "71E6D42B3CF9D7D45BAFB8CE87A73BF7604856BB30FA70BEDB90AFBF805EA0F0"
+    },
+    {
+      "path": "tests/_verify_siaccess_request.py",
+      "bytes": 8389,
+      "sha256": "4BDAE082F716E8BF4CD2123546E750C35EAA73472A932D92C3A8EAD9DAF6CB6C"
+    },
+    {
+      "path": "tests/README.md",
+      "bytes": 2059,
+      "sha256": "F572ED72C01514348724760FA9AE49F046A351A2F91D767743A1106C5BE76348"
+    }
+  ]
+}

@@ -12,7 +12,8 @@ import json
 import numpy as np
 from scipy.integrate import DOP853
 
-from config import K_FP, UPDATE2
+from config import (AH3D_L2_PROFILE, AH3D_L2_SPATIAL_FD_BASE_KM,
+                    AH3D_PLASMA_COEFFICIENT_SI, UPDATE2)
 from utils import (
     ecef_to_geocentric,
     ecef_to_geodetic,
@@ -75,7 +76,7 @@ class RefractiveIndexAH3DECEF:
         spatial_fd_scales=(0.5, 1.0, 2.0),
         spatial_fd_stability_rtol: float = 2.0e-2,
         spatial_fd_stability_atol_n2_per_km: float = 2.0e-5,
-        integration_profile: str = "reference",
+        integration_profile: str | None = None,
         plasma_coefficient: float | None = None,
         compatibility_mode: str | None = None,
     ):
@@ -99,18 +100,21 @@ class RefractiveIndexAH3DECEF:
         self.compatibility_mode = compatibility_mode
         compat = UPDATE2["PHARLAP_RADIAL_B0"] if compatibility_mode else {}
         self.plasma_coefficient = float(
-            compat.get("plasma_coefficient", K_FP**2)
+            compat.get("plasma_coefficient", AH3D_PLASMA_COEFFICIENT_SI)
             if plasma_coefficient is None else plasma_coefficient)
         if not np.isfinite(self.plasma_coefficient) or self.plasma_coefficient <= 0.0:
             raise ValueError("plasma_coefficient must be finite and positive")
         self.spatial_fd_base_km = float(
-            compat.get("spatial_fd_base_km", 0.5)
+            compat.get("spatial_fd_base_km", UPDATE2.get(
+                "AH3D_SPATIAL_FD_BASE_KM", AH3D_L2_SPATIAL_FD_BASE_KM))
             if spatial_fd_base_km is None else spatial_fd_base_km)
         self.spatial_fd_scales = tuple(float(value) for value in spatial_fd_scales)
         self.spatial_fd_stability_rtol = float(spatial_fd_stability_rtol)
         self.spatial_fd_stability_atol_n2_per_km = float(
             spatial_fd_stability_atol_n2_per_km)
-        self.integration_profile = str(integration_profile)
+        self.integration_profile = str(
+            UPDATE2.get("AH3D_INTEGRATION_PROFILE", AH3D_L2_PROFILE)
+            if integration_profile is None else integration_profile)
         self.omega = 2.0 * np.pi * self.freq_MHz * 1.0e6
         # Use the same exact c as dispersion_D and v_g=-D_k/D_omega.
         self.k0 = self.omega / C_KM_S
@@ -473,7 +477,21 @@ def _integration_profile(name: str) -> dict:
     profiles = UPDATE2.get("AH3D_INTEGRATION", {})
     if name not in profiles:
         raise ValueError(f"unknown AH3D integration profile: {name}")
-    return dict(profiles[name])
+    settings = dict(profiles[name])
+    if ("atol_k" in settings) == ("atol_p" in settings):
+        raise ValueError("integration profile must specify exactly one of atol_k and atol_p")
+    for key in ("rtol", "atol_r_km", "ds_min_km", "ds_max_km",
+                "atol_k" if "atol_k" in settings else "atol_p"):
+        try:
+            value = float(settings[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"invalid integration profile setting: {key}") from exc
+        if not np.isfinite(value) or value <= 0.0:
+            raise ValueError(f"integration profile {key} must be finite and positive")
+        settings[key] = value
+    if settings["ds_min_km"] > settings["ds_max_km"]:
+        raise ValueError("integration profile ds_min_km exceeds ds_max_km")
+    return settings
 
 
 def launch_state_ah3d_ecef(
@@ -559,7 +577,7 @@ def integrate_fixed_path_ah3d_ecef(
     length = float(path_length_km)
     if not np.isfinite(length) or length <= 0.0:
         raise ValueError("path_length_km must be finite and positive")
-    profile_name = str(profile or model.integration_profile)
+    profile_name = str(model.integration_profile if profile is None else profile)
     settings = _integration_profile(profile_name)
     initial = launch_state_ah3d_ecef(
         model, tx_lat_deg=tx_lat_deg, tx_lon_deg=tx_lon_deg,
@@ -579,8 +597,12 @@ def integrate_fixed_path_ah3d_ecef(
         if (float(tx_height_km) <= departure_tolerance_km
                 and initial_radial_velocity <= 0.0):
             raise ValueError("surface launch must initially depart outward")
+    atol_k = (float(settings["atol_k"]) if "atol_k" in settings
+              else float(model.k0 * settings["atol_p"]))
+    if not np.isfinite(atol_k) or atol_k <= 0.0:
+        raise ValueError("resolved wavevector tolerance must be finite and positive")
     atol = np.array(
-        [settings["atol_r_km"]] * 3 + [settings["atol_k"]] * 3 + [1.0e-12])
+        [settings["atol_r_km"]] * 3 + [atol_k] * 3 + [1.0e-12])
 
     def rhs(path, state):
         return ah3d_ecef_rhs(path, state, model, medium_time_s=medium_time_s)
@@ -864,6 +886,15 @@ def integrate_fixed_path_ah3d_ecef(
         "earth_radius_km": model.earth_radius_km,
         "integrator": "DOP853",
         "integration_profile": profile_name,
+        "integration_settings": {
+            "rtol": settings["rtol"],
+            "atol_r_km": settings["atol_r_km"],
+            "atol_p": settings.get("atol_p"),
+            "atol_k": atol_k,
+            "ds_min_km": settings["ds_min_km"],
+            "ds_max_km": settings["ds_max_km"],
+            "group_state_atol": 1.0e-12,
+        },
         "integration_scope": (
             ("wgs84_physical_events" if
              model.coordinate_model == WGS84_COORDINATE_MODEL

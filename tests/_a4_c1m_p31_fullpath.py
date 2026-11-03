@@ -180,6 +180,176 @@ class RadialFullPath:
                 'natural_group_end':self.group_end,'natural_endpoint':self.endpoint.copy()}
 
 
+class LocalRadialPath:
+    """Radial invariant quadrature on a prescribed upward, nonturning prefix."""
+
+    def __init__(self, field, x0, p0, coefficient, frequency_MHz, length=100., eps=2e-10):
+        self.h = np.asarray(field['h'], float)
+        self.c = np.asarray(field['coefficients'], float)
+        self.poly = PPoly(self.c, self.h, extrapolate=False)
+        self.radius = 6371.
+        self.policy = 'strict'
+        self.alpha = float(coefficient)/(float(frequency_MHz)*1e6)**2
+        self.x0, self.p0 = np.asarray(x0, float), np.asarray(p0, float)
+        self.r0 = float(np.linalg.norm(self.x0))
+        self.er = self.x0/self.r0
+        radial = float(self.p0 @ self.er)
+        transverse = self.p0-radial*self.er
+        if radial <= 0 or np.linalg.norm(transverse) == 0:
+            raise ValueError('Local reference requires upward nonvertical launch')
+        self.et = transverse/np.linalg.norm(transverse)
+        self.J = self.r0*np.linalg.norm(transverse)
+        self.E = float(self.p0 @ self.p0)+self.alpha*float(self.poly(self.r0-self.radius))
+        if abs(self.E-1.) > 1e-10:
+            raise ValueError('Initial dispersion mismatch')
+        self.eps, self.s_end = eps, float(length)
+        lower, upper = self.r0, min(self.r0+length, self.radius+self.h[-1])
+        invalid_upper = None
+        for _ in range(60):
+            try:
+                distance = self.integrals(self.r0, upper)[0]
+            except ValueError:
+                invalid_upper = upper
+                upper = (lower+upper)/2
+                continue
+            if distance >= length:
+                break
+            lower = upper
+            upper = ((lower+invalid_upper)/2 if invalid_upper is not None
+                     else min(self.r0+2*(lower-self.r0), self.radius+self.h[-1]))
+            if upper <= lower:
+                raise ValueError('Local reference cannot cover the prescribed prefix')
+        else:
+            raise ValueError('Turn/cutoff prevents local prefix coverage')
+        self.r_end = brentq(lambda r: self.integrals(self.r0, r)[0]-length,
+                           self.r0, upper, xtol=2e-12)
+        end = self.query([length])
+        self.endpoint, self.group_end = end['xyz'][-1], float(end['group'][-1])
+
+    def n2(self, r):
+        value = float(self.poly(r-self.radius))
+        if not np.isfinite(value) or value < 0:
+            raise ValueError('Local reference outside supported nonnegative medium')
+        return self.E-self.alpha*value
+
+    def dn2(self, r):
+        return -self.alpha*float(self.poly.derivative()(r-self.radius))
+
+    def integrals(self, a, b):
+        cuts = np.r_[a, self.radius+self.h[(self.radius+self.h > a) & (self.radius+self.h < b)], b]
+        values = np.zeros(3)
+        for lo, hi in zip(cuts[:-1], cuts[1:]):
+            def component(r, i):
+                n2 = self.n2(r)
+                q2 = n2-(self.J/r)**2
+                if n2 <= 0 or q2 <= 0:
+                    raise ValueError('Turn/cutoff in local prefix')
+                return (math.sqrt(n2), self.J/r**2, 1.)[i]/math.sqrt(q2)
+            values += [quad(component, lo, hi, args=(i,), epsabs=self.eps,
+                            epsrel=self.eps, limit=100)[0] for i in range(3)]
+        return values
+
+    def query(self, s):
+        s = np.atleast_1d(np.asarray(s, float))
+        if np.any(s < 0) or np.any(s > self.s_end+1e-9) or np.any(np.diff(s) < 0):
+            raise ValueError('Invalid local absolute arc-length query')
+        xyz, p, group = [], [], []
+        previous_r, previous_s, theta, g = self.r0, 0., 0., 0.
+        for value in s:
+            delta = float(value)-previous_s
+            r = (self.r_end if value == self.s_end else previous_r if delta == 0 else brentq(
+                lambda r: self.integrals(previous_r, r)[0]-delta,
+                previous_r, min(previous_r+delta*1.000001, self.r_end), xtol=2e-12))
+            integral = self.integrals(previous_r, r)
+            theta += integral[1]; g += integral[2]
+            er = math.cos(theta)*self.er+math.sin(theta)*self.et
+            et = -math.sin(theta)*self.er+math.cos(theta)*self.et
+            n2 = self.n2(r)
+            xyz.append(r*er)
+            p.append(math.sqrt(n2-(self.J/r)**2)*er+self.J/r*et)
+            group.append(g)
+            previous_r, previous_s = r, float(value)
+        p = np.asarray(p)
+        return {'s': s, 'xyz': np.asarray(xyz), 'p': p, 'group': np.asarray(group),
+                'tangent': p/np.linalg.norm(p, axis=1)[:, None]}
+
+
+def polynomial_precision_report(reference):
+    """Exact binary64 medium; precision and quadrature differences are estimates."""
+    def exact(value):
+        numerator, denominator = float(value).as_integer_ratio()
+        return mp.mpf(numerator)/denominator
+
+    rows = []
+    for dps, order in ((80, 32), (120, 32), (160, 32), (160, 48), (160, 64)):
+        with mp.workdps(dps):
+            h = [exact(v) for v in reference.h]
+            c = [[exact(v) for v in row] for row in reference.c]
+            radius, alpha, E, J = map(exact, (reference.radius, reference.alpha, reference.E, reference.J))
+            r0 = exact(reference.r0)
+            nodes, weights = mp.gauss_quadrature(order, 'legendre')
+            def ne(r, k):
+                t = r-radius-h[k]
+                return ((c[0][k]*t+c[1][k])*t+c[2][k])*t+c[3][k]
+            def q(r, k):
+                return (E-alpha*ne(r, k))*r*r-J*J
+            local = isinstance(reference, LocalRadialPath)
+            if local:
+                end = exact(reference.r_end)
+                cuts = [r0]+[radius+v for v in h if r0 < radius+v < end]+[end]
+            else:
+                kturn = reference.turn_segment
+                rt = mp.findroot(lambda r: q(r, kturn), exact(reference.rt),
+                                 tol=mp.power(10, -dps+10))
+                taylor = [mp.diff(lambda r: q(r, kturn), rt, i)/mp.factorial(i) for i in range(1, 6)]
+                cuts = sorted([mp.mpf(0), mp.sqrt(rt-r0)]+
+                              [mp.sqrt(rt-radius-v) for v in h if r0 < radius+v < rt])
+            total = [mp.mpf(0)]*3
+            cumulative = []
+            for lo, hi in zip(cuts[:-1], cuts[1:]):
+                middle, half = (lo+hi)/2, (hi-lo)/2
+                rmid = middle if local else rt-middle*middle
+                k = max(0, min(len(h)-2, int(np.searchsorted(reference.h, float(rmid-radius))-1)))
+                subtotal = [mp.mpf(0)]*3
+                for node, weight in zip(nodes, weights):
+                    v = middle+half*node
+                    r = v if local else rt-v*v
+                    n = mp.sqrt(E-alpha*ne(r, k))
+                    if local:
+                        factor = r/mp.sqrt(q(r, k))
+                        components = (factor*n, factor*J/r**2, factor)
+                    else:
+                        delta = -v*v
+                        radicand = sum(t*delta**i for i, t in enumerate(taylor, 1)) if k == kturn else q(r, k)
+                        factor = 2*v/mp.sqrt(radicand)
+                        components = (factor*n*r, factor*J/r, factor*r)
+                    for i in range(3):
+                        subtotal[i] += half*weight*components[i]
+                total = [a+b for a, b in zip(total, subtotal)]
+                cumulative.append([mp.nstr(v, dps) for v in total])
+            if not local:
+                total = [2*v for v in total]
+            rows.append({'dps': dps, 'order': order, 'integrals': [mp.nstr(v, dps) for v in total],
+                         'cumulative': cumulative})
+    with mp.workdps(170):
+        estimates = []
+        for a, b in ((0, 1), (1, 2), (2, 3), (3, 4)):
+            changes = [max(abs(mp.mpf(x[i])-mp.mpf(y[i])) for x, y in zip(rows[a]['cumulative'], rows[b]['cumulative'])) for i in range(3)]
+            estimates.append([float(v) for v in changes])
+        final = [float(mp.mpf(v)) for v in rows[-1]['integrals']]
+    scipy_values = (reference.integrals(reference.r0, reference.r_end) if local
+                    else 2*reference.half)
+    differences = np.abs(np.asarray(final)-scipy_values)
+    estimated = 2*np.max(np.asarray(estimates), axis=0)+differences
+    position_m = float((estimated[0]+reference.r0*estimated[1])*1000)
+    return {'method': 'frozen binary64 polynomial; Gauss-Legendre split at every knot; turning r=rt-u^2',
+            'interval_certified': False, 'precision_quadrature_rows': rows,
+            'precision_quadrature_changes': estimates, 'binary64_integral_difference': differences.tolist(),
+            'position_error_estimate_m': position_m,
+            'group_error_estimate_rel': float(estimated[2]/reference.group_end),
+            'constant_conversion': 'float.as_integer_ratio; alpha/E/J frozen from reference construction'}
+
+
 def compare_natural(a, b):
     """Never replace independent natural endpoints by common-prefix endpoints."""
     if a['termination'] != 'ground' or b['termination'] != 'ground':
@@ -209,10 +379,11 @@ def cartesian_control(reference, rtol=2e-12, max_step=.5):
     def ground(s,y):
         return np.linalg.norm(y[:3])-reference.r0 if s > 1e-7 else 1e-7
     ground.terminal=True; ground.direction=-1
-    result = solve_ivp(rhs,(0,reference.s_end*1.05),np.r_[reference.x0,reference.p0,0.],
+    local = isinstance(reference, LocalRadialPath)
+    result = solve_ivp(rhs,(0,reference.s_end if local else reference.s_end*1.05),np.r_[reference.x0,reference.p0,0.],
                        method='DOP853',rtol=rtol,atol=rtol*.01,max_step=max_step,
-                       events=ground,dense_output=True)
-    if not len(result.t_events[0]):
+                       events=None if local else ground,dense_output=True)
+    if not result.success or (not local and not len(result.t_events[0])):
         raise ValueError('Cartesian control did not land')
     return result
 

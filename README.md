@@ -4,15 +4,23 @@
 
 **测试链路**：TX @ 30°N 120°E → RX @ 1169 km，f = 10 MHz，2020-06-01 12:00 UT
 
-**当前生产链（2026-07-21）**：`main.py`/`main2.py` -> `models/unified_hybrid_pipeline.py` -> ECEF AH3D/P2P；输入采用PHaRLAP一致的球形地心纬经高。旧2D/local-Cartesian射线、P2P、local_2p5d PE及tube/radar源码已移至`legacy/`，禁止生产模块导入。
+**当前生产链**：`main.py`/`main2.py` -> `models/unified_hybrid_pipeline.py` -> ECEF AH3D/P2P；坐标由 `AH3D_COORDINATE_MODEL` 指定，现默认 WGS84 测地纬经高，也支持显式球形地心坐标。旧2D/local-Cartesian射线、P2P、local_2p5d PE及tube/radar源码已移至`legacy/`，禁止生产模块导入。
 
 **文档边界**：第3至10节保留Phase 1-7历史实现说明，所列`legacy.models.*`只能用于旧结果复核，不代表当前生产接口。A4当前执行状态与验收以`word/a4_pharlap_external_validation_implementation_plan.txt`和`word/a4_c1_prep_chapman_high_low_implementation_plan.txt`为准。
+
+## AH3D 生产与研究精度：L2（2026-11-03）
+
+直接 ECEF 模型、正式 fan 和 P2P 求解统一默认 `L2`：`rtol=1e-10`、位置绝对容差 `1e-8 km`、无量纲波法线容差 `atol_p=1e-12`、初始步长 `0.002 km` 和最大步长 `0.5 km`。积分状态保存物理波矢 `k`，所以实际消费 `atol_k=k0*atol_p`，按本次频率计算；实际设置随轨迹元数据保存。普通模式空间差分名义基准为 `0.03125 km`，存在更细结构时可按结构尺度进一步缩小。原投影、事件、物理场和 SI 系数不因精度迁移改变。
+
+正式 API 和 `main2.py` 的 P2P 档位只接受 L2；同档的最终结果复用 L2 收敛轨迹，若有回算则仍使用 L2。旧 `smoke`、`research`、`reference` 和自定义配置只保留为底层显式诊断或历史复核用途。高精度通常增加射线积分时间，正式全场景、P2P 完整性及一般三维物理资格仍须分别验证；不能把短程回归或旧版本结果当成这些验收。历史数据及其绑定的旧源版本保留在任务快照中，活动代码更新后旧清单的活动路径哈希会按预期变化。
 
 ---
 
 ## P3 径向无磁兼容模式（2026-10-09）
 
-`UPDATE2['PHARLAP_RADIAL_B0']` 是显式、默认关闭的实验兼容配置：统一等离子体系数为 `80.61638494312905`，空间差分基准为 `0.125 km`。直接 ECEF 模型通过 `compatibility_mode="pharlap_radial_b0"` 使用同一配置；Provider 必须显式采用 `interpolation='radial_hermite'`。原物理模式保留原系数及默认差分设置。
+统一请求 `UnifiedPropagationRequest(..., plasma_coefficient=None)` 及直接 ECEF AH 模型省略系数时，普通物理模式采用 `config.AH3D_PLASMA_COEFFICIENT_SI=80.61638587963631`（Hz^2 m^3，已接受 SI_AFFINE 参考的冻结值，见 `S/run_reference.py`）。显式有限正值优先；PH 兼容模式保留 `80.61638494312905`。传入 `plasma_coefficient=config.K_FP**2` 可复现旧普通模式系数。ECEF 碰撞吸收消费射线元数据中的实际系数并校验，旧射线缺字段时回退 `K_FP**2`。共享 `config.K_FP`、Ne 生成及低层独立色散/吸收函数的省略参数默认保持原值。该局部修复不提升 PH 专属资格、完整 S3 或一般三维/O-X 验收状态。
+
+`UPDATE2['PHARLAP_RADIAL_B0']` 是显式、默认关闭的实验兼容配置：统一等离子体系数为 `80.61638494312905`，空间差分基准为 `0.125 km`。直接 ECEF 模型通过 `compatibility_mode="pharlap_radial_b0"` 使用同一配置；Provider 必须显式采用 `interpolation='radial_hermite'`。普通物理模式使用上述 SI 系数和 L2 差分默认值。
 
 支持范围限定为半径 6371 km 球面、横向均匀径向网格、零磁场、无碰撞；内部局部传播不得穿越非零密度边界。中心节点斜率 Hermite 的整个区间必须非负，输入不满足时明确拒绝。当前原光滑入口输入在 18–20 km 单元产生负密度，不能通过裁剪继续执行，也不能据此声明全程兼容通过。实施与科学验收分别记录于 P3 报告。
 

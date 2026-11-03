@@ -19,6 +19,7 @@ TESTS = (
     "_verify_absorption_consistency.py",
     "_verify_a4_c0r6_entry_migration.py",
     "_verify_legacy_source_separation.py",
+    "_verify_l2_defaults.py",
 )
 
 

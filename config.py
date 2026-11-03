@@ -16,6 +16,13 @@ E_C    = 1.602e-19    # Electron charge [C]
 M_E    = 9.109e-31    # Electron mass   [kg]
 EPS0   = 8.854e-12    # Vacuum permittivity [F/m]
 K_FP   = 8.980        # fp [Hz] = K_FP * sqrt(Ne [m⁻³])
+AH3D_PLASMA_COEFFICIENT_SI = 80.61638587963631  # Hz^2 m^3; accepted SI_AFFINE frozen reference.
+AH3D_L2_PROFILE = 'L2'
+AH3D_L2_SPATIAL_FD_BASE_KM = 0.03125
+AH3D_L2_SETTINGS = {
+    'rtol': 1.0e-10, 'atol_r_km': 1.0e-8, 'atol_p': 1.0e-12,
+    'ds_min_km': 0.002, 'ds_max_km': 0.5,
+}
 
 # ── Formal PHaRLAP-compatible spherical link contract ────────────────────────
 EARTH_MODEL = {
@@ -251,6 +258,8 @@ RT_3D = {
 # P2P_3D: parameters for 3-D P2P Newton shooter
 P2P_3D = {
     'seed_source': 'internal_scan',  # internal_scan | fan_warm_start | explicit_list
+    'solve_profile': AH3D_L2_PROFILE,
+    'final_retrace_profile': AH3D_L2_PROFILE,
     'n_init':      18,     # full-domain coarse landing-map samples
     'tol_km':      5.0,    # Newton convergence tolerance [km] (looser than 2-D)
     'd_beta':      0.05,   # Jacobian step: elevation [deg]
@@ -374,8 +383,10 @@ UPDATE2 = {
         'horizontal_step_deg': 1.0,
         'height_step_km': 25.0,
     },
-    'AH3D_INTEGRATION_PROFILE': 'research',
+    'AH3D_INTEGRATION_PROFILE': AH3D_L2_PROFILE,
+    'AH3D_SPATIAL_FD_BASE_KM': AH3D_L2_SPATIAL_FD_BASE_KM,
     'AH3D_INTEGRATION': {
+        AH3D_L2_PROFILE: dict(AH3D_L2_SETTINGS),
         'smoke': {'rtol': 3.0e-5, 'atol_r_km': 1.0e-3, 'atol_k': 1.0e-7,
                   'ds_min_km': 0.05, 'ds_max_km': 5.0},
         'research': {'rtol': 3.0e-7, 'atol_r_km': 1.0e-5, 'atol_k': 1.0e-9,

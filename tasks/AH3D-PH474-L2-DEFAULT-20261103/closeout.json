@@ -1,0 +1,131 @@
+{
+  "task_id": "AH3D-PH474-L2-DEFAULT-20261103",
+  "status": "ACCEPT_L2_FORMAL_DEFAULT_MIGRATION",
+  "closed_at": "2026-11-03T11:34:53.3996097+00:00",
+  "head": "4be052c0c69f31a631beb8ed823c13d539036274",
+  "code_identity": "HEAD plus candidate source hashes; no commit created",
+  "candidate_manifest_sha256": "11209981EBAEE5EDD549F46D10DFB763C142B0463D944EB917E4AF6DF2817BB0",
+  "candidate_leaves": 53,
+  "candidate_drift": 0,
+  "actual_reviewer": "/root/p31_sikey_review",
+  "review_sha256": "061194417D350DC6A52FCE6DB36B75E792BD1A101E8E7CD452833520A55F3C4B",
+  "roadmap_version": 101,
+  "policy": {
+    "formal_AH_production": "L2",
+    "formal_AH_research": "L2",
+    "future_formal_AH_outputs": "L2",
+    "formal_low_profile_requests": "REJECT",
+    "low_level_explicit_diagnostics": "RETAINED",
+    "independent_reference_precision": "OWN_STRICTER_CRITERIA_NOT_DOWNGRADED",
+    "compatibility_controls": "EXPLICIT_HISTORICAL_SEMANTICS_NOT_NEW_PHYSICAL_ACCEPTANCE"
+  },
+  "L2": {
+    "rtol": 1E-10,
+    "atol_r_km": 1E-08,
+    "atol_p": 1E-12,
+    "atol_k": "model.k0*atol_p per frequency",
+    "nominal_first_step_km": 0.002,
+    "first_step_rule": "min(.002 km, path_length); not a hard minimum",
+    "max_step_km": 0.5,
+    "adaptive_steps_may_be_smaller": true,
+    "nominal_spatial_fd_base_km": 0.03125,
+    "fine_structure_may_reduce_FD": true,
+    "actual_parameters_recorded": true
+  },
+  "validation": {
+    "new_L2_real_short_traces": 8,
+    "L2_max_path_km": 0.25,
+    "physalign_real_short_traces": 2,
+    "physalign_max_path_km": 0.05,
+    "total_real_short_traces": 10,
+    "frequencies_MHz": [
+      8,
+      12
+    ],
+    "routing": "STUBS_SEPARATE_FROM_REAL_INTEGRATION",
+    "new_selected_runner_case": "PASS",
+    "physalign": "PASS",
+    "CLI": "PARSER_HELP_AND_REJECTION_ONLY",
+    "metadata_settings": "TARGETED_PASS_AFTER_LABEL_CHANGE",
+    "whole_runner_suite": "NOT_RUN",
+    "full_P2P": "NOT_RUN",
+    "long_paths": "NOT_RUN",
+    "PH_MATLAB_IRI_IGRF_REA": "NOT_RUN"
+  },
+  "test_byte_chronology": {
+    "full_8_trace_run": "BEFORE_TWO_POST_RUN_SOURCE_EDITS",
+    "post_run_edits": [
+      {
+        "path": "models/unified_hybrid_pipeline.py",
+        "change": "one feature_gates fallback label research to L2",
+        "scope": "metadata only"
+      },
+      {
+        "path": "tests/_verify_l2_defaults.py",
+        "change": "new missing-profile label assertions at reviewed lines150-155",
+        "scope": "tested through settings_checks"
+      }
+    ],
+    "targeted_evidence": "metadata-settings.log",
+    "old_runner_hashes": "Reviewer reconstructed both full-run hashes exactly; no claim final bytes ran original8 traces",
+    "subsequent_changes": "documentation corrections only; no core/integration changes or repeated traces"
+  },
+  "historical_version": {
+    "before_existing_files": 10,
+    "WGS_528_current_matches": 522,
+    "WGS_528_resolved_original_snapshots": 6,
+    "cleanup_13_current_matches": 11,
+    "cleanup_13_resolved_original_snapshots": 2,
+    "unexplained_drift": 0,
+    "old_manifests_and_raw_data_modified": false,
+    "original_user_worktree_modifications_preserved": true
+  },
+  "scientific_qualification": {
+    "new_general_3D": "NOT_GRANTED",
+    "new_full_P2P": "NOT_GRANTED",
+    "long_path_performance": "UNVERIFIED",
+    "PH_full_physical": "FAIL_RETAINED",
+    "mechanism_shares": "UNKNOWN_RETAINED",
+    "formal_SI_physical": "0/26_RETAINED",
+    "formal_old_physical": "0/26_RETAINED",
+    "historical_compatibility": "18/26_RETAINED"
+  },
+  "next_direction": "S6 existing attribution and applicability consolidation; no next science package automatically started",
+  "bindings": [
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103-review.md",
+      "bytes": 4890,
+      "sha256": "061194417D350DC6A52FCE6DB36B75E792BD1A101E8E7CD452833520A55F3C4B"
+    },
+    {
+      "path": "tasks/AH3D-PH474-L2-DEFAULT-20261103-report.md",
+      "bytes": 4572,
+      "sha256": "D478752735741D70FC9D622581658A977EB07702D9DCAADCE269ECA5EA6AFDE5"
+    },
+    {
+      "path": "tasks/AH3D-PH474-ROADMAP-20261015-plan.md",
+      "bytes": 181513,
+      "sha256": "A55FC2328B37A03696B7828CFC00CB9E897D2E067AD3D89888DBDC181C3A7D01"
+    },
+    {
+      "path": "tasks/AH3D-PH474-ROADMAP-20261015/S5-plan.md",
+      "bytes": 27885,
+      "sha256": "FC78E46B31A4F3071C26063084235FEAFBD89A444E5D5D7E8BD188A6B135406D"
+    },
+    {
+      "path": "tasks/AH3D-PH474-ROADMAP-20261015/S6-plan.md",
+      "bytes": 25032,
+      "sha256": "C6FBD191065E564F808DC20E00EB10B7DE421FC0151A1D5237E34ECC6F2E6CE9"
+    },
+    {
+      "path": "AH3D-SCRIPTS.md",
+      "bytes": 3432,
+      "sha256": "E0B5A099E9A2B669C8CEFED5DCF1777C502F30B2810C720B9035E4BC2903F488"
+    },
+    {
+      "path": "tests/README.md",
+      "bytes": 2059,
+      "sha256": "F572ED72C01514348724760FA9AE49F046A351A2F91D767743A1106C5BE76348"
+    }
+  ]
+}

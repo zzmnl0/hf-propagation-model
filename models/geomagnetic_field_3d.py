@@ -107,6 +107,8 @@ class IGRFGridGeomagneticField3D:
             (self.latitude_deg, self.longitude_deg, self.height_km),
             self.b_ecef_T, method=self.interpolation,
             bounds_error=True,
+            **({"solver_args": {"rtol": 1.0e-12, "atol": 0.0}}
+               if self.interpolation == "cubic" else {}),
         )
 
     @classmethod

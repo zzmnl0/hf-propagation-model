@@ -66,10 +66,15 @@ def complex_refractive_index_ah(
     wave_mode: str = "O",
     geomag: dict | None = None,
     b_hat=None,
+    *,
+    plasma_coefficient: float | None = None,
 ) -> complex:
     """Collisional Appleton-Hartree complex phase index."""
     f_hz = float(freq_MHz) * 1e6
-    X = (K_FP ** 2) * max(float(Ne_m3), 0.0) / (f_hz * f_hz)
+    coefficient = K_FP**2 if plasma_coefficient is None else float(plasma_coefficient)
+    if not np.isfinite(coefficient) or coefficient <= 0.0:
+        raise ValueError("plasma_coefficient must be finite and positive")
+    X = coefficient * max(float(Ne_m3), 0.0) / (f_hz * f_hz)
     Z = max(float(nu_s), 0.0) / (2.0 * np.pi * f_hz)
     g = GEOMAG if geomag is None else geomag
     Y = float(g.get("fH_MHz", 1.197)) / float(freq_MHz)
@@ -187,6 +192,9 @@ def complex_absorption_ecef_ray_dB(
     if frequency <= 0.0:
         raise ValueError("ray must record a positive frequency_MHz")
     branch = str(ray.get("branch_id", ray.get("wave_mode", "O"))).upper()
+    coefficient = float(ray.get("plasma_coefficient", K_FP**2))
+    if not np.isfinite(coefficient) or coefficient <= 0.0:
+        raise ValueError("ray plasma_coefficient must be finite and positive")
     b_ecef = np.asarray(ray.get("b_ecef_hat", []), dtype=float)
     if geomagnetic_provider is None:
         if b_ecef.shape != (3,) or not np.all(np.isfinite(b_ecef)):
@@ -223,7 +231,7 @@ def complex_absorption_ecef_ray_dB(
             geomag_local = geomag
         index = complex_refractive_index_ah(
             frequency, Ne, collision, segment, wave_mode=branch,
-            geomag=geomag_local, b_hat=b_hat)
+            geomag=geomag_local, b_hat=b_hat, plasma_coefficient=coefficient)
         one_way += 8.686 * 2.0 * k0_m * max(float(index.imag), 0.0) * ds_m
     one_way = float(max(one_way, 0.0))
     return {
@@ -236,6 +244,9 @@ def complex_absorption_ecef_ray_dB(
             "WGS84_ECEF_ellipsoid_height"
             if ray.get("earth_model") == "WGS84"
             else "spherical_ECEF_physical_height"),
+        "plasma_coefficient": coefficient,
+        "plasma_coefficient_source": (
+            "ray_metadata" if "plasma_coefficient" in ray else "legacy_K_FP_squared"),
         "abs_path_semantics": "one_way_path_integral_two_way_optional_multiplier",
         "branch_id": branch,
         "geomagnetic_field_semantics": (

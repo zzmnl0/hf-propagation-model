@@ -29,6 +29,13 @@ def main(out):
         grid['height_km'], 6371., interpolation='radial_pchip')
     pp = provider._radial_spline
     boundary_checks = {}
+    toy = GeocentricGridNeProvider3D(
+        np.broadcast_to([0., 1., 2.], (2, 2, 3)).copy(),
+        [29., 31.], [119., 121.], [0., 1., 2.], 6371., interpolation='radial_pchip')
+    boundary_checks['zero_value_nonzero_slope_is_not_C1_vacuum'] = bool(
+        toy.get_Ne_geocentric(30., 120., -1.) == 0.
+        and toy._radial_spline(0.) == 0.
+        and toy._radial_spline.derivative()(0.) != 0.)
     for name, lat, lon in (
         ('latitude_low', provider.latitude_deg[0] - .01, 120.),
         ('latitude_high', provider.latitude_deg[-1] + .01, 120.),

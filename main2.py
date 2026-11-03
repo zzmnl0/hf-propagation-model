@@ -171,7 +171,8 @@ def _save_p2p_summary(kind, result):
         "geom_path_km", "group_path_km", "tau_ms",
         "p2p_landing_error_km", "p2p_residual_east_north_km",
         "p2p_trace_profile", "p2p_optimization_trace_profile",
-        "p2p_final_retrace_applied", "p2p_search_scope", "p2p_seed_id",
+        "p2p_final_retrace_applied", "p2p_final_retrace_reason",
+        "p2p_search_scope", "p2p_seed_id",
         "p2p_seed_semantics", "p2p_nfev", "p2p_njev",
     )
     for mode in result.modes:
@@ -186,10 +187,11 @@ def _save_p2p_summary(kind, result):
             RUN_PRODUCTS.get("p2p_seeds")
             or cfg.P2P_3D.get("candidate_nearest", 3)),
         "solve_profile": str(
-            RUN_PRODUCTS.get("p2p_profile") or "reference"),
+            RUN_PRODUCTS.get("p2p_profile")
+            or cfg.P2P_3D.get("solve_profile", cfg.AH3D_L2_PROFILE)),
         "final_retrace_profile": str(
             RUN_PRODUCTS.get("p2p_final_profile")
-            or RUN_PRODUCTS.get("p2p_profile") or "reference"),
+            or cfg.P2P_3D.get("final_retrace_profile", cfg.AH3D_L2_PROFILE)),
         "max_nfev": int(
             RUN_PRODUCTS.get("p2p_max_nfev")
             or cfg.P2P_3D.get("max_iter", 20)),
@@ -418,13 +420,13 @@ if __name__ == "__main__":
         "--p2p-seeds", type=int, choices=range(1, 4), default=None,
         help="Nearest ground-ray seeds per O/X branch; default uses config")
     parser.add_argument(
-        "--p2p-profile", choices=("smoke", "research", "reference"),
+        "--p2p-profile", choices=("L2",),
         default=None,
-        help="P2P optimization integration profile; default is reference")
+        help="P2P optimization integration profile; default is L2")
     parser.add_argument(
-        "--p2p-final-profile", choices=("research", "reference"),
+        "--p2p-final-profile", choices=("L2",),
         default=None,
-        help="Forward-retrace converged roots at this stricter profile")
+        help="Final P2P integration profile; default is L2")
     parser.add_argument(
         "--p2p-max-nfev", type=int, choices=range(1, 21), default=None,
         help="Maximum bounded-TRF residual evaluations per local seed")

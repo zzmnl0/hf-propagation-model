@@ -1,0 +1,2 @@
+# Frozen task hashes bind exact bytes, including line endings.
+tasks/** -text

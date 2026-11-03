@@ -1,6 +1,6 @@
 A4 PHaRLAP外部验证详细实施方案
 生成日期：2026-07-20
-状态：A4-C0R及A4-C1-Prep已通过；A4-C1失败已冻结；A4-C1P/C1Q/C1T/C1W已完成；A4-C1WR已修复网格导数问题，A4-C1WR-P2PF已冻结当前严格球形ECEF cubic Chapman低/高根并通过12项门。原C1双高RMS失败仍保留；C2未准入，A4总体未完成
+状态：A4-C0R及A4-C1-Prep已通过；A4-C1失败已冻结；A4-C1P/C1Q/C1T/C1W已完成；A4-C1WR已修复网格导数问题，A4-C1WR-P2PF已冻结当前严格球形ECEF cubic Chapman低/高根并通过12项门。A4-C1G已用球对称积分确认AH3D闭合共同输入，并将PHaRLAP偏差隔离到其隐藏有效no-field介质/色散语义；未修改生产代码。原C1双高RMS失败仍保留；C2未准入，A4总体未完成
 上位计划：ah3d_full3d_wave_upgrade_plan.txt、a3rnew_accuracy_first_implementation_plan.txt
 
 A4-C0R修复门（2026-07-20）
@@ -35,6 +35,7 @@ A4-C0R修复门（2026-07-20）
 0.20 A4-C1W已完成：生产链升级为WGS84大地坐标/ECEF规范状态和位置相关IGRF-14 B(r)，O/X解析极限、D_r/D_k/D_omega、DOP853收敛、投影影子、局部B吸收和PHaRLAP可追溯性均通过。low_O、low_X、high_X同角轨迹RMS分别为0.0120、0.0811、0.2088 km，路径量均通过门槛；high_O在n2=0.5401且root_status=ok时因多尺度空间导数平台失稳被拒绝，PHaRLAP则正常穿透。最终状态implementation_defect_identified；禁止将其写成模型物理边界或完整O/X验收通过，C2继续阻断。
 0.21 A4-C1WR已完成：七种Ne/B表示隔离证明三线性Ne梯度是330 km节点附近高O拒绝主因；三次Ne+三次B为唯一满足双高D_r<=1e-4、双低控制和四射线拓扑的组合。Provider新增显式linear/cubic选项且默认linear不变，生产WGS84 IGRF明确使用cubic。H3、H6、C0R及只读验收通过；原C1双高RMS失败和Coleman旧冻结角ECEF落点失败保持。状态identified_and_repaired_grid_derivative，C2仍等待人工决策。
 0.22 A4-C1WR-P2PF已完成：当前严格球形ECEF cubic Chapman low/high reference根为21.943982528982165/39.58600244621275 deg；research/reference与Brent/正式二维TRF闭合，12项门全部通过，只读验收0 fail(s)。cubic相对Prep5 linear根仅变化0.001至0.0016 deg，旧P0C根在当前链仍偏离RX 138.022/35.471 km。该状态只关闭当前根迁移；原C1高射线失败保留，C2仍等待人工决策。
+0.23 A4-C1G已完成：共同冻结linear Chapman球对称积分下，AH3D双高轨迹RMS为0.016018/0.020255 km，PHaRLAP为2.389093/2.552176 km；PHaRLAP名义角与状态角一致，发射几何排除。用PHaRLAP输出p反推的有效n2积分后，其双高RMS降至7.79e-5/7.26e-5 km，偏差关闭超过99.996%。归因限定为raytrace_3d_sp OX_mode=0隐藏有效介质/色散或内部插值语义；按唯一归因早停规则未运行C1G-3至C1G-5。AH3D不修改，原C1失败和C2阻断保持。
 1. A4-C0已完成，机器状态passed；数值与三类图像证据均已闭环。该状态仅表示PHaRLAP运行时、真空输入单位/轴、坐标方向/尺度和非地面退出状态映射通过，不表示A4外部物理验证通过。
 2. MATLAB R2024a Update 7成功加载PHaRLAP 4.7.4 raytrace_3d_sp.mexw64；真空射线ray_label=-2，无catastrophic_error。
 3. 前250 km无配准ECEF对照：轨迹RMS差1.777205 km，最大差3.943964 km；PHaRLAP解析直线最大误差7.42e-12 km。
@@ -189,7 +190,7 @@ A4-C1Q：以PHaRLAP为标准的AH3D沿链路偏差归因与修复门
 2. C1Q-0至C1Q-4已完成四角冻结、x/y/z输运、状态/介质/常数审计、B=0规范方程闭合和单因素影子重放。
 3. 四个可解释安全变体均未满足双高80%关闭门；不存在可唯一定位且可安全写入生产代码的公式或实现缺陷。
 4. C1Q-5未进入生产修复；C1Q-6最终状态为pharlap_effective_dynamics_not_recoverable。该状态表示归因流程闭合，不表示C1通过。
-5. 执行关系固定为A4-C1 -> C1R -> C1-4 -> C1P -> C1Q -> C1T -> C1W -> C1WR -> C1WR-P2PF -> 人工决策门 -> A4-C2或后续归因。未经用户确认不得执行剩余A4。
+5. 执行关系固定为A4-C1 -> C1R -> C1-4 -> C1P -> C1Q -> C1T -> C1W -> C1WR -> C1WR-P2PF -> C1G -> 人工决策门 -> A4-C2或后续归因。未经用户确认不得执行C1G或剩余A4。
 
 A4-C1T：第三套Hamiltonian求解器筛选与FARR局部全波后备门
 
@@ -198,6 +199,14 @@ A4-C1T：第三套Hamiltonian求解器筛选与FARR局部全波后备门
 3. FARR只作为局部全波后备验证；其主瓣能量路径不得套用C1同角射线RMS门，也不得用于宣称C1Q全局Hamiltonian差异闭合。
 4. FARR论文基线约300亿网格单元并使用3000 MPI进程；当前只冻结三级配置和验收规则，未生成伪收敛结果。
 5. C1T最终状态为validation_blocked_by_build_or_compute_resources；原C1失败、C1Q归因和C2阻断状态均保持。
+
+A4-C1G：球对称高射线方程、参数与几何语义归因门
+
+1. 详细实施、守恒量、一维积分、几何差分及归因规则以word/a4_c1g_spherical_high_ray_equation_and_parameter_attribution_plan.txt为唯一执行清单。
+2. C1G位于C1WR-P2PF之后、C2之前；先用B=0球对称Chapman的一维高精度积分判断AH3D和PHaRLAP谁更符合可审计基准。
+3. 依次检查PHaRLAP默认/显式初始状态、球形/WGS84发射基、raytrace_3d_sp/raytrace_3d差分和OX_mode=0与B趋零连续性。
+4. 原C1严格B=0，位置相关IGRF不得作为直接根因；既有WGS84 IGRF O/X结果只作旁证。
+5. C1G-1/2已由球对称积分、双高/双低和PHaRLAP有效n2闭合形成唯一归因；证据不支持修改AH3D。C1G-3至C1G-5按计划早停，最终状态identified_spherical_equation_or_invariant_defect。C1G完成后仍停于人工决策门。
 
 A4-C2：冻结磁场下O/X单轨迹正式门槛
 

@@ -1,0 +1,87 @@
+{
+  "task_id": "AH3D-PH474-L2-DEFAULT-20261103",
+  "verified_at": "2026-11-03T11:22:23.4487646+00:00",
+  "before_existing_snapshots": 10,
+  "snapshot_failures": [],
+  "after_file_count": 12,
+  "after_errors": [],
+  "historical": [
+    {
+      "name": "WGS_SCIENCE_528",
+      "manifest": "tasks/AH3D-PH474-S5-REFLECTWGS-20261103/science-manifest.json",
+      "manifest_sha256": "463DDB039720077D6F7B6713E4C1C30767B227B3DB4C302DC640186ACA89B37F",
+      "leaves": 528,
+      "current_original_matches": 522,
+      "resolved_by_before_snapshots": [
+        {
+          "path": "AH3D-SCRIPTS.md",
+          "historical_sha256": "7FCE49CC0687A59D8B1A3D9BF415232BCC9BDF97E3E21A6FC497AFB95833C6F3",
+          "before_snapshot": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/AH3D-SCRIPTS.md",
+          "current_sha256": "E0B5A099E9A2B669C8CEFED5DCF1777C502F30B2810C720B9035E4BC2903F488",
+          "status": "AUTHORIZED_VERSION_CHANGE_RESOLVED_BY_ORIGINAL_BYTES"
+        },
+        {
+          "path": "config.py",
+          "historical_sha256": "855BFAD25260890BD08DBDD74CFC35BA41CE4F09ADB134B8A501125B10FD575E",
+          "before_snapshot": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/config.py",
+          "current_sha256": "15B5CD8CE765CC50F650940E2EDD0E2647C1CC36C83521BEA1F269591BCB3EB9",
+          "status": "AUTHORIZED_VERSION_CHANGE_RESOLVED_BY_ORIGINAL_BYTES"
+        },
+        {
+          "path": "models/ray_tracer_ah_3d_ecef.py",
+          "historical_sha256": "44495B0C918DBB82F2B9D437B9B737ACCD4AD25D65EAABABA94EE1A59614A1FD",
+          "before_snapshot": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/models/ray_tracer_ah_3d_ecef.py",
+          "current_sha256": "A096BB1BFB16FCE9BD9E9BFB210E645DAED6EF36D9F61454CA681A8756D1E9FA",
+          "status": "AUTHORIZED_VERSION_CHANGE_RESOLVED_BY_ORIGINAL_BYTES"
+        },
+        {
+          "path": "models/unified_hybrid_pipeline.py",
+          "historical_sha256": "3F1009B97AA881BCD29C410EA14641528690E166C98AF39AC24226E9D8838F16",
+          "before_snapshot": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/models/unified_hybrid_pipeline.py",
+          "current_sha256": "A48146E985DBF419A5A86E6B2935E7F4E64D0DAB66FDDE9FA37C8FB468E8579C",
+          "status": "AUTHORIZED_VERSION_CHANGE_RESOLVED_BY_ORIGINAL_BYTES"
+        },
+        {
+          "path": "README.md",
+          "historical_sha256": "4E8BF71565F3B7A2CA35CD1A946CAF31B579A5A29D7FA5E4DE4B89AE2B0FF428",
+          "before_snapshot": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/README.md",
+          "current_sha256": "22A64D8E2602F3A5D2EE34A2B8B296292D461F96639F08E314A1D6BA56D35C73",
+          "status": "AUTHORIZED_VERSION_CHANGE_RESOLVED_BY_ORIGINAL_BYTES"
+        },
+        {
+          "path": "tests/README.md",
+          "historical_sha256": "D1CED5E9ECDCDEC6083A1AE5AA8F70FF4DDBAE8FD49E0AAEE7E008D79423FD3A",
+          "before_snapshot": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/tests/README.md",
+          "current_sha256": "F572ED72C01514348724760FA9AE49F046A351A2F91D767743A1106C5BE76348",
+          "status": "AUTHORIZED_VERSION_CHANGE_RESOLVED_BY_ORIGINAL_BYTES"
+        }
+      ],
+      "unexpected_drift": []
+    },
+    {
+      "name": "CLEANUP_13",
+      "manifest": "tasks/AH3D-PH474-AH-CLEANUP-20261103/cleanup-manifest.json",
+      "manifest_sha256": "E699095F4F149A9D88FD01133827C90BB71C62098ED6DFCD07E089436D29D215",
+      "leaves": 13,
+      "current_original_matches": 11,
+      "resolved_by_before_snapshots": [
+        {
+          "path": "AH3D-SCRIPTS.md",
+          "historical_sha256": "7FCE49CC0687A59D8B1A3D9BF415232BCC9BDF97E3E21A6FC497AFB95833C6F3",
+          "before_snapshot": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/AH3D-SCRIPTS.md",
+          "current_sha256": "E0B5A099E9A2B669C8CEFED5DCF1777C502F30B2810C720B9035E4BC2903F488",
+          "status": "AUTHORIZED_VERSION_CHANGE_RESOLVED_BY_ORIGINAL_BYTES"
+        },
+        {
+          "path": "tests/README.md",
+          "historical_sha256": "D1CED5E9ECDCDEC6083A1AE5AA8F70FF4DDBAE8FD49E0AAEE7E008D79423FD3A",
+          "before_snapshot": "tasks/AH3D-PH474-L2-DEFAULT-20261103/before-worker/tests/README.md",
+          "current_sha256": "F572ED72C01514348724760FA9AE49F046A351A2F91D767743A1106C5BE76348",
+          "status": "AUTHORIZED_VERSION_CHANGE_RESOLVED_BY_ORIGINAL_BYTES"
+        }
+      ],
+      "unexpected_drift": []
+    }
+  ],
+  "meaning": "Historical evidence unchanged; authorized activity-source version changes resolved with exact original bytes. This does not claim historical manifests pass against migrated active source paths."
+}

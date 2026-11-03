@@ -1,0 +1,4298 @@
+{
+  "task_id": "AH3D-PH474-AH-CLEANUP-20261103",
+  "head_at_preflight": "4be052c0c69f31a631beb8ed823c13d539036274",
+  "created_at_utc": "2026-11-03T07:43:21.824125+00:00",
+  "status": "INDEXED_IN_PLACE",
+  "scope": "tests root direct *.py and tests/matlab direct *.m",
+  "definitions": {
+    "direct_original_path_bound": "Actual path field resolves to this exact current tests path; excluded_tests names and source_before copies do not count.",
+    "legacy_models_direct_import": "AST Import or ImportFrom whose unparsed import contains legacy.models; not a determination of usefulness.",
+    "current_sha_matches_recorded": "Comparison to the corresponding historical S1 digest; false preserves evidence of historical version drift.",
+    "classification": "Only the two approved old V2 files are logically archived; other legacy imports can be shared or historical and are not classified as useless."
+  },
+  "source_manifests": {
+    "s1_original": {
+      "path": "output2/a4_pharlap/diag_s1_20261013_v1/manifest.json",
+      "sha256": "830D74F5FBBEE3925DD94CFE5BA66E5F4792F646E9766743BE7EB81CD71CDFAF"
+    },
+    "s1_resume": {
+      "path": "output2/a4_pharlap/diag_s1_resume_20261014_v1/manifest.json",
+      "sha256": "7F3568FA5B78EB5B99EBDE4750FBF262B3952A509DD2864745C936B0FA087FE2"
+    }
+  },
+  "formal_runner": {
+    "path": "tests/_run_production_checks.py",
+    "sha256": "10F80E3CDCF9B64D29A76A3AE3289DCA7E6521325EE540EBBBB25C93324C1428",
+    "tests": [
+      "_verify_a4_c0r1_geometry.py",
+      "_verify_a4_c0r3_ecef_hamiltonian.py",
+      "_verify_a4_c0r6_entry_migration.py",
+      "_verify_absorption_consistency.py",
+      "_verify_legacy_source_separation.py",
+      "_verify_production_boundary.py"
+    ]
+  },
+  "counts": {
+    "python_root_files": 152,
+    "python_root_direct_original_bound": 150,
+    "python_root_direct_resume_bound": 150,
+    "python_direct_legacy_models_import": 38,
+    "matlab_files": 7,
+    "matlab_direct_original_bound": 7,
+    "matlab_direct_resume_bound": 7,
+    "formal_runner_tests": 6,
+    "current_supported_regressions": 2,
+    "logically_archived_v2": 2
+  },
+  "files": [
+    {
+      "path": "tests/_a4_c1m_p2_analysis.py",
+      "bytes": 17090,
+      "sha256": "C362E71765575BD542183416ED9401F029FBD470E738564EA1417ED343757FEF",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "C362E71765575BD542183416ED9401F029FBD470E738564EA1417ED343757FEF",
+          "recorded_bytes": 17090,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "C362E71765575BD542183416ED9401F029FBD470E738564EA1417ED343757FEF",
+          "recorded_bytes": 17090,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p2_analysis_core_v1.py",
+      "bytes": 29597,
+      "sha256": "10DC2D2674E0D4A35D76E9019066EC01903AD3BD33C338B098E6207403635F5E",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "10DC2D2674E0D4A35D76E9019066EC01903AD3BD33C338B098E6207403635F5E",
+          "recorded_bytes": 29597,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "10DC2D2674E0D4A35D76E9019066EC01903AD3BD33C338B098E6207403635F5E",
+          "recorded_bytes": 29597,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p2_analysis_core_v2.py",
+      "bytes": 50935,
+      "sha256": "170BFCA6318E9FBF2D954491CA16433043AAAB9E0A4D5DABF3E0F208FF9542AD",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "170BFCA6318E9FBF2D954491CA16433043AAAB9E0A4D5DABF3E0F208FF9542AD",
+          "recorded_bytes": 50935,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "170BFCA6318E9FBF2D954491CA16433043AAAB9E0A4D5DABF3E0F208FF9542AD",
+          "recorded_bytes": 50935,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p2_analysis_reentry_v1.py",
+      "bytes": 1665,
+      "sha256": "ABA980B1C46690451506164C42E1DE601EB78372951F736D589306B4899EF74C",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "ABA980B1C46690451506164C42E1DE601EB78372951F736D589306B4899EF74C",
+          "recorded_bytes": 1665,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "ABA980B1C46690451506164C42E1DE601EB78372951F736D589306B4899EF74C",
+          "recorded_bytes": 1665,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p2_exit.py",
+      "bytes": 22027,
+      "sha256": "CFA658AF40E379F71C12922F2BD589F21E03409740E9B85FBF01761E9EA883D9",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "CFA658AF40E379F71C12922F2BD589F21E03409740E9B85FBF01761E9EA883D9",
+          "recorded_bytes": 22027,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "CFA658AF40E379F71C12922F2BD589F21E03409740E9B85FBF01761E9EA883D9",
+          "recorded_bytes": 22027,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p2_exit_resume.py",
+      "bytes": 4868,
+      "sha256": "9637B333E58B99FF2BD49B2DF6EDDA38241DC94F2199FDA4A41C4F6453671F8D",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9637B333E58B99FF2BD49B2DF6EDDA38241DC94F2199FDA4A41C4F6453671F8D",
+          "recorded_bytes": 4868,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9637B333E58B99FF2BD49B2DF6EDDA38241DC94F2199FDA4A41C4F6453671F8D",
+          "recorded_bytes": 4868,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p2_verify.py",
+      "bytes": 82527,
+      "sha256": "B39E4447B5E6AC571A32C8808A7A3D945FBB29AF31BF73E9445984E50B578A0E",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "B39E4447B5E6AC571A32C8808A7A3D945FBB29AF31BF73E9445984E50B578A0E",
+          "recorded_bytes": 82527,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "B39E4447B5E6AC571A32C8808A7A3D945FBB29AF31BF73E9445984E50B578A0E",
+          "recorded_bytes": 82527,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p31_boundary.py",
+      "bytes": 16583,
+      "sha256": "C76F20A4605A59AF64C912FF7B7781EA452CB57846DF7600C2BAD8CC816BFD1C",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "C76F20A4605A59AF64C912FF7B7781EA452CB57846DF7600C2BAD8CC816BFD1C",
+          "recorded_bytes": 16583,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "C76F20A4605A59AF64C912FF7B7781EA452CB57846DF7600C2BAD8CC816BFD1C",
+          "recorded_bytes": 16583,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p31_boundary_endpoint.py",
+      "bytes": 7297,
+      "sha256": "7EBDB51EDF85CBBB187E7FAC686F3EBEC4E6A32AEBF48D4DCA5D291BD9D994F3",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7EBDB51EDF85CBBB187E7FAC686F3EBEC4E6A32AEBF48D4DCA5D291BD9D994F3",
+          "recorded_bytes": 7297,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7EBDB51EDF85CBBB187E7FAC686F3EBEC4E6A32AEBF48D4DCA5D291BD9D994F3",
+          "recorded_bytes": 7297,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p31_certify.py",
+      "bytes": 9853,
+      "sha256": "6F3FDF8F3FAE334CE0B2BF459B4D39F329A23971977B17E6A8A8EF7F2DB96E95",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "6F3FDF8F3FAE334CE0B2BF459B4D39F329A23971977B17E6A8A8EF7F2DB96E95",
+          "recorded_bytes": 9853,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "6F3FDF8F3FAE334CE0B2BF459B4D39F329A23971977B17E6A8A8EF7F2DB96E95",
+          "recorded_bytes": 9853,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p31_certify_finalize.py",
+      "bytes": 10075,
+      "sha256": "B2FC4D53CD223799E1B66A63623C21AFA4B9AD7029D556AF5A1CAD15F3791821",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "B2FC4D53CD223799E1B66A63623C21AFA4B9AD7029D556AF5A1CAD15F3791821",
+          "recorded_bytes": 10075,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "B2FC4D53CD223799E1B66A63623C21AFA4B9AD7029D556AF5A1CAD15F3791821",
+          "recorded_bytes": 10075,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p31_delivery.py",
+      "bytes": 13809,
+      "sha256": "7F01276235D9A622F7DE5ABF6202E11AE65088FBA1A3DD7E30317331ECA78525",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7F01276235D9A622F7DE5ABF6202E11AE65088FBA1A3DD7E30317331ECA78525",
+          "recorded_bytes": 13809,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7F01276235D9A622F7DE5ABF6202E11AE65088FBA1A3DD7E30317331ECA78525",
+          "recorded_bytes": 13809,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p31_fullpath.py",
+      "bytes": 26457,
+      "sha256": "29E246C520959D9C693F91E884F922B133F6A2D55C8EBD799C9BEC1B67F949D8",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "29E246C520959D9C693F91E884F922B133F6A2D55C8EBD799C9BEC1B67F949D8",
+          "recorded_bytes": 26457,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "29E246C520959D9C693F91E884F922B133F6A2D55C8EBD799C9BEC1B67F949D8",
+          "recorded_bytes": 26457,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p31_reference.py",
+      "bytes": 4727,
+      "sha256": "DDC0EDFAD2D944E6E20DDB7E01DB98FE67F9BD8831C32422B7815E6308116D21",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "DDC0EDFAD2D944E6E20DDB7E01DB98FE67F9BD8831C32422B7815E6308116D21",
+          "recorded_bytes": 4727,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "DDC0EDFAD2D944E6E20DDB7E01DB98FE67F9BD8831C32422B7815E6308116D21",
+          "recorded_bytes": 4727,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p3_artifacts.py",
+      "bytes": 4919,
+      "sha256": "1484FB7F4798C5D730EE88A9C1E97AC7609D1B7125BB3563594593808A010C1D",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "1484FB7F4798C5D730EE88A9C1E97AC7609D1B7125BB3563594593808A010C1D",
+          "recorded_bytes": 4919,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "1484FB7F4798C5D730EE88A9C1E97AC7609D1B7125BB3563594593808A010C1D",
+          "recorded_bytes": 4919,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p3_compare.py",
+      "bytes": 12388,
+      "sha256": "4AD4E96F4408A582ED6DF1E7DF9A986E378F93A21704BF5F4CB05D3234BC9029",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "4AD4E96F4408A582ED6DF1E7DF9A986E378F93A21704BF5F4CB05D3234BC9029",
+          "recorded_bytes": 12388,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "4AD4E96F4408A582ED6DF1E7DF9A986E378F93A21704BF5F4CB05D3234BC9029",
+          "recorded_bytes": 12388,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p3_contract.py",
+      "bytes": 3034,
+      "sha256": "B036D01C2EAED1D03C40B167FF91CA3B604AE2366A0E5B09390455F18E6D7A62",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "B036D01C2EAED1D03C40B167FF91CA3B604AE2366A0E5B09390455F18E6D7A62",
+          "recorded_bytes": 3034,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "B036D01C2EAED1D03C40B167FF91CA3B604AE2366A0E5B09390455F18E6D7A62",
+          "recorded_bytes": 3034,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p3_experiments.py",
+      "bytes": 11125,
+      "sha256": "7364F3568268100E4267DFBBE8977567919F711105F74215CAA12380EA8F1241",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7364F3568268100E4267DFBBE8977567919F711105F74215CAA12380EA8F1241",
+          "recorded_bytes": 11125,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7364F3568268100E4267DFBBE8977567919F711105F74215CAA12380EA8F1241",
+          "recorded_bytes": 11125,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p3_full_path.py",
+      "bytes": 3869,
+      "sha256": "36F27CC4D796A94630C6858C978BF060E60382BEDFA154B6A6E2464A058FD045",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "36F27CC4D796A94630C6858C978BF060E60382BEDFA154B6A6E2464A058FD045",
+          "recorded_bytes": 3869,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "36F27CC4D796A94630C6858C978BF060E60382BEDFA154B6A6E2464A058FD045",
+          "recorded_bytes": 3869,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p3_refinement_acceptance.py",
+      "bytes": 5680,
+      "sha256": "80C38C94CCE946BE39A5A9E22DFB5E0F0FCEDF44F7C49AB3DFE60AF27C00E0CA",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "80C38C94CCE946BE39A5A9E22DFB5E0F0FCEDF44F7C49AB3DFE60AF27C00E0CA",
+          "recorded_bytes": 5680,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "80C38C94CCE946BE39A5A9E22DFB5E0F0FCEDF44F7C49AB3DFE60AF27C00E0CA",
+          "recorded_bytes": 5680,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_a4_c1m_p3_refinements.py",
+      "bytes": 2875,
+      "sha256": "DA95D2ABD3B990438C0865F34CDCB7F85E3453BAB2760CF87E94E2824FB240AF",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "DA95D2ABD3B990438C0865F34CDCB7F85E3453BAB2760CF87E94E2824FB240AF",
+          "recorded_bytes": 2875,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "DA95D2ABD3B990438C0865F34CDCB7F85E3453BAB2760CF87E94E2824FB240AF",
+          "recorded_bytes": 2875,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_benchmark_p2p_ah3d.py",
+      "bytes": 46327,
+      "sha256": "FE14B28F1B9D796D664F85726EE67A2CC6963C816F3B5DF26DC58803F0A30A9E",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "import legacy.models.point_to_point_ah_3d as p2p_ah",
+        "from legacy.models.ne_provider import BaseNeProvider3D",
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D",
+        "from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "FE14B28F1B9D796D664F85726EE67A2CC6963C816F3B5DF26DC58803F0A30A9E",
+          "recorded_bytes": 46327,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "FE14B28F1B9D796D664F85726EE67A2CC6963C816F3B5DF26DC58803F0A30A9E",
+          "recorded_bytes": 46327,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_diagnose_p3_smooth_density.py",
+      "bytes": 4019,
+      "sha256": "1268FAE2C467C92ECF52DF62D6C01AC80357272412771615771133655EDD7F9B",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "1268FAE2C467C92ECF52DF62D6C01AC80357272412771615771133655EDD7F9B",
+          "recorded_bytes": 4019,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "1268FAE2C467C92ECF52DF62D6C01AC80357272412771615771133655EDD7F9B",
+          "recorded_bytes": 4019,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_probe_iri2016.py",
+      "bytes": 1222,
+      "sha256": "6984A3E450A65241F57B3A2D0FBAAD2BCA8FD965BABDFF6F84A1D0FA927224B4",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "6984A3E450A65241F57B3A2D0FBAAD2BCA8FD965BABDFF6F84A1D0FA927224B4",
+          "recorded_bytes": 1222,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "6984A3E450A65241F57B3A2D0FBAAD2BCA8FD965BABDFF6F84A1D0FA927224B4",
+          "recorded_bytes": 1222,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a3rnew_p2l_reference.py",
+      "bytes": 10537,
+      "sha256": "C52D6C22F7E6F8D991CC35C7222A3EF212E8D73C398A6E33F2B15E171F70A45F",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.p2p_mode_audit_3d import adaptive_landing_audit",
+        "from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "C52D6C22F7E6F8D991CC35C7222A3EF212E8D73C398A6E33F2B15E171F70A45F",
+          "recorded_bytes": 10537,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "C52D6C22F7E6F8D991CC35C7222A3EF212E8D73C398A6E33F2B15E171F70A45F",
+          "recorded_bytes": 10537,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a3rnew_p3_validation.py",
+      "bytes": 16926,
+      "sha256": "F13EE1B735339FB44B966BEBEEE4AB220B736BF86891115459C33F41E490618F",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D",
+        "from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D, group_velocity_ah3d, trace_single_ray_ah_3d"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "F13EE1B735339FB44B966BEBEEE4AB220B736BF86891115459C33F41E490618F",
+          "recorded_bytes": 16926,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "F13EE1B735339FB44B966BEBEEE4AB220B736BF86891115459C33F41E490618F",
+          "recorded_bytes": 16926,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a3rnew_p5_acceptance.py",
+      "bytes": 12908,
+      "sha256": "DF88B7C09E86E035575EF269D88E67018213ABA3ECEE4ED29B59D16483CFE3CC",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.p2p_mode_audit_3d import _code_hash, _hash"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "DF88B7C09E86E035575EF269D88E67018213ABA3ECEE4ED29B59D16483CFE3CC",
+          "recorded_bytes": 12908,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "DF88B7C09E86E035575EF269D88E67018213ABA3ECEE4ED29B59D16483CFE3CC",
+          "recorded_bytes": 12908,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c0r0_freeze.py",
+      "bytes": 7409,
+      "sha256": "EFB7CDDB858FE5B05EF59F9A760A641D38D50C3F35D65B1D16F858BCC53FFFCD",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "EFB7CDDB858FE5B05EF59F9A760A641D38D50C3F35D65B1D16F858BCC53FFFCD",
+          "recorded_bytes": 7409,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "EFB7CDDB858FE5B05EF59F9A760A641D38D50C3F35D65B1D16F858BCC53FFFCD",
+          "recorded_bytes": 7409,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1_attribution.py",
+      "bytes": 26668,
+      "sha256": "FAE5A1AED571E6DAFA61450BED14E4AEE9B530017BB6CDE319633FCD4FA4779A",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "FAE5A1AED571E6DAFA61450BED14E4AEE9B530017BB6CDE319633FCD4FA4779A",
+          "recorded_bytes": 26668,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "FAE5A1AED571E6DAFA61450BED14E4AEE9B530017BB6CDE319633FCD4FA4779A",
+          "recorded_bytes": 26668,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1_finalize.py",
+      "bytes": 22763,
+      "sha256": "4D1690272CD3FD9163386F5398359B986350610BB240970DDD04B4091EDBA7D9",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "4D1690272CD3FD9163386F5398359B986350610BB240970DDD04B4091EDBA7D9",
+          "recorded_bytes": 22763,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "4D1690272CD3FD9163386F5398359B986350610BB240970DDD04B4091EDBA7D9",
+          "recorded_bytes": 22763,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1_independent_roots.py",
+      "bytes": 16824,
+      "sha256": "55CDAD78E6AECB846F41FD3792C6DED2EFF4A1D93235703CE8CF31BF4E3FB59D",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "55CDAD78E6AECB846F41FD3792C6DED2EFF4A1D93235703CE8CF31BF4E3FB59D",
+          "recorded_bytes": 16824,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "55CDAD78E6AECB846F41FD3792C6DED2EFF4A1D93235703CE8CF31BF4E3FB59D",
+          "recorded_bytes": 16824,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1_prep1.py",
+      "bytes": 20752,
+      "sha256": "7E94BE1A9817E27229D9E01F291D0B17753182993C7D8A90135D8F2E749D40C3",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7E94BE1A9817E27229D9E01F291D0B17753182993C7D8A90135D8F2E749D40C3",
+          "recorded_bytes": 20752,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7E94BE1A9817E27229D9E01F291D0B17753182993C7D8A90135D8F2E749D40C3",
+          "recorded_bytes": 20752,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1_prep2.py",
+      "bytes": 13778,
+      "sha256": "80DFF2FB0FDA93C64D013FBCB5F5CC3D3CDA363494881EDBF574BBCC4CE9FCE6",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "80DFF2FB0FDA93C64D013FBCB5F5CC3D3CDA363494881EDBF574BBCC4CE9FCE6",
+          "recorded_bytes": 13778,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "80DFF2FB0FDA93C64D013FBCB5F5CC3D3CDA363494881EDBF574BBCC4CE9FCE6",
+          "recorded_bytes": 13778,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1_prep3.py",
+      "bytes": 40630,
+      "sha256": "1E46BCF96ACEA0A6F30AA383BA77D7CC9542682DE2E632F6E35639AC9DE18369",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "1E46BCF96ACEA0A6F30AA383BA77D7CC9542682DE2E632F6E35639AC9DE18369",
+          "recorded_bytes": 40630,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "1E46BCF96ACEA0A6F30AA383BA77D7CC9542682DE2E632F6E35639AC9DE18369",
+          "recorded_bytes": 40630,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1_prep4.py",
+      "bytes": 26993,
+      "sha256": "9E81FE2A7072BC5FED4FBA34A369D7692C9D03771735B252F041177786BCBBE1",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9E81FE2A7072BC5FED4FBA34A369D7692C9D03771735B252F041177786BCBBE1",
+          "recorded_bytes": 26993,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9E81FE2A7072BC5FED4FBA34A369D7692C9D03771735B252F041177786BCBBE1",
+          "recorded_bytes": 26993,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1_prep5.py",
+      "bytes": 31514,
+      "sha256": "338906F3197F79C161AC482AD6639CA85F048822F00E50A6B654D55E59953DFF",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "338906F3197F79C161AC482AD6639CA85F048822F00E50A6B654D55E59953DFF",
+          "recorded_bytes": 31514,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "338906F3197F79C161AC482AD6639CA85F048822F00E50A6B654D55E59953DFF",
+          "recorded_bytes": 31514,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1_prep6.py",
+      "bytes": 22248,
+      "sha256": "D515B1185379E3B68163A99A9C7834D4A2E10C12DAB0EE44AF10749970F31AE6",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "D515B1185379E3B68163A99A9C7834D4A2E10C12DAB0EE44AF10749970F31AE6",
+          "recorded_bytes": 22248,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "D515B1185379E3B68163A99A9C7834D4A2E10C12DAB0EE44AF10749970F31AE6",
+          "recorded_bytes": 22248,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1_validation.py",
+      "bytes": 36830,
+      "sha256": "3C2C63F26AF233091AF69D3A56474340E0B2D4914AA761CE08739B936977B730",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "3C2C63F26AF233091AF69D3A56474340E0B2D4914AA761CE08739B936977B730",
+          "recorded_bytes": 36830,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "3C2C63F26AF233091AF69D3A56474340E0B2D4914AA761CE08739B936977B730",
+          "recorded_bytes": 36830,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1_xyz_error_statistics.py",
+      "bytes": 10226,
+      "sha256": "A624974B5B4E2069D2308DEFD7F2756BDEBF3ED902D66852E0B2FC92A69F38F6",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "A624974B5B4E2069D2308DEFD7F2756BDEBF3ED902D66852E0B2FC92A69F38F6",
+          "recorded_bytes": 10226,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "A624974B5B4E2069D2308DEFD7F2756BDEBF3ED902D66852E0B2FC92A69F38F6",
+          "recorded_bytes": 10226,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1g_attribution.py",
+      "bytes": 46165,
+      "sha256": "C9832298E883B943E7BE77C96C48B5C1400B94548290ACFE9915430C4FF28905",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "C9832298E883B943E7BE77C96C48B5C1400B94548290ACFE9915430C4FF28905",
+          "recorded_bytes": 46165,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "C9832298E883B943E7BE77C96C48B5C1400B94548290ACFE9915430C4FF28905",
+          "recorded_bytes": 46165,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1m_attribution.py",
+      "bytes": 173901,
+      "sha256": "32E20BA41326F76BA3EDED7D1BF864ED4C38F7266B463D61A86E243F3047A0FE",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "32E20BA41326F76BA3EDED7D1BF864ED4C38F7266B463D61A86E243F3047A0FE",
+          "recorded_bytes": 173901,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "32E20BA41326F76BA3EDED7D1BF864ED4C38F7266B463D61A86E243F3047A0FE",
+          "recorded_bytes": 173901,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1m_p31.py",
+      "bytes": 27845,
+      "sha256": "9FEE0A4DA5D68B9FD3EF667516E303024D143664F6A7F91C0C23AAE692B2DAC5",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9FEE0A4DA5D68B9FD3EF667516E303024D143664F6A7F91C0C23AAE692B2DAC5",
+          "recorded_bytes": 27845,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9FEE0A4DA5D68B9FD3EF667516E303024D143664F6A7F91C0C23AAE692B2DAC5",
+          "recorded_bytes": 27845,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1p_pharlap_attribution.py",
+      "bytes": 51570,
+      "sha256": "8055B5DA98004DA461B274160912803E86B94E8BB5BBD3B7C3E573511E3C40C7",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "8055B5DA98004DA461B274160912803E86B94E8BB5BBD3B7C3E573511E3C40C7",
+          "recorded_bytes": 51570,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "8055B5DA98004DA461B274160912803E86B94E8BB5BBD3B7C3E573511E3C40C7",
+          "recorded_bytes": 51570,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1q_attribution.py",
+      "bytes": 64674,
+      "sha256": "A9DF5705AE6E355510743B38BED9EC439A672DC81EA20F7B4EFF889B1ED8C4F5",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "A9DF5705AE6E355510743B38BED9EC439A672DC81EA20F7B4EFF889B1ED8C4F5",
+          "recorded_bytes": 64674,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "A9DF5705AE6E355510743B38BED9EC439A672DC81EA20F7B4EFF889B1ED8C4F5",
+          "recorded_bytes": 64674,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1r_isolation.py",
+      "bytes": 42766,
+      "sha256": "8ED822BB447538D72D4A81EA3C7F957D0EFA0D629F68EDE55508A8E5BAA31F32",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "8ED822BB447538D72D4A81EA3C7F957D0EFA0D629F68EDE55508A8E5BAA31F32",
+          "recorded_bytes": 42766,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "8ED822BB447538D72D4A81EA3C7F957D0EFA0D629F68EDE55508A8E5BAA31F32",
+          "recorded_bytes": 42766,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1t_screening.py",
+      "bytes": 16190,
+      "sha256": "0F68DF02C8BDD4506FD701E75587121BE2A9DFEAB878EE4131A674537FE51C61",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "0F68DF02C8BDD4506FD701E75587121BE2A9DFEAB878EE4131A674537FE51C61",
+          "recorded_bytes": 16190,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "0F68DF02C8BDD4506FD701E75587121BE2A9DFEAB878EE4131A674537FE51C61",
+          "recorded_bytes": 16190,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1w_windows_ox_validation.py",
+      "bytes": 28994,
+      "sha256": "EA521F1EB418D497103B6D839E18A9EDA32DBFF36F8F63908C3561BA3FD51C4B",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "EA521F1EB418D497103B6D839E18A9EDA32DBFF36F8F63908C3561BA3FD51C4B",
+          "recorded_bytes": 28994,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "EA521F1EB418D497103B6D839E18A9EDA32DBFF36F8F63908C3561BA3FD51C4B",
+          "recorded_bytes": 28994,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1wr_c1_shadow.py",
+      "bytes": 4021,
+      "sha256": "3A055997286CA93DCE369B0CC53CA1BFB2D693571FCCD4902DBD15EDED0631D7",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "3A055997286CA93DCE369B0CC53CA1BFB2D693571FCCD4902DBD15EDED0631D7",
+          "recorded_bytes": 4021,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "3A055997286CA93DCE369B0CC53CA1BFB2D693571FCCD4902DBD15EDED0631D7",
+          "recorded_bytes": 4021,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1wr_grid_derivative_repair.py",
+      "bytes": 41499,
+      "sha256": "2F1916E41C5C20A80AE5C8F99FCC22C8B8C559CDC1C4C876CE1CF7957962DC61",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "2F1916E41C5C20A80AE5C8F99FCC22C8B8C559CDC1C4C876CE1CF7957962DC61",
+          "recorded_bytes": 41499,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "2F1916E41C5C20A80AE5C8F99FCC22C8B8C559CDC1C4C876CE1CF7957962DC61",
+          "recorded_bytes": 41499,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1wr_p2p_ecef_root_freeze.py",
+      "bytes": 43068,
+      "sha256": "4D8073FF084482DC78DE530163FECAE5D8C86C03C77A2573BA392675DB080F11",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "4D8073FF084482DC78DE530163FECAE5D8C86C03C77A2573BA392675DB080F11",
+          "recorded_bytes": 43068,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "4D8073FF084482DC78DE530163FECAE5D8C86C03C77A2573BA392675DB080F11",
+          "recorded_bytes": 43068,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_c1wr_p2p_high_low_regression.py",
+      "bytes": 8305,
+      "sha256": "707DF3A0CE33D07E3CE93660FC8D2449125CD79A84E956D4C908A337E52D6F60",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "707DF3A0CE33D07E3CE93660FC8D2449125CD79A84E956D4C908A337E52D6F60",
+          "recorded_bytes": 8305,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "707DF3A0CE33D07E3CE93660FC8D2449125CD79A84E956D4C908A337E52D6F60",
+          "recorded_bytes": 8305,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_a4_pharlap_c0.py",
+      "bytes": 24541,
+      "sha256": "0AB1BEEAF16408F19837AE9020B5C7591A1CF43E9120F2FED13031A68914A627",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "0AB1BEEAF16408F19837AE9020B5C7591A1CF43E9120F2FED13031A68914A627",
+          "recorded_bytes": 24541,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "0AB1BEEAF16408F19837AE9020B5C7591A1CF43E9120F2FED13031A68914A627",
+          "recorded_bytes": 24541,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_b1_vector_pe_3d.py",
+      "bytes": 44414,
+      "sha256": "142CFAF1FE8E1F5BB9FE2EF89DE44C7969AB704305F993B0A0405E5F9DFDB9DD",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "142CFAF1FE8E1F5BB9FE2EF89DE44C7969AB704305F993B0A0405E5F9DFDB9DD",
+          "recorded_bytes": 44414,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "142CFAF1FE8E1F5BB9FE2EF89DE44C7969AB704305F993B0A0405E5F9DFDB9DD",
+          "recorded_bytes": 44414,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_complex_scene_ox_p2p_report.py",
+      "bytes": 1348,
+      "sha256": "97272EF5AF42C0E59A3EFE447DF380639894B42D12CCBC5BD8BD61939C06442F",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "97272EF5AF42C0E59A3EFE447DF380639894B42D12CCBC5BD8BD61939C06442F",
+          "recorded_bytes": 1348,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "97272EF5AF42C0E59A3EFE447DF380639894B42D12CCBC5BD8BD61939C06442F",
+          "recorded_bytes": 1348,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_p3_0_0_audit.py",
+      "bytes": 13421,
+      "sha256": "97FF7CB2DDF2D34CA7F33CB2C26E2C12C260258C411018E4829F456B1D3F978A",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "97FF7CB2DDF2D34CA7F33CB2C26E2C12C260258C411018E4829F456B1D3F978A",
+          "recorded_bytes": 13421,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "97FF7CB2DDF2D34CA7F33CB2C26E2C12C260258C411018E4829F456B1D3F978A",
+          "recorded_bytes": 13421,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_run_production_checks.py",
+      "bytes": 5024,
+      "sha256": "10F80E3CDCF9B64D29A76A3AE3289DCA7E6521325EE540EBBBB25C93324C1428",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "10F80E3CDCF9B64D29A76A3AE3289DCA7E6521325EE540EBBBB25C93324C1428",
+          "recorded_bytes": 5024,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "10F80E3CDCF9B64D29A76A3AE3289DCA7E6521325EE540EBBBB25C93324C1428",
+          "recorded_bytes": 5024,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a0_scenario_factory.py",
+      "bytes": 3060,
+      "sha256": "EE59AC573D36D914875543C922B8690E11B262C73CF659CBAEA6D60BDA545CA6",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "EE59AC573D36D914875543C922B8690E11B262C73CF659CBAEA6D60BDA545CA6",
+          "recorded_bytes": 3060,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "EE59AC573D36D914875543C922B8690E11B262C73CF659CBAEA6D60BDA545CA6",
+          "recorded_bytes": 3060,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a3rnew_p2_audit.py",
+      "bytes": 2860,
+      "sha256": "84304B6BE6DABC935A6A5AF4B5C347004D1BF7AC35B5EF206E65B4C0DF9670E5",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.p2p_mode_audit_3d import adaptive_landing_audit"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "84304B6BE6DABC935A6A5AF4B5C347004D1BF7AC35B5EF206E65B4C0DF9670E5",
+          "recorded_bytes": 2860,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "84304B6BE6DABC935A6A5AF4B5C347004D1BF7AC35B5EF206E65B4C0DF9670E5",
+          "recorded_bytes": 2860,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a3rnew_p2l_reference.py",
+      "bytes": 1487,
+      "sha256": "E9E2466F97F6810AE757621307DDF79280F1861F0A64BECF7386230DA9E9550C",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "E9E2466F97F6810AE757621307DDF79280F1861F0A64BECF7386230DA9E9550C",
+          "recorded_bytes": 1487,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "E9E2466F97F6810AE757621307DDF79280F1861F0A64BECF7386230DA9E9550C",
+          "recorded_bytes": 1487,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a3rnew_p3_validation.py",
+      "bytes": 1915,
+      "sha256": "E9207D7D75777179C581681EF28800404739CBDEB201BCE1F263E9D054839271",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "E9207D7D75777179C581681EF28800404739CBDEB201BCE1F263E9D054839271",
+          "recorded_bytes": 1915,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "E9207D7D75777179C581681EF28800404739CBDEB201BCE1F263E9D054839271",
+          "recorded_bytes": 1915,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a3rnew_p5_acceptance.py",
+      "bytes": 1543,
+      "sha256": "FB109719FAC0311DBB6FD75196FCBE67D78EB85C7589E5B48BFCAA0260437794",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "FB109719FAC0311DBB6FD75196FCBE67D78EB85C7589E5B48BFCAA0260437794",
+          "recorded_bytes": 1543,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "FB109719FAC0311DBB6FD75196FCBE67D78EB85C7589E5B48BFCAA0260437794",
+          "recorded_bytes": 1543,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c0r0_freeze.py",
+      "bytes": 2224,
+      "sha256": "9405261553B669DF7FBECE5509388664327EEEB1851ED4AA40C6A5090CD0B14F",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9405261553B669DF7FBECE5509388664327EEEB1851ED4AA40C6A5090CD0B14F",
+          "recorded_bytes": 2224,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9405261553B669DF7FBECE5509388664327EEEB1851ED4AA40C6A5090CD0B14F",
+          "recorded_bytes": 2224,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c0r1_geometry.py",
+      "bytes": 7037,
+      "sha256": "9C948407039EA6E543152F09331F705F3407213868F3889B9FF26B51DE6765E7",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": true,
+      "current_supported_regression": false,
+      "classification": "FORMAL_PRODUCTION_TEST",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9C948407039EA6E543152F09331F705F3407213868F3889B9FF26B51DE6765E7",
+          "recorded_bytes": 7037,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9C948407039EA6E543152F09331F705F3407213868F3889B9FF26B51DE6765E7",
+          "recorded_bytes": 7037,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c0r2_provider.py",
+      "bytes": 13002,
+      "sha256": "F44E8A4535306DC809A47E1ECAA6D349996C231CF366D99FEB531A83C0C2BD8E",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ne_provider import GridNeProvider, ParameterizedIonosphere3DProvider"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "F44E8A4535306DC809A47E1ECAA6D349996C231CF366D99FEB531A83C0C2BD8E",
+          "recorded_bytes": 13002,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "F44E8A4535306DC809A47E1ECAA6D349996C231CF366D99FEB531A83C0C2BD8E",
+          "recorded_bytes": 13002,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c0r3_ecef_hamiltonian.py",
+      "bytes": 11078,
+      "sha256": "5D6C7E8A15182D01DD2E9273710BDF490472B5B6239CC3CC7015217EF812C6EA",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": true,
+      "current_supported_regression": false,
+      "classification": "FORMAL_PRODUCTION_TEST",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "5D6C7E8A15182D01DD2E9273710BDF490472B5B6239CC3CC7015217EF812C6EA",
+          "recorded_bytes": 11078,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "5D6C7E8A15182D01DD2E9273710BDF490472B5B6239CC3CC7015217EF812C6EA",
+          "recorded_bytes": 11078,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c0r4_events.py",
+      "bytes": 8605,
+      "sha256": "90B6549D69CE17B93CA8804833FC324C863BC89D7F402ACA22AE0B6C92C66D6B",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "90B6549D69CE17B93CA8804833FC324C863BC89D7F402ACA22AE0B6C92C66D6B",
+          "recorded_bytes": 8605,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "90B6549D69CE17B93CA8804833FC324C863BC89D7F402ACA22AE0B6C92C66D6B",
+          "recorded_bytes": 8605,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c0r5_downstream.py",
+      "bytes": 9389,
+      "sha256": "F2B13856D6473E8C4C2C68D965AC2E0E3DADA98C2180AB0BFAC19A57E9F4CE78",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.local_frame import make_ray_local_frame, sample_Ne_local_cross_section",
+        "from legacy.models.hybrid_ray_pe import apply_ray_pe_coupling_3d"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "F2B13856D6473E8C4C2C68D965AC2E0E3DADA98C2180AB0BFAC19A57E9F4CE78",
+          "recorded_bytes": 9389,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "F2B13856D6473E8C4C2C68D965AC2E0E3DADA98C2180AB0BFAC19A57E9F4CE78",
+          "recorded_bytes": 9389,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c0r6_entry_migration.py",
+      "bytes": 6888,
+      "sha256": "9E04B015C221499E13448F25F3DD2C937640269BFCAAA260CDEBD5961F2A2E0E",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": true,
+      "current_supported_regression": false,
+      "classification": "FORMAL_PRODUCTION_TEST",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9E04B015C221499E13448F25F3DD2C937640269BFCAAA260CDEBD5961F2A2E0E",
+          "recorded_bytes": 6888,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9E04B015C221499E13448F25F3DD2C937640269BFCAAA260CDEBD5961F2A2E0E",
+          "recorded_bytes": 6888,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c0r7_pharlap_vacuum.py",
+      "bytes": 14030,
+      "sha256": "482B058F634F1D80DEC05C6E124367E3D3210CF39F74FF3377BD3872153889D2",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "482B058F634F1D80DEC05C6E124367E3D3210CF39F74FF3377BD3872153889D2",
+          "recorded_bytes": 14030,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "482B058F634F1D80DEC05C6E124367E3D3210CF39F74FF3377BD3872153889D2",
+          "recorded_bytes": 14030,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c0r8_closure.py",
+      "bytes": 10070,
+      "sha256": "91816BC908DA3263C704125C18EBB7FE9C02246A67AC1B96F8DCF37545C49DB1",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "91816BC908DA3263C704125C18EBB7FE9C02246A67AC1B96F8DCF37545C49DB1",
+          "recorded_bytes": 10070,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "91816BC908DA3263C704125C18EBB7FE9C02246A67AC1B96F8DCF37545C49DB1",
+          "recorded_bytes": 10070,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1_attribution.py",
+      "bytes": 1916,
+      "sha256": "600A05B8E60ED9D958F6BD30A7D094A191A804F337D40CF9C965816CA717814B",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "600A05B8E60ED9D958F6BD30A7D094A191A804F337D40CF9C965816CA717814B",
+          "recorded_bytes": 1916,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "600A05B8E60ED9D958F6BD30A7D094A191A804F337D40CF9C965816CA717814B",
+          "recorded_bytes": 1916,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1_finalize.py",
+      "bytes": 3021,
+      "sha256": "DE5DBE25E83EB1E196C03BC78ADE18A2AAC2CBFB39D506D3077B7C7B6837AE68",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "DE5DBE25E83EB1E196C03BC78ADE18A2AAC2CBFB39D506D3077B7C7B6837AE68",
+          "recorded_bytes": 3021,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "DE5DBE25E83EB1E196C03BC78ADE18A2AAC2CBFB39D506D3077B7C7B6837AE68",
+          "recorded_bytes": 3021,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1_independent_roots.py",
+      "bytes": 1634,
+      "sha256": "7E42571E2FBC6A094A6C2E4C9303A604EBA1578F6BA52DE510409AF9342AC8CF",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7E42571E2FBC6A094A6C2E4C9303A604EBA1578F6BA52DE510409AF9342AC8CF",
+          "recorded_bytes": 1634,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7E42571E2FBC6A094A6C2E4C9303A604EBA1578F6BA52DE510409AF9342AC8CF",
+          "recorded_bytes": 1634,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1_validation.py",
+      "bytes": 2048,
+      "sha256": "91886D2BB4CC944EF12AA38DAE93547535E0491C81A367449C4223445898FD27",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "91886D2BB4CC944EF12AA38DAE93547535E0491C81A367449C4223445898FD27",
+          "recorded_bytes": 2048,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "91886D2BB4CC944EF12AA38DAE93547535E0491C81A367449C4223445898FD27",
+          "recorded_bytes": 2048,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1g_attribution.py",
+      "bytes": 4786,
+      "sha256": "541B3471F0C66D21A65FA549FBA44EAD557FC4ECDD874570284FC34AEBDF1A6E",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "541B3471F0C66D21A65FA549FBA44EAD557FC4ECDD874570284FC34AEBDF1A6E",
+          "recorded_bytes": 4786,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "541B3471F0C66D21A65FA549FBA44EAD557FC4ECDD874570284FC34AEBDF1A6E",
+          "recorded_bytes": 4786,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1m_attribution.py",
+      "bytes": 96563,
+      "sha256": "BA90461A113B66009CE6B67E9E328630F08CED9B8B08140D7014EEAC2080BDF5",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "BA90461A113B66009CE6B67E9E328630F08CED9B8B08140D7014EEAC2080BDF5",
+          "recorded_bytes": 96563,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "BA90461A113B66009CE6B67E9E328630F08CED9B8B08140D7014EEAC2080BDF5",
+          "recorded_bytes": 96563,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1m_p3.py",
+      "bytes": 32392,
+      "sha256": "48CDD40ED4C76BA86CCA1E1BA65B495A052528DA95C87A78FF884486C8B64DE1",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "48CDD40ED4C76BA86CCA1E1BA65B495A052528DA95C87A78FF884486C8B64DE1",
+          "recorded_bytes": 32392,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "48CDD40ED4C76BA86CCA1E1BA65B495A052528DA95C87A78FF884486C8B64DE1",
+          "recorded_bytes": 32392,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1m_p31_boundary_independent.py",
+      "bytes": 6315,
+      "sha256": "7DA495F4FB33941B43DF5EE31980D61E6AD3F0BFCADB63CE9C907C64413DE5A1",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7DA495F4FB33941B43DF5EE31980D61E6AD3F0BFCADB63CE9C907C64413DE5A1",
+          "recorded_bytes": 6315,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7DA495F4FB33941B43DF5EE31980D61E6AD3F0BFCADB63CE9C907C64413DE5A1",
+          "recorded_bytes": 6315,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1m_p31_fullpath_piecewise.py",
+      "bytes": 2556,
+      "sha256": "0FFBA647EFC7380CDBB83BCAA8C84552A1893CE8F6E257A04F8AFB20597D6320",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "0FFBA647EFC7380CDBB83BCAA8C84552A1893CE8F6E257A04F8AFB20597D6320",
+          "recorded_bytes": 2556,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "0FFBA647EFC7380CDBB83BCAA8C84552A1893CE8F6E257A04F8AFB20597D6320",
+          "recorded_bytes": 2556,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1m_p31_reference.py",
+      "bytes": 1463,
+      "sha256": "CC521CC02C08BAC5D15C1ED25A932B4F6A92ACF8EA769B77A0ED3581ECF96E44",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "CC521CC02C08BAC5D15C1ED25A932B4F6A92ACF8EA769B77A0ED3581ECF96E44",
+          "recorded_bytes": 1463,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "CC521CC02C08BAC5D15C1ED25A932B4F6A92ACF8EA769B77A0ED3581ECF96E44",
+          "recorded_bytes": 1463,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1m_p31_reference_independent.py",
+      "bytes": 39325,
+      "sha256": "FADE072855920B101417A46321E2BAFEA8CF1D3CC64DC4ADBA96774F8BC32654",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "FADE072855920B101417A46321E2BAFEA8CF1D3CC64DC4ADBA96774F8BC32654",
+          "recorded_bytes": 39325,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "FADE072855920B101417A46321E2BAFEA8CF1D3CC64DC4ADBA96774F8BC32654",
+          "recorded_bytes": 39325,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1p_pharlap_attribution.py",
+      "bytes": 2813,
+      "sha256": "9923B1035E759BD611E847432B5FBC3A867F5D02CE8E3DCECF5F54083F217261",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9923B1035E759BD611E847432B5FBC3A867F5D02CE8E3DCECF5F54083F217261",
+          "recorded_bytes": 2813,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9923B1035E759BD611E847432B5FBC3A867F5D02CE8E3DCECF5F54083F217261",
+          "recorded_bytes": 2813,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1q_attribution.py",
+      "bytes": 8710,
+      "sha256": "837D884EDEF5C592E7EC011B6CFDDCAAC0D68F9BC712DAE55C9FBB08C791B8CF",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "837D884EDEF5C592E7EC011B6CFDDCAAC0D68F9BC712DAE55C9FBB08C791B8CF",
+          "recorded_bytes": 8710,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "837D884EDEF5C592E7EC011B6CFDDCAAC0D68F9BC712DAE55C9FBB08C791B8CF",
+          "recorded_bytes": 8710,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1r_isolation.py",
+      "bytes": 2626,
+      "sha256": "5A2C76598F0D671B678F54AE53856A2C8AF50EFA5A0052BC864EF51CDCF1171B",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "5A2C76598F0D671B678F54AE53856A2C8AF50EFA5A0052BC864EF51CDCF1171B",
+          "recorded_bytes": 2626,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "5A2C76598F0D671B678F54AE53856A2C8AF50EFA5A0052BC864EF51CDCF1171B",
+          "recorded_bytes": 2626,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1t_screening.py",
+      "bytes": 4399,
+      "sha256": "50977230A35526047CA5C8BEEBAFA9EACB60527F3CFF209E6F11C9A1EE871468",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "50977230A35526047CA5C8BEEBAFA9EACB60527F3CFF209E6F11C9A1EE871468",
+          "recorded_bytes": 4399,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "50977230A35526047CA5C8BEEBAFA9EACB60527F3CFF209E6F11C9A1EE871468",
+          "recorded_bytes": 4399,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1w_windows_ox.py",
+      "bytes": 4474,
+      "sha256": "9E6A90A03482E7E9373A4A0539E4F6FB1D7503847ACF4F211379574F36BDA910",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9E6A90A03482E7E9373A4A0539E4F6FB1D7503847ACF4F211379574F36BDA910",
+          "recorded_bytes": 4474,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9E6A90A03482E7E9373A4A0539E4F6FB1D7503847ACF4F211379574F36BDA910",
+          "recorded_bytes": 4474,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1wr_grid_derivative_repair.py",
+      "bytes": 5617,
+      "sha256": "01FC3F063DCB2991E66C3A9FEDF175C02864989F8F6B11A8982C367A28294ED2",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "01FC3F063DCB2991E66C3A9FEDF175C02864989F8F6B11A8982C367A28294ED2",
+          "recorded_bytes": 5617,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "01FC3F063DCB2991E66C3A9FEDF175C02864989F8F6B11A8982C367A28294ED2",
+          "recorded_bytes": 5617,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_c1wr_p2p_ecef_root_freeze.py",
+      "bytes": 5675,
+      "sha256": "05FFC3347160B0EB782F7977F0FA5BE2B87826727C7219D547AF3584ED02CE5E",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "05FFC3347160B0EB782F7977F0FA5BE2B87826727C7219D547AF3584ED02CE5E",
+          "recorded_bytes": 5675,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "05FFC3347160B0EB782F7977F0FA5BE2B87826727C7219D547AF3584ED02CE5E",
+          "recorded_bytes": 5675,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_a4_pharlap_c0.py",
+      "bytes": 1414,
+      "sha256": "127733305F12E1EE9BAFCC659270C1E0946A71DE669C4296426F5CF2746D3089",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "127733305F12E1EE9BAFCC659270C1E0946A71DE669C4296426F5CF2746D3089",
+          "recorded_bytes": 1414,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "127733305F12E1EE9BAFCC659270C1E0946A71DE669C4296426F5CF2746D3089",
+          "recorded_bytes": 1414,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_absorption.py",
+      "bytes": 7887,
+      "sha256": "DD1C1F7982A68D6DF799F5758767B01BCD460AE84F3EE200748C45B2C19A7B61",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.hybrid_model import HybridPropagationModel"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "DD1C1F7982A68D6DF799F5758767B01BCD460AE84F3EE200748C45B2C19A7B61",
+          "recorded_bytes": 7887,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "DD1C1F7982A68D6DF799F5758767B01BCD460AE84F3EE200748C45B2C19A7B61",
+          "recorded_bytes": 7887,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_absorption_3d.py",
+      "bytes": 3260,
+      "sha256": "BBFCD631A5E4FE703A0AFD038AE6AABA6C6863C158A5D472A0369FAA3C623134",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "BBFCD631A5E4FE703A0AFD038AE6AABA6C6863C158A5D472A0369FAA3C623134",
+          "recorded_bytes": 3260,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "BBFCD631A5E4FE703A0AFD038AE6AABA6C6863C158A5D472A0369FAA3C623134",
+          "recorded_bytes": 3260,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_absorption_consistency.py",
+      "bytes": 1651,
+      "sha256": "8A179237A26472E68BA4635D691619323459E83571EB3B0E6C2208C4F869FEBE",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": true,
+      "current_supported_regression": false,
+      "classification": "FORMAL_PRODUCTION_TEST",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "8A179237A26472E68BA4635D691619323459E83571EB3B0E6C2208C4F869FEBE",
+          "recorded_bytes": 1651,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "8A179237A26472E68BA4635D691619323459E83571EB3B0E6C2208C4F869FEBE",
+          "recorded_bytes": 1651,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_AH3D.py",
+      "bytes": 4212,
+      "sha256": "6681BAD4F245392BC352CFC41ADEC31FBCA2BC2F1194F74ECF8BF5AC58319347",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D, trace_single_ray_3d",
+        "from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D, trace_single_ray_ah_3d"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "6681BAD4F245392BC352CFC41ADEC31FBCA2BC2F1194F74ECF8BF5AC58319347",
+          "recorded_bytes": 4212,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "6681BAD4F245392BC352CFC41ADEC31FBCA2BC2F1194F74ECF8BF5AC58319347",
+          "recorded_bytes": 4212,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_ah3d_convergence.py",
+      "bytes": 1713,
+      "sha256": "4619E6F8ACE20EC3FB89F2AE379FDDF3B399F3261CD13C155BC54113CB03C847",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D",
+        "from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D, trace_single_ray_ah_3d"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "4619E6F8ACE20EC3FB89F2AE379FDDF3B399F3261CD13C155BC54113CB03C847",
+          "recorded_bytes": 1713,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "4619E6F8ACE20EC3FB89F2AE379FDDF3B399F3261CD13C155BC54113CB03C847",
+          "recorded_bytes": 1713,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_ah3d_dispersion.py",
+      "bytes": 2894,
+      "sha256": "861F15BB1D4ED362331504D2356BBAF61434346002419B972D370A9080BFEABA",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D",
+        "from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D, group_velocity_ah3d"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "861F15BB1D4ED362331504D2356BBAF61434346002419B972D370A9080BFEABA",
+          "recorded_bytes": 2894,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "861F15BB1D4ED362331504D2356BBAF61434346002419B972D370A9080BFEABA",
+          "recorded_bytes": 2894,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_ah3d_frequency_continuity.py",
+      "bytes": 1170,
+      "sha256": "8B43A3237E4B6F209199F3C9F135D2D3FD3C2ECBB1CEF2CB92D9EF61C5188EC8",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "8B43A3237E4B6F209199F3C9F135D2D3FD3C2ECBB1CEF2CB92D9EF61C5188EC8",
+          "recorded_bytes": 1170,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "8B43A3237E4B6F209199F3C9F135D2D3FD3C2ECBB1CEF2CB92D9EF61C5188EC8",
+          "recorded_bytes": 1170,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_ah3d_physalign.py",
+      "bytes": 9865,
+      "sha256": "67AE164CF2539B8F924954B833AF59E22E5FEA4307E66EB8C73475950FDA5370",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": true,
+      "classification": "CURRENT_SUPPORTED_REGRESSION",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": false,
+          "recorded_sha256": null,
+          "recorded_bytes": null,
+          "current_sha_matches_recorded": null
+        },
+        "s1_resume": {
+          "direct_original_path_bound": false,
+          "recorded_sha256": null,
+          "recorded_bytes": null,
+          "current_sha_matches_recorded": null
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_AH3D_physics.py",
+      "bytes": 4452,
+      "sha256": "5672FA80107031EFFC55CA0B5E123BC9915F9BC31F91A5F693B4AD687EDB760F",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D, trace_single_ray_3d",
+        "from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D, group_index_ah3d, trace_single_ray_ah_3d"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "5672FA80107031EFFC55CA0B5E123BC9915F9BC31F91A5F693B4AD687EDB760F",
+          "recorded_bytes": 4452,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "5672FA80107031EFFC55CA0B5E123BC9915F9BC31F91A5F693B4AD687EDB760F",
+          "recorded_bytes": 4452,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_ah3d_v2_default.py",
+      "bytes": 2482,
+      "sha256": "D73C09819763FFE724644E256F69F9DDE598F6352A6327C2493B5BF286739329",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.point_to_point_ah_3d import _shoot_ah_3d",
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D",
+        "from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D, trace_single_ray_ah_3d"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LOGICALLY_ARCHIVED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "D73C09819763FFE724644E256F69F9DDE598F6352A6327C2493B5BF286739329",
+          "recorded_bytes": 2482,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "D73C09819763FFE724644E256F69F9DDE598F6352A6327C2493B5BF286739329",
+          "recorded_bytes": 2482,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_ah3d_v2_scenarios.py",
+      "bytes": 1796,
+      "sha256": "FFB98F03AEC16748689F71985651B077FC234DCE2FBFADF2F240D51DDAC57A68",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D",
+        "from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D, trace_single_ray_ah_3d"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LOGICALLY_ARCHIVED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "FFB98F03AEC16748689F71985651B077FC234DCE2FBFADF2F240D51DDAC57A68",
+          "recorded_bytes": 1796,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "FFB98F03AEC16748689F71985651B077FC234DCE2FBFADF2F240D51DDAC57A68",
+          "recorded_bytes": 1796,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_b1_vector_pe_3d.py",
+      "bytes": 5223,
+      "sha256": "5D91BC97A2794D479B558E74DDBD0D6E4A0D7D4E5B35421B7E4A33AE73C2AA6A",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "5D91BC97A2794D479B558E74DDBD0D6E4A0D7D4E5B35421B7E4A33AE73C2AA6A",
+          "recorded_bytes": 5223,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "5D91BC97A2794D479B558E74DDBD0D6E4A0D7D4E5B35421B7E4A33AE73C2AA6A",
+          "recorded_bytes": 5223,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_complex_absorption.py",
+      "bytes": 5001,
+      "sha256": "1FB4179DBEE11AA6E2A7FE092A56F1E132A1E28AF24B4CD405BE77FE8A62CFA5",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "1FB4179DBEE11AA6E2A7FE092A56F1E132A1E28AF24B4CD405BE77FE8A62CFA5",
+          "recorded_bytes": 5001,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "1FB4179DBEE11AA6E2A7FE092A56F1E132A1E28AF24B4CD405BE77FE8A62CFA5",
+          "recorded_bytes": 5001,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_complex_scene_ox_p2p_report.py",
+      "bytes": 6439,
+      "sha256": "27B897A032BA5C5520EEC16BFE62EF1B19772FEF62739C2A54FF4AB583D22F16",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "27B897A032BA5C5520EEC16BFE62EF1B19772FEF62739C2A54FF4AB583D22F16",
+          "recorded_bytes": 6439,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "27B897A032BA5C5520EEC16BFE62EF1B19772FEF62739C2A54FF4AB583D22F16",
+          "recorded_bytes": 6439,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_complex_scene_ray_fan_closure.py",
+      "bytes": 19843,
+      "sha256": "2AD5E12155599F647364B4D691A4D84504FB3D172C1937F5ED50FB155D41F0B9",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "2AD5E12155599F647364B4D691A4D84504FB3D172C1937F5ED50FB155D41F0B9",
+          "recorded_bytes": 19843,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "2AD5E12155599F647364B4D691A4D84504FB3D172C1937F5ED50FB155D41F0B9",
+          "recorded_bytes": 19843,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_group_path.py",
+      "bytes": 3509,
+      "sha256": "F0E78A4629D65CE1AA1493EE9CD76328D278D16B1F4FF706ACB798B7DB16D258",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer import RefractiveIndex, trace_single_ray",
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D, trace_single_ray_3d"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "F0E78A4629D65CE1AA1493EE9CD76328D278D16B1F4FF706ACB798B7DB16D258",
+          "recorded_bytes": 3509,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "F0E78A4629D65CE1AA1493EE9CD76328D278D16B1F4FF706ACB798B7DB16D258",
+          "recorded_bytes": 3509,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_hybrid_default_on.py",
+      "bytes": 1394,
+      "sha256": "5770606BB0E852A9A71222BE8304827853BC6773110D5BA101A311859B0A4449",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "5770606BB0E852A9A71222BE8304827853BC6773110D5BA101A311859B0A4449",
+          "recorded_bytes": 1394,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "5770606BB0E852A9A71222BE8304827853BC6773110D5BA101A311859B0A4449",
+          "recorded_bytes": 1394,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_irregularity_3d_physics.py",
+      "bytes": 5836,
+      "sha256": "4021F1EA24D8AE9EC5E86AB7930B2CFDA55D0D4999F79D947839DAA9B6FDF54F",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ne_provider import ExternalNeProvider3D, GridNeProvider, ParameterizedIonosphere3DProvider",
+        "from legacy.models.parameterized_ionosphere_3d import ParameterizedIonosphere3DFactory"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "4021F1EA24D8AE9EC5E86AB7930B2CFDA55D0D4999F79D947839DAA9B6FDF54F",
+          "recorded_bytes": 5836,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "4021F1EA24D8AE9EC5E86AB7930B2CFDA55D0D4999F79D947839DAA9B6FDF54F",
+          "recorded_bytes": 5836,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_legacy_source_separation.py",
+      "bytes": 2502,
+      "sha256": "FDD19153226A9BF1B5F36ACEE7298915CD32E2CDAAB9EAD39A6198DB1638D09A",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": true,
+      "current_supported_regression": false,
+      "classification": "FORMAL_PRODUCTION_TEST",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "FDD19153226A9BF1B5F36ACEE7298915CD32E2CDAAB9EAD39A6198DB1638D09A",
+          "recorded_bytes": 2502,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "FDD19153226A9BF1B5F36ACEE7298915CD32E2CDAAB9EAD39A6198DB1638D09A",
+          "recorded_bytes": 2502,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_local_frame.py",
+      "bytes": 2975,
+      "sha256": "9F4EB4F64F5F9254C3195B90A506C4B94A1408E0E7C39585CAD843DBCA57FA98",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.local_frame import local_to_global, make_boundary_field_descriptor, make_fdtd_adapter_descriptor, make_ray_local_frame, sample_Ne_local_cross_section",
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9F4EB4F64F5F9254C3195B90A506C4B94A1408E0E7C39585CAD843DBCA57FA98",
+          "recorded_bytes": 2975,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9F4EB4F64F5F9254C3195B90A506C4B94A1408E0E7C39585CAD843DBCA57FA98",
+          "recorded_bytes": 2975,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_main2_scenario_fields.py",
+      "bytes": 2315,
+      "sha256": "5644B792A5E8DF8D639B70399A4B755D8EABCEB0EDE589B5B1A1536744028F4F",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "5644B792A5E8DF8D639B70399A4B755D8EABCEB0EDE589B5B1A1536744028F4F",
+          "recorded_bytes": 2315,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "5644B792A5E8DF8D639B70399A4B755D8EABCEB0EDE589B5B1A1536744028F4F",
+          "recorded_bytes": 2315,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_main_output_semantics.py",
+      "bytes": 4478,
+      "sha256": "2019A5A8EEAAD6F893E224AABA3044DE65781EC2D2E8B296C5767EB2330D55CB",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "2019A5A8EEAAD6F893E224AABA3044DE65781EC2D2E8B296C5767EB2330D55CB",
+          "recorded_bytes": 4478,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "2019A5A8EEAAD6F893E224AABA3044DE65781EC2D2E8B296C5767EB2330D55CB",
+          "recorded_bytes": 4478,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_mps_scatter_kernel.py",
+      "bytes": 2416,
+      "sha256": "E908F3757EACD9F37FCFBE783A1FEFD8B44354A60438D1ED8DB4E858E0CE341E",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "E908F3757EACD9F37FCFBE783A1FEFD8B44354A60438D1ED8DB4E858E0CE341E",
+          "recorded_bytes": 2416,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "E908F3757EACD9F37FCFBE783A1FEFD8B44354A60438D1ED8DB4E858E0CE341E",
+          "recorded_bytes": 2416,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_ne_provider_3d.py",
+      "bytes": 3454,
+      "sha256": "0C15414B132F7295E8FF506A3F064E7914C28305BFBFECD6375F33D61DC6F5BF",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ne_provider import GridNeProvider, GridNeProvider3D, ParameterizedIonosphere3DProvider",
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "0C15414B132F7295E8FF506A3F064E7914C28305BFBFECD6375F33D61DC6F5BF",
+          "recorded_bytes": 3454,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "0C15414B132F7295E8FF506A3F064E7914C28305BFBFECD6375F33D61DC6F5BF",
+          "recorded_bytes": 3454,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_OX.py",
+      "bytes": 6082,
+      "sha256": "E2E450FB62D4EBCE9FFA743E2F39F94FAF313652D52E6F58DF064F30801FD31B",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer import RefractiveIndex, RefractiveIndexAH",
+        "from legacy.models.hybrid_model import HybridPropagationModel"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "E2E450FB62D4EBCE9FFA743E2F39F94FAF313652D52E6F58DF064F30801FD31B",
+          "recorded_bytes": 6082,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "E2E450FB62D4EBCE9FFA743E2F39F94FAF313652D52E6F58DF064F30801FD31B",
+          "recorded_bytes": 6082,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_p0c_high_low_reference.py",
+      "bytes": 1364,
+      "sha256": "829F6F9399DD6202093E83CE3188ECECA3CD2F2570DFB99D966541D3FF6455BA",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "829F6F9399DD6202093E83CE3188ECECA3CD2F2570DFB99D966541D3FF6455BA",
+          "recorded_bytes": 1364,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "829F6F9399DD6202093E83CE3188ECECA3CD2F2570DFB99D966541D3FF6455BA",
+          "recorded_bytes": 1364,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_p0r_cache_roots.py",
+      "bytes": 3001,
+      "sha256": "2C3EC3D507B1BB5D7E04FF5B25233ECD82EE2EE9FE5C3FA3E75033C0CDD6E312",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "import legacy.models.point_to_point_ah_3d as p2p"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "2C3EC3D507B1BB5D7E04FF5B25233ECD82EE2EE9FE5C3FA3E75033C0CDD6E312",
+          "recorded_bytes": 3001,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "2C3EC3D507B1BB5D7E04FF5B25233ECD82EE2EE9FE5C3FA3E75033C0CDD6E312",
+          "recorded_bytes": 3001,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_p2p_fan_separation.py",
+      "bytes": 2862,
+      "sha256": "42E3D9FB2A5B2B0319D1FB295612625DF4B04CA6E5B0CCD4B5F00809998E9838",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "import legacy.models.point_to_point_3d as p2p3d"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "42E3D9FB2A5B2B0319D1FB295612625DF4B04CA6E5B0CCD4B5F00809998E9838",
+          "recorded_bytes": 2862,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "42E3D9FB2A5B2B0319D1FB295612625DF4B04CA6E5B0CCD4B5F00809998E9838",
+          "recorded_bytes": 2862,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_p2p_jacobian.py",
+      "bytes": 2839,
+      "sha256": "CFFD6B33A3FEF2D23BA6A80AE564CA667B1F9835C6B814869C06D27C7CB3E14D",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D",
+        "from legacy.models.point_to_point_ah_3d import find_all_rays_ah_3d"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "CFFD6B33A3FEF2D23BA6A80AE564CA667B1F9835C6B814869C06D27C7CB3E14D",
+          "recorded_bytes": 2839,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "CFFD6B33A3FEF2D23BA6A80AE564CA667B1F9835C6B814869C06D27C7CB3E14D",
+          "recorded_bytes": 2839,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_p2p_jacobian_components.py",
+      "bytes": 3892,
+      "sha256": "91BA816065394AEDFC392E952DF7AD2AF07EE7C307528A5F659A7410AAC61CFD",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D",
+        "from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D, trace_single_ray_ah_3d"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "91BA816065394AEDFC392E952DF7AD2AF07EE7C307528A5F659A7410AAC61CFD",
+          "recorded_bytes": 3892,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "91BA816065394AEDFC392E952DF7AD2AF07EE7C307528A5F659A7410AAC61CFD",
+          "recorded_bytes": 3892,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_p2p_multiscale_reference.py",
+      "bytes": 2473,
+      "sha256": "2D4AF7C2C0281E600B4F5D762E68CE7008FAC791EE3F849959337708646B9F1D",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "2D4AF7C2C0281E600B4F5D762E68CE7008FAC791EE3F849959337708646B9F1D",
+          "recorded_bytes": 2473,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "2D4AF7C2C0281E600B4F5D762E68CE7008FAC791EE3F849959337708646B9F1D",
+          "recorded_bytes": 2473,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_p2p_variational.py",
+      "bytes": 2971,
+      "sha256": "EA200E5241A262FE0C7C1673A4BC714C91AFAC4C1719C62B2B006BFE2F0CAEC2",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D",
+        "from legacy.models.ray_tracer_ah_3d import RefractiveIndexAH3D, trace_single_ray_ah_3d",
+        "from legacy.models.point_to_point_ah_3d import _candidate_seeds"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "EA200E5241A262FE0C7C1673A4BC714C91AFAC4C1719C62B2B006BFE2F0CAEC2",
+          "recorded_bytes": 2971,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "EA200E5241A262FE0C7C1673A4BC714C91AFAC4C1719C62B2B006BFE2F0CAEC2",
+          "recorded_bytes": 2971,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_p3_affine_reference.py",
+      "bytes": 1774,
+      "sha256": "224ABA2579BCD4255553FCEF4E27E1355B7C902F1E752A6FC8D3F376F0B59462",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "224ABA2579BCD4255553FCEF4E27E1355B7C902F1E752A6FC8D3F376F0B59462",
+          "recorded_bytes": 1774,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "224ABA2579BCD4255553FCEF4E27E1355B7C902F1E752A6FC8D3F376F0B59462",
+          "recorded_bytes": 1774,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_p3_comparator.py",
+      "bytes": 5645,
+      "sha256": "98E147D23C5E6DAF86F17220184D6541EEF8127204841822E3746EA197677EE0",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "98E147D23C5E6DAF86F17220184D6541EEF8127204841822E3746EA197677EE0",
+          "recorded_bytes": 5645,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "98E147D23C5E6DAF86F17220184D6541EEF8127204841822E3746EA197677EE0",
+          "recorded_bytes": 5645,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_p3_compatibility.py",
+      "bytes": 6679,
+      "sha256": "C196F079D1EC361E8DD8306686EB1F262C163962A9D190E52A617C2A3EAFD82C",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "3F867399A03ACC68215C1DFE458E87BFE7B9D57CE83E3E7900644104CF53CF71",
+          "recorded_bytes": 6455,
+          "current_sha_matches_recorded": false
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "3F867399A03ACC68215C1DFE458E87BFE7B9D57CE83E3E7900644104CF53CF71",
+          "recorded_bytes": 6455,
+          "current_sha_matches_recorded": false
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_part0.py",
+      "bytes": 2070,
+      "sha256": "8E3F159D465C8C127C4C3AC86A1A387B35DCCE679920AA21F30B68D91C108F24",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "8E3F159D465C8C127C4C3AC86A1A387B35DCCE679920AA21F30B68D91C108F24",
+          "recorded_bytes": 2070,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "8E3F159D465C8C127C4C3AC86A1A387B35DCCE679920AA21F30B68D91C108F24",
+          "recorded_bytes": 2070,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_part1.py",
+      "bytes": 6757,
+      "sha256": "9AA6EE981F710AE45D94BFBE97300FF623B1D3EC9FCCA38BA76D611BD45CD113",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9AA6EE981F710AE45D94BFBE97300FF623B1D3EC9FCCA38BA76D611BD45CD113",
+          "recorded_bytes": 6757,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "9AA6EE981F710AE45D94BFBE97300FF623B1D3EC9FCCA38BA76D611BD45CD113",
+          "recorded_bytes": 6757,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_part2.py",
+      "bytes": 7384,
+      "sha256": "A7E72AC1069D60E6E167EF4E423D4A74209B629F0FABFEEFF814ADD2AA2115D5",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer import RefractiveIndex, trace_single_ray, shoot_rays_fan"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "A7E72AC1069D60E6E167EF4E423D4A74209B629F0FABFEEFF814ADD2AA2115D5",
+          "recorded_bytes": 7384,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "A7E72AC1069D60E6E167EF4E423D4A74209B629F0FABFEEFF814ADD2AA2115D5",
+          "recorded_bytes": 7384,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_part3.py",
+      "bytes": 7429,
+      "sha256": "40075DFD86224284A0AC372231E5DF41909A9FF25D7ABDD7FFD6F2D87132DD91",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer import RefractiveIndex",
+        "from legacy.models.point_to_point import optical_path, optical_path_gradient, variational_find_ray, find_all_rays_p2p, classify_mode, extract_es_params, extract_bubble_entry, find_ray_newton"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "40075DFD86224284A0AC372231E5DF41909A9FF25D7ABDD7FFD6F2D87132DD91",
+          "recorded_bytes": 7429,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "40075DFD86224284A0AC372231E5DF41909A9FF25D7ABDD7FFD6F2D87132DD91",
+          "recorded_bytes": 7429,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_part4.py",
+      "bytes": 7315,
+      "sha256": "88CF94E99741314FE664C83DD5681FC2FF22F61E400701346F02C237DCC1A419",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "88CF94E99741314FE664C83DD5681FC2FF22F61E400701346F02C237DCC1A419",
+          "recorded_bytes": 7315,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "88CF94E99741314FE664C83DD5681FC2FF22F61E400701346F02C237DCC1A419",
+          "recorded_bytes": 7315,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_part5.py",
+      "bytes": 9870,
+      "sha256": "CD5AFD6951BE01A01AB5A89F1979CA8602DA8190743F22BB5A736197400BA790",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.pe_propagator import PEPropagator, construct_incident_field"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "CD5AFD6951BE01A01AB5A89F1979CA8602DA8190743F22BB5A736197400BA790",
+          "recorded_bytes": 9870,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "CD5AFD6951BE01A01AB5A89F1979CA8602DA8190743F22BB5A736197400BA790",
+          "recorded_bytes": 9870,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_part6.py",
+      "bytes": 6307,
+      "sha256": "95E139E3FEC530F82BA037E1D1703ADE7FF63D5073DF3CF23A62FC8F2101E620",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.hybrid_model import HybridPropagationModel"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "95E139E3FEC530F82BA037E1D1703ADE7FF63D5073DF3CF23A62FC8F2101E620",
+          "recorded_bytes": 6307,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "95E139E3FEC530F82BA037E1D1703ADE7FF63D5073DF3CF23A62FC8F2101E620",
+          "recorded_bytes": 6307,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_pd_scatter_kernel.py",
+      "bytes": 1923,
+      "sha256": "40CC0CDF1AE3B9B94F7C9CEBDF5645B336A74C6817543DA7DA12AE4059A1D8D8",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "40CC0CDF1AE3B9B94F7C9CEBDF5645B336A74C6817543DA7DA12AE4059A1D8D8",
+          "recorded_bytes": 1923,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "40CC0CDF1AE3B9B94F7C9CEBDF5645B336A74C6817543DA7DA12AE4059A1D8D8",
+          "recorded_bytes": 1923,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_pd_scatter_physics.py",
+      "bytes": 1932,
+      "sha256": "8D6ED2A20A3428A147CA50199EED3EA0EDBCE598E4D4140EA5DD4140CB8157FF",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "8D6ED2A20A3428A147CA50199EED3EA0EDBCE598E4D4140EA5DD4140CB8157FF",
+          "recorded_bytes": 1932,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "8D6ED2A20A3428A147CA50199EED3EA0EDBCE598E4D4140EA5DD4140CB8157FF",
+          "recorded_bytes": 1932,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_pe_default_off.py",
+      "bytes": 2950,
+      "sha256": "25561D8F789ACF45F753C109EA7BF7E7F4FC054130417268B2B66419F3CE6080",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.hybrid_model import HybridPropagationModel",
+        "import legacy.models.hybrid_model as hybrid_model"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "25561D8F789ACF45F753C109EA7BF7E7F4FC054130417268B2B66419F3CE6080",
+          "recorded_bytes": 2950,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "25561D8F789ACF45F753C109EA7BF7E7F4FC054130417268B2B66419F3CE6080",
+          "recorded_bytes": 2950,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_phase5.py",
+      "bytes": 6253,
+      "sha256": "30D59D8A2CDC51FF63BFC9DA4C4E192C818ADAE0821CA8D5BA1EDC4028E0846F",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "30D59D8A2CDC51FF63BFC9DA4C4E192C818ADAE0821CA8D5BA1EDC4028E0846F",
+          "recorded_bytes": 6253,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "30D59D8A2CDC51FF63BFC9DA4C4E192C818ADAE0821CA8D5BA1EDC4028E0846F",
+          "recorded_bytes": 6253,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_phase6.py",
+      "bytes": 7929,
+      "sha256": "B50C4DD99FAF8690ACE5F83024C4DDE2053926A26B7C3B970FCF5ED388D65D8B",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer import RefractiveIndex, trace_single_ray",
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D, trace_single_ray_3d",
+        "from legacy.models.point_to_point_3d import find_all_rays_3d",
+        "from legacy.models.point_to_point import find_all_rays_p2p"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "B50C4DD99FAF8690ACE5F83024C4DDE2053926A26B7C3B970FCF5ED388D65D8B",
+          "recorded_bytes": 7929,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "B50C4DD99FAF8690ACE5F83024C4DDE2053926A26B7C3B970FCF5ED388D65D8B",
+          "recorded_bytes": 7929,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_phase7.py",
+      "bytes": 8096,
+      "sha256": "17F430DCE2B3ACAD54F4D296692A7696C2BE6DC088FC921F8D250112817D0355",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D",
+        "from legacy.models.tube_tracer_3d import TubeRayTracer3D"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "17F430DCE2B3ACAD54F4D296692A7696C2BE6DC088FC921F8D250112817D0355",
+          "recorded_bytes": 8096,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "17F430DCE2B3ACAD54F4D296692A7696C2BE6DC088FC921F8D250112817D0355",
+          "recorded_bytes": 8096,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_production_boundary.py",
+      "bytes": 11242,
+      "sha256": "456B2452DB9CEF9F6D78251B13E181C4153DE740DBF4C5DEF328335B947E37D6",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": true,
+      "current_supported_regression": false,
+      "classification": "FORMAL_PRODUCTION_TEST",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "456B2452DB9CEF9F6D78251B13E181C4153DE740DBF4C5DEF328335B947E37D6",
+          "recorded_bytes": 11242,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "456B2452DB9CEF9F6D78251B13E181C4153DE740DBF4C5DEF328335B947E37D6",
+          "recorded_bytes": 11242,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_radar.py",
+      "bytes": 4975,
+      "sha256": "E7751228A90F04705F78A86B43A5BFCDE951475DD2C806B6D4CE761CFA67C086",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.hybrid_model import HybridPropagationModel"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "E7751228A90F04705F78A86B43A5BFCDE951475DD2C806B6D4CE761CFA67C086",
+          "recorded_bytes": 4975,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "E7751228A90F04705F78A86B43A5BFCDE951475DD2C806B6D4CE761CFA67C086",
+          "recorded_bytes": 4975,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_radar_clutter_physics.py",
+      "bytes": 3274,
+      "sha256": "BB8A02F0127907DB89EC50636C18FEC0010079AEAD525B6F241D6D1F71EB116A",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.radar_clutter import RadarClutterModel, apply_clutter_to_mode"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "BB8A02F0127907DB89EC50636C18FEC0010079AEAD525B6F241D6D1F71EB116A",
+          "recorded_bytes": 3274,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "BB8A02F0127907DB89EC50636C18FEC0010079AEAD525B6F241D6D1F71EB116A",
+          "recorded_bytes": 3274,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_radial_pchip_edges.py",
+      "bytes": 6288,
+      "sha256": "4A7DE88802DF5A203FB8463CAEB4A5466ED3237BFE1E9ADF2CD257105AC58F32",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "4A7DE88802DF5A203FB8463CAEB4A5466ED3237BFE1E9ADF2CD257105AC58F32",
+          "recorded_bytes": 6288,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "4A7DE88802DF5A203FB8463CAEB4A5466ED3237BFE1E9ADF2CD257105AC58F32",
+          "recorded_bytes": 6288,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_radial_pchip_physics.py",
+      "bytes": 42008,
+      "sha256": "6CF68FEB67486A873CF7AFF0C9D333AA606C707C995881D2B4D4FDBC4B6B36B3",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "6CF68FEB67486A873CF7AFF0C9D333AA606C707C995881D2B4D4FDBC4B6B36B3",
+          "recorded_bytes": 42008,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "6CF68FEB67486A873CF7AFF0C9D333AA606C707C995881D2B4D4FDBC4B6B36B3",
+          "recorded_bytes": 42008,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_ray_pe_3d_interface.py",
+      "bytes": 1972,
+      "sha256": "A27A55CACC990169AF36BA4482E886BB861600539A1AC9A49338525AD64C3C64",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.hybrid_ray_pe import apply_ray_pe_coupling_3d",
+        "from legacy.models.pe_propagator import PEPropagator"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "A27A55CACC990169AF36BA4482E886BB861600539A1AC9A49338525AD64C3C64",
+          "recorded_bytes": 1972,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "A27A55CACC990169AF36BA4482E886BB861600539A1AC9A49338525AD64C3C64",
+          "recorded_bytes": 1972,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_ray_pe_energy.py",
+      "bytes": 3131,
+      "sha256": "22D6D8EE2F65B135FC3A956623738F1A4E2D91561DCCC2C2203F7AAE66B49333",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.hybrid_ray_pe import apply_ray_pe_coupling",
+        "from legacy.models.pe_propagator import PEPropagator"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "22D6D8EE2F65B135FC3A956623738F1A4E2D91561DCCC2C2203F7AAE66B49333",
+          "recorded_bytes": 3131,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "22D6D8EE2F65B135FC3A956623738F1A4E2D91561DCCC2C2203F7AAE66B49333",
+          "recorded_bytes": 3131,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_ray_pe_physics.py",
+      "bytes": 2450,
+      "sha256": "066C20ED8C4F263FA96C263DF59683CDCA9F41616175A629903C2354357FD696",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.hybrid_ray_pe import apply_ray_pe_coupling, apply_ray_pe_coupling_3d",
+        "from legacy.models.pe_propagator import PEPropagator"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "066C20ED8C4F263FA96C263DF59683CDCA9F41616175A629903C2354357FD696",
+          "recorded_bytes": 2450,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "066C20ED8C4F263FA96C263DF59683CDCA9F41616175A629903C2354357FD696",
+          "recorded_bytes": 2450,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_scatter_coupling.py",
+      "bytes": 1904,
+      "sha256": "8C480FC465B56818BDBCAF637CF2AA7F5B6E6EFE139FE9E4313D9EEA6606FE49",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "8C480FC465B56818BDBCAF637CF2AA7F5B6E6EFE139FE9E4313D9EEA6606FE49",
+          "recorded_bytes": 1904,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "8C480FC465B56818BDBCAF637CF2AA7F5B6E6EFE139FE9E4313D9EEA6606FE49",
+          "recorded_bytes": 1904,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_siaccess_request.py",
+      "bytes": 8389,
+      "sha256": "4BDAE082F716E8BF4CD2123546E750C35EAA73472A932D92C3A8EAD9DAF6CB6C",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": true,
+      "classification": "CURRENT_SUPPORTED_REGRESSION",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": false,
+          "recorded_sha256": null,
+          "recorded_bytes": null,
+          "current_sha_matches_recorded": null
+        },
+        "s1_resume": {
+          "direct_original_path_bound": false,
+          "recorded_sha256": null,
+          "recorded_bytes": null,
+          "current_sha_matches_recorded": null
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_spreadf.py",
+      "bytes": 4986,
+      "sha256": "6A0549734A75907A35BEB4F8B910F0630D4E3278C4B7466D50795C0AB4122608",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "6A0549734A75907A35BEB4F8B910F0630D4E3278C4B7466D50795C0AB4122608",
+          "recorded_bytes": 4986,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "6A0549734A75907A35BEB4F8B910F0630D4E3278C4B7466D50795C0AB4122608",
+          "recorded_bytes": 4986,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_sweep_3d_reproducibility.py",
+      "bytes": 1142,
+      "sha256": "AA68450726A6DDBC70942ED721416F9B7D3B8B9582F65551C22B7FFC2F22D56B",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "AA68450726A6DDBC70942ED721416F9B7D3B8B9582F65551C22B7FFC2F22D56B",
+          "recorded_bytes": 1142,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "AA68450726A6DDBC70942ED721416F9B7D3B8B9582F65551C22B7FFC2F22D56B",
+          "recorded_bytes": 1142,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_tube.py",
+      "bytes": 6908,
+      "sha256": "7C53808A68E7CB8D271780D3821B0F8604B60BE1202718FB43DF1645E1CC4DE7",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ray_tracer import RefractiveIndex",
+        "from legacy.models.point_to_point import find_all_rays_p2p, classify_mode",
+        "from legacy.models.tube_tracer import TubeRayTracer",
+        "from legacy.models.hybrid_model import HybridPropagationModel"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7C53808A68E7CB8D271780D3821B0F8604B60BE1202718FB43DF1645E1CC4DE7",
+          "recorded_bytes": 6908,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7C53808A68E7CB8D271780D3821B0F8604B60BE1202718FB43DF1645E1CC4DE7",
+          "recorded_bytes": 6908,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_unified_pipeline_semantics.py",
+      "bytes": 186,
+      "sha256": "FB53821C293F68D88EF3C0451A9C2F64F53534D23571C518E3440982C8004686",
+      "kind": "python",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "RETAINED_NOT_FURTHER_CLASSIFIED",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "FB53821C293F68D88EF3C0451A9C2F64F53534D23571C518E3440982C8004686",
+          "recorded_bytes": 186,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "FB53821C293F68D88EF3C0451A9C2F64F53534D23571C518E3440982C8004686",
+          "recorded_bytes": 186,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/_verify_update2_all.py",
+      "bytes": 3889,
+      "sha256": "E59FF305BF04522C87169F45A488D56652A70EE5722695ABA79B8976862E9F91",
+      "kind": "python",
+      "legacy_models_direct_import": true,
+      "legacy_direct_imports": [
+        "from legacy.models.ne_provider import GridNeProvider",
+        "from legacy.models.ray_tracer_3d import RefractiveIndex3D"
+      ],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "LEGACY_IMPORT_HISTORY_OR_SHARED_REVIEW",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "E59FF305BF04522C87169F45A488D56652A70EE5722695ABA79B8976862E9F91",
+          "recorded_bytes": 3889,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "E59FF305BF04522C87169F45A488D56652A70EE5722695ABA79B8976862E9F91",
+          "recorded_bytes": 3889,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/matlab/a4_c1_prep5_pharlap.m",
+      "bytes": 5921,
+      "sha256": "66A8C499F75237F2ACB6DC5EEB4356FA3620316B217D660FA7E09ABEA2E8F6A6",
+      "kind": "matlab",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "HISTORICAL_PHARLAP_FROZEN_REFERENCE",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "66A8C499F75237F2ACB6DC5EEB4356FA3620316B217D660FA7E09ABEA2E8F6A6",
+          "recorded_bytes": 5921,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "66A8C499F75237F2ACB6DC5EEB4356FA3620316B217D660FA7E09ABEA2E8F6A6",
+          "recorded_bytes": 5921,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/matlab/a4_c1_same_angle_pharlap.m",
+      "bytes": 6236,
+      "sha256": "BCEBB9FE42F64659C61547A8C4CEBCF61F6CE2325016A12B49D9E3BF708808BF",
+      "kind": "matlab",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "HISTORICAL_PHARLAP_FROZEN_REFERENCE",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "BCEBB9FE42F64659C61547A8C4CEBCF61F6CE2325016A12B49D9E3BF708808BF",
+          "recorded_bytes": 6236,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "BCEBB9FE42F64659C61547A8C4CEBCF61F6CE2325016A12B49D9E3BF708808BF",
+          "recorded_bytes": 6236,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/matlab/a4_c1m_p2_exit_export.m",
+      "bytes": 4201,
+      "sha256": "EF86716171D233665E4A124DD6BB5C3DBE6AACB4B451EF40E4E019B146D66595",
+      "kind": "matlab",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "HISTORICAL_PHARLAP_FROZEN_REFERENCE",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "EF86716171D233665E4A124DD6BB5C3DBE6AACB4B451EF40E4E019B146D66595",
+          "recorded_bytes": 4201,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "EF86716171D233665E4A124DD6BB5C3DBE6AACB4B451EF40E4E019B146D66595",
+          "recorded_bytes": 4201,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/matlab/a4_c1m_uniform_export.m",
+      "bytes": 14616,
+      "sha256": "785319EB217F4D4E427FE4DCA43ED66BC39C3F1452A8889273AF5C626435E72F",
+      "kind": "matlab",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "HISTORICAL_PHARLAP_FROZEN_REFERENCE",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "785319EB217F4D4E427FE4DCA43ED66BC39C3F1452A8889273AF5C626435E72F",
+          "recorded_bytes": 14616,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "785319EB217F4D4E427FE4DCA43ED66BC39C3F1452A8889273AF5C626435E72F",
+          "recorded_bytes": 14616,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/matlab/a4_c1p_pharlap_scan.m",
+      "bytes": 7965,
+      "sha256": "014526506F5247ACFF56DDCA7CE0CFA6AB17D7F057D4EA736D027BA123ACC9A6",
+      "kind": "matlab",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "HISTORICAL_PHARLAP_FROZEN_REFERENCE",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "014526506F5247ACFF56DDCA7CE0CFA6AB17D7F057D4EA736D027BA123ACC9A6",
+          "recorded_bytes": 7965,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "014526506F5247ACFF56DDCA7CE0CFA6AB17D7F057D4EA736D027BA123ACC9A6",
+          "recorded_bytes": 7965,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/matlab/a4_c1q_pharlap_state_export.m",
+      "bytes": 3510,
+      "sha256": "7005D0A68C43677C13FA3FD52B9D435AA9DE48932D42B33192DF7ECAC0BE2DC7",
+      "kind": "matlab",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "HISTORICAL_PHARLAP_FROZEN_REFERENCE",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7005D0A68C43677C13FA3FD52B9D435AA9DE48932D42B33192DF7ECAC0BE2DC7",
+          "recorded_bytes": 3510,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "7005D0A68C43677C13FA3FD52B9D435AA9DE48932D42B33192DF7ECAC0BE2DC7",
+          "recorded_bytes": 3510,
+          "current_sha_matches_recorded": true
+        }
+      }
+    },
+    {
+      "path": "tests/matlab/a4_c1w_pharlap_wgs84_ox.m",
+      "bytes": 2564,
+      "sha256": "B3CC0337B813D640924D8223CD2CB3B1231C3A71E56CB1D62811201E2BD25D71",
+      "kind": "matlab",
+      "legacy_models_direct_import": false,
+      "legacy_direct_imports": [],
+      "formal_runner_test": false,
+      "current_supported_regression": false,
+      "classification": "HISTORICAL_PHARLAP_FROZEN_REFERENCE",
+      "action": "KEEP_IN_ORIGINAL_PATH",
+      "frozen_references": {
+        "s1_original": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "B3CC0337B813D640924D8223CD2CB3B1231C3A71E56CB1D62811201E2BD25D71",
+          "recorded_bytes": 2564,
+          "current_sha_matches_recorded": true
+        },
+        "s1_resume": {
+          "direct_original_path_bound": true,
+          "recorded_sha256": "B3CC0337B813D640924D8223CD2CB3B1231C3A71E56CB1D62811201E2BD25D71",
+          "recorded_bytes": 2564,
+          "current_sha_matches_recorded": true
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "No assertion about external or dynamically generated references.",
+    "The logical index does not change historical manifests or physically move files."
+  ]
+}

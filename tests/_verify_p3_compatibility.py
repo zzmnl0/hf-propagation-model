@@ -87,8 +87,11 @@ def main():
         np.full((2, 2, 3), 1e11), [20, 40], [110, 130], [80, 130, 180], 6371)
     rejected(lambda: RefractiveIndexAH3DECEF(ordinary, **mode))
     original = RefractiveIndexAH3DECEF(ordinary, earth_radius_km=6371, freq_MHz=10)
+    legacy = RefractiveIndexAH3DECEF(ordinary, earth_radius_km=6371, freq_MHz=10,
+                                   plasma_coefficient=config.K_FP**2)
+    assert legacy.plasma_coefficient == config.K_FP**2
     explicit = RefractiveIndexAH3DECEF(ordinary, earth_radius_km=6371, freq_MHz=10,
-                                     plasma_coefficient=config.K_FP**2,
+                                   plasma_coefficient=config.AH3D_PLASMA_COEFFICIENT_SI,
                                      spatial_fd_base_km=0.5)
     a = integrate_fixed_path_ah3d_ecef(original, **launch, path_length_km=1)
     b = integrate_fixed_path_ah3d_ecef(explicit, **launch, path_length_km=1)

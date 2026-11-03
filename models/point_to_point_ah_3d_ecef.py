@@ -53,13 +53,14 @@ def solve_p2p_ray_ah3d_ecef(
     jacobian_condition_max: float = 1.0e10,
     tol_km: float = 5.0,
     max_nfev: int = 20,
-    profile: str = "reference",
+    profile: str | None = None,
     medium_time_s: float = 0.0,
     seed_semantics: str = "new_coordinate_seed",
 ) -> dict | None:
     """Solve the RX ENU endpoint map using a multiscale centered Jacobian."""
     if not isinstance(model, RefractiveIndexAH3DECEF):
         raise TypeError("model must be RefractiveIndexAH3DECEF")
+    profile = model.integration_profile if profile is None else str(profile)
     tx = np.asarray(tx_geocentric, dtype=float)
     rx = np.asarray(rx_geocentric, dtype=float)
     if tx.shape != (3,) or rx.shape != (3,) or not np.all(np.isfinite([tx, rx])):

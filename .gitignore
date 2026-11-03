@@ -13,6 +13,14 @@ word/~$*
 sources/au_ray_README.pdf
 work/
 
+# Local AH/PH scientific arrays; source and text evidence are versioned.
+tasks/**/*.npz
+tasks/**/*.mat
+tasks/**/*.lock
+# Raw third-party PH decompilation stays with the local analysis evidence.
+tasks/AH3D-PH474-VERIFY-*.c
+tasks/AH3D-PH474-VERIFY-*native-evidence*.json
+
 # IDE / OS
 .vscode/
 .idea/

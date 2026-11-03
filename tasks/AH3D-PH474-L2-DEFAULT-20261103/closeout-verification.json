@@ -1,0 +1,18 @@
+{
+  "task_id": "AH3D-PH474-L2-DEFAULT-20261103",
+  "verified_at": "2026-11-03T11:35:31.0857365+00:00",
+  "status": "PASS",
+  "candidate_sha256": "11209981EBAEE5EDD549F46D10DFB763C142B0463D944EB917E4AF6DF2817BB0",
+  "candidate_leaves": 53,
+  "candidate_final_drift": 0,
+  "review_sha256": "061194417D350DC6A52FCE6DB36B75E792BD1A101E8E7CD452833520A55F3C4B",
+  "closeout_sha256": "73EAED5AE39060196B005A5959FE2583ED701AE09D0D7410680787DE4491175A",
+  "administrative_bindings": 7,
+  "binding_errors": [],
+  "local_links_checked": 49,
+  "local_link_errors": [],
+  "roadmap_version": 101,
+  "formal_runner_case_count": 7,
+  "validation_scope": "No new model runs; exact bindings and new/current local documentation links",
+  "stopped": true
+}

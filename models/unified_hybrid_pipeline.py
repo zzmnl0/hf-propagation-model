@@ -59,6 +59,7 @@ class UnifiedPropagationRequest:
     make_ray_fan: bool = True
     make_p2p: bool = True
     make_pd: bool = True
+    plasma_coefficient: float | None = None
 
 
 @dataclass
@@ -176,8 +177,25 @@ def _physical_ne_provider(request: UnifiedPropagationRequest):
     raise ValueError("unsupported AH3D coordinate model")
 
 
+def _formal_l2_profile(profile: str | None = None) -> str:
+    """Keep production/fan/P2P requests on the validated L2 configuration."""
+    name = (cfg.UPDATE2.get("AH3D_INTEGRATION_PROFILE", cfg.AH3D_L2_PROFILE)
+            if profile is None else profile)
+    if name != cfg.AH3D_L2_PROFILE:
+        raise ValueError("formal AH3D requires the L2 integration profile")
+    configured = cfg.UPDATE2.get("AH3D_INTEGRATION", {}).get(cfg.AH3D_L2_PROFILE)
+    if configured != cfg.AH3D_L2_SETTINGS:
+        raise ValueError("formal AH3D requires the canonical L2 integration settings")
+    base = float(cfg.UPDATE2.get("AH3D_SPATIAL_FD_BASE_KM",
+                                 cfg.AH3D_L2_SPATIAL_FD_BASE_KM))
+    if not np.isfinite(base) or base <= 0.0 or base > cfg.AH3D_L2_SPATIAL_FD_BASE_KM:
+        raise ValueError("formal AH3D spatial FD base must be positive and no larger than L2")
+    return str(name)
+
+
 def _ah_model(request: UnifiedPropagationRequest, wave_mode: str,
-              profile: str) -> RefractiveIndexAH3DECEF:
+              profile: str | None = None) -> RefractiveIndexAH3DECEF:
+    profile = _formal_l2_profile(profile)
     component_scales = [
         float(component["minimum_structure_scale_km"])
         for component in request.provider.get_metadata().get("components", [])
@@ -187,7 +205,9 @@ def _ah_model(request: UnifiedPropagationRequest, wave_mode: str,
     compatibility = cfg.UPDATE2["PHARLAP_RADIAL_B0"]
     compatibility_mode = "pharlap_radial_b0" if compatibility["enable"] else None
     spatial_fd_base_km = min(
-        float(compatibility["spatial_fd_base_km"]) if compatibility_mode else 0.5,
+        float(compatibility["spatial_fd_base_km"]) if compatibility_mode else
+        float(cfg.UPDATE2.get("AH3D_SPATIAL_FD_BASE_KM",
+                              cfg.AH3D_L2_SPATIAL_FD_BASE_KM)),
         min(component_scales, default=30.0) / 60.0)
     physical_provider = _physical_ne_provider(request)
     geomagnetic_provider = _geomagnetic_provider(request)
@@ -199,11 +219,13 @@ def _ah_model(request: UnifiedPropagationRequest, wave_mode: str,
         geomagnetic_provider=geomagnetic_provider,
         coordinate_model=request.coordinate_model,
         spatial_fd_base_km=spatial_fd_base_km,
-        integration_profile=profile, compatibility_mode=compatibility_mode)
+        integration_profile=profile, compatibility_mode=compatibility_mode,
+        plasma_coefficient=request.plasma_coefficient)
 
 
 def _trace_fan(request: UnifiedPropagationRequest, wave_mode: str,
-               profile: str = "smoke") -> tuple[list, dict]:
+               profile: str | None = None) -> tuple[list, dict]:
+    profile = _formal_l2_profile(profile)
     model = _ah_model(request, wave_mode, profile)
     elevations = np.linspace(
         float(request.rt_config["beta_min"]),
@@ -290,7 +312,7 @@ def _feature_gates() -> str:
     gates = {
         "AH3D_ENABLE": bool(u2.get("AH3D_ENABLE", False)),
         "AH3D_SOLVER": u2.get("AH3D_SOLVER", "v2"),
-        "AH3D_PROFILE": u2.get("AH3D_INTEGRATION_PROFILE", "research"),
+        "AH3D_PROFILE": u2.get("AH3D_INTEGRATION_PROFILE", cfg.AH3D_L2_PROFILE),
         "OX_MODE": u2.get("OX_MODE", "postproc"),
         "FAN_X": bool(u2.get("RAY_FAN_INCLUDE_X", False)),
         "ABS_COMPLEX": bool(u2.get("ABSORPTION_COMPLEX", {}).get("enable", False)),
@@ -475,6 +497,9 @@ def reject_archived_physics() -> None:
 
 def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagationResult:
     reject_archived_physics()
+    _formal_l2_profile()
+    p2p_profile = _formal_l2_profile(request.p2p_config.get("solve_profile"))
+    final_profile = _formal_l2_profile(request.p2p_config.get("final_retrace_profile"))
     if request.solver != "ah3d_ecef":
         raise ValueError("C0R production pipeline accepts only solver='ah3d_ecef'")
     if not isinstance(request.provider, GeocentricNeProvider3D):
@@ -538,8 +563,6 @@ def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagati
                 request.p2p_config.get("candidate_nearest", 3))
             if not seeds:
                 continue
-            p2p_profile = str(request.p2p_config.get(
-                "solve_profile", "reference"))
             model = _ah_model(request, wave_mode, p2p_profile)
             roots = find_seeded_rays_ah3d_ecef(
                 model, tx_geocentric=request.tx_geocentric,
@@ -558,8 +581,6 @@ def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagati
                 dedup_trajectory_rms_km=float(request.p2p_config.get("clust_trajectory_rms_km", 1.0)),
                 dedup_apex_km=float(request.p2p_config.get("clust_h_km", 10.0)),
                 dedup_tau_ms=float(request.p2p_config.get("clust_tau_ms", 0.05)))
-            final_profile = str(request.p2p_config.get(
-                "final_retrace_profile", p2p_profile))
             if final_profile != p2p_profile:
                 final_model = _ah_model(request, wave_mode, final_profile)
                 verified = []
@@ -607,6 +628,12 @@ def run_unified_pipeline(request: UnifiedPropagationRequest) -> UnifiedPropagati
                     })
                     verified.append(retraced)
                 roots = verified
+            else:
+                for root in roots:
+                    root["p2p_optimization_trace_profile"] = p2p_profile
+                    root["p2p_trace_profile"] = p2p_profile
+                    root["p2p_final_retrace_applied"] = False
+                    root["p2p_final_retrace_reason"] = "same_profile_solution_reused"
             for index, m in enumerate(roots, start=1):
                 m["label"] = "{}-ECEF-{:02d}".format(
                     wave_mode, len(modes) + index)
