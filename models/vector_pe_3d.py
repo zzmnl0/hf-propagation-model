@@ -64,6 +64,8 @@ def cold_plasma_dielectric_tensor(
     Ne_m3: float,
     B_ecef_T,
     collision_s: float = 0.0,
+    *,
+    plasma_coefficient: float | None = None,
 ) -> np.ndarray:
     """Return the complex cold-plasma dielectric tensor in ECEF coordinates.
 
@@ -86,8 +88,11 @@ def cold_plasma_dielectric_tensor(
     ):
         raise ValueError("invalid cold-plasma tensor input")
 
+    coefficient = K_FP**2 if plasma_coefficient is None else float(plasma_coefficient)
+    if not np.isfinite(coefficient) or coefficient <= 0.0:
+        raise ValueError("plasma_coefficient must be finite and positive")
     frequency_hz = omega / (2.0 * np.pi)
-    X = K_FP**2 * Ne / (frequency_hz * frequency_hz)
+    X = coefficient * Ne / (frequency_hz * frequency_hz)
     U = 1.0 + 1j * nu / omega
     magnitude = float(np.linalg.norm(field))
     if magnitude <= 1e-18:

@@ -1,4 +1,37 @@
-# HF 短波混合传播模型 — 详细使用手册
+# AH 单程反射＋散射
+
+本分支 `codex/ah-oneway-reflection-scattering` 用于独立单程反射／散射混合路线。新实现位于 `ray_wave_oneway/`，物理参数、L2 积分和空间差分配置由该包独立管理，通过适配器复用既有 AH 动力学与色散内核。
+
+| 项目 | 原 AH 路线 | 单程反射＋散射路线 |
+|---|---|---|
+| 入口 | `main.py` / `main2.py` | `python -m ray_wave_oneway` |
+| 配置 | `config.py` | `ray_wave_oneway/config.py` |
+| 核心实现 | 既有 AH 生产模块 | `ray_wave_oneway/` |
+| 输出 | 既有场景输出目录 | `output2/ray_wave_oneway/` |
+
+## 单程路线运行
+
+在仓库根目录、配置好原项目 Python 依赖后执行。
+
+```powershell
+python -B -m ray_wave_oneway
+python -B tests/_verify_oneway_observables_s4.py
+python -B tests/_verify_oneway_ah_adapter.py
+python -B tests/_verify_oneway_route_isolation.py
+```
+
+正常入口生成受控磁化背景中 13 个频点、9 个慢时间切片的散射复响应及功率－时延／频移产品，结果位于 `output2/ray_wave_oneway/s4/observables/`。观测验证器读取上述入口生成的结果。
+
+## 当前研究进度
+
+S1/S2/S3 及 S4a/S4b 已在各自受控范围获得独立 ACCEPT。S4a 覆盖均匀磁化外段、二维周期散射层和观测产品。S4b 覆盖非均匀 AH 射线几何、接收平面、群时延和作用量。后续 S4c 接续非均匀反射背景中的振幅、偏振、反射相位与固定 RX 复场输运，并处理长程时延歧义。
+
+- [总体计划](tasks/AH3D-ONEWAY-HYBRID-20261105-plan.md)
+- [S4 细化方案](tasks/AH3D-ONEWAY-HYBRID-20261105-S4-plan.md)
+- [S4 实施报告](tasks/AH3D-ONEWAY-HYBRID-20261105-S4-report.md)
+- [S4 独立审查](tasks/AH3D-ONEWAY-HYBRID-20261105-S4-review.md)
+
+## 既有模型详细使用手册
 
 **研究项目**：李慧敏-22  复杂电离层环境短波反射/散射混合传播机理及建模研究
 
